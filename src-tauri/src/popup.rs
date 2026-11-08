@@ -47,10 +47,14 @@ const OUTSIDE_POLL_MS: u64 = 30;
 /// （msWebOOUI 去掉迷你菜单、msPdfOOUI、msSmartScreenProtection）。
 /// 后面几个是为"小卡片"专门削的：静态文字卡片用不上 GPU 合成，
 /// 关掉 gpu-process 与后台节流相关的进程可以少几十 MB。
-const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
---disable-gpu --disable-software-rasterizer --renderer-process-limit=1 \
---disable-background-timer-throttling --disable-backgrounding-occluded-windows \
---disable-renderer-backgrounding --disable-ipc-flooding-protection";
+///
+/// **绝不能加 `--renderer-process-limit=1`**（曾经加过，是个 bug）：
+/// 这个参数限制的是**整个浏览器进程**的 renderer 数量，而弹窗与设置窗口
+/// 共用同一个 WebView2 环境（同一个 data directory）。弹窗先开时占掉唯一的
+/// renderer 名额，设置窗口就渲染不出任何东西 —— 表现为纯白空白页；
+/// 随后关闭弹窗时 WebView2 环境状态被搅乱，主线程卡死、程序"无响应"。
+/// 省下来的那点内存（实测约 40 MB）远不值一个打不开的设置页。
+const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
 /// 最近一次要渲染的内容。前端加载完成前发的 `popup-render` 会丢，留一份给它补发。
 static PENDING: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
@@ -76,6 +80,15 @@ static PINNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 /// 输入模式则相反，必须能收键盘，否则用户没法打字。
 /// 同一个窗口按模式切换，所以每次 `show()` 都要重新设一遍，不能只在建窗时设。
 static INPUT_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 当前这一轮弹窗的窗口**是否已经摆过位置**。
+///
+/// 摆位置只该在「新一次唤出」时做一次。以前是每收到 `state:"loading"` 就重摆，
+/// 而「点翻译按钮 / 按回车 / 切引擎」都会触发一次 loading，
+/// 于是用户每操作一次弹窗就跳一次位置（输入模式跳回屏幕中部偏上，
+/// 划词模式跟着当前光标跑）——用户 m03664 报的第 2 个 bug。
+/// `close()` 里复位，下一轮唤出才重新摆。
+static PLACED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn is_pinned() -> bool {
     PINNED.load(Ordering::SeqCst)
@@ -346,8 +359,15 @@ pub fn show(app: &AppHandle, payload: Value) {
         crate::dlog::dlog("popup: 新一次翻译，图钉自动解除");
     }
 
-    if is_loading {
-        // 新一轮翻译：先把高度收回去，再挪到当前光标附近（用户可能已换了位置）。
+    // 只在新一次唤出时摆位置。同一轮里的 loading→done→loading（点翻译按钮、
+    // 按回车、切引擎都会走这条）不再挪窗口，否则弹窗每操作一次跳一次。
+    // `just_created` 覆盖第一次建窗；`fresh` 覆盖"复用窗口但按了新热键"；
+    // PLACED 兜住"窗口还在、这一轮还没摆过"的情况。
+    let first_of_round = just_created
+        || !PLACED.load(Ordering::SeqCst)
+        || payload.get("fresh").and_then(|b| b.as_bool()) == Some(true);
+    if is_loading && first_of_round {
+        // 新一轮翻译：先把高度收回去，再摆到该在的位置。
         // 输入模式下位置固定在屏幕中部偏上，跟着光标跑会边打字边漂。
         let (x, y) = if input {
             center_pos(app)
@@ -357,6 +377,9 @@ pub fn show(app: &AppHandle, payload: Value) {
         };
         let _ = win.set_size(tauri::PhysicalSize::new(POPUP_W as u32, POPUP_H_MIN as u32));
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    if first_of_round {
+        PLACED.store(true, Ordering::SeqCst);
     }
 
     crate::dlog::dlog(&format!("popup::show: emit（mode={mode}）"));
@@ -409,6 +432,8 @@ pub fn close(app: &AppHandle) {
     // 可聚焦会把用户选中的文字清掉（06-TESTING §6.4.1 第 4 条）。
     PINNED.store(false, Ordering::SeqCst);
     INPUT_MODE.store(false, Ordering::SeqCst);
+    // 位置记忆也要清：下次唤出是一次新弹窗，得按当时的模式/光标重新摆。
+    PLACED.store(false, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(POPUP_LABEL) {
         crate::dlog::dlog("popup::close: destroy");
         let _ = w.destroy();
@@ -428,14 +453,50 @@ pub fn resize(win: &tauri::WebviewWindow, height: f64, width: f64) {
     let h = height.clamp(POPUP_H_MIN * 0.5, POPUP_H_MAX);
     let _ = win.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
 
-    // 变高/变宽后重新夹到屏幕内（用新高度判断，不是最小高度）
+    // 变高/变宽后重新夹到屏幕内（用新高度判断，不是最小高度）。
+    //
+    // 注意这里**不能**复用 clamp_pos()：那个函数是给"贴着光标弹出"设计的，
+    // 里面有一条"下方放不下就翻到光标上方"的分支 `ny = y - h - 20`。
+    // 传给它的是窗口自己的左上角，一旦弹窗本来就在屏幕下半部分，这条分支
+    // 会把整块往上顶 (h + 20)，表现就是"点一次翻译，弹窗跳到屏幕中间偏上"。
+    // 缩放只该做一件事：把越界的边推回屏幕内，顶边不动。
     let app = win.app_handle();
     if let Ok(pos) = win.outer_position() {
-        let (nx, ny) = clamp_pos(app, pos.x, pos.y, h as i32);
+        let (nx, ny) = clamp_keep_topleft(app, pos.x, pos.y, w as i32, h as i32);
         if nx != pos.x || ny != pos.y {
             let _ = win.set_position(tauri::PhysicalPosition::new(nx, ny));
         }
     }
+}
+
+/// 缩放时用的夹取：**保持左上角不动**，只把越界的右下边推回屏幕内。
+///
+/// 与 `clamp_pos` 的区别是它不尝试"改到光标另一侧"——窗口已经在屏幕上了，
+/// 挪走只会让用户找不到它。屏幕装不下时顶边优先（宁可盖住底部一点，
+/// 也不能让标题栏跑到屏幕外，那样连拖都拖不回来）。
+fn clamp_keep_topleft(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> (i32, i32) {
+    if let Ok(Some(m)) = app.primary_monitor() {
+        let size = m.size();
+        let pos = m.position();
+        let right = pos.x + size.width as i32;
+        let bottom = pos.y + size.height as i32;
+        let mut nx = x;
+        let mut ny = y;
+        if nx + w > right {
+            nx = right - w;
+        }
+        if ny + h > bottom {
+            ny = bottom - h;
+        }
+        if nx < pos.x {
+            nx = pos.x;
+        }
+        if ny < pos.y {
+            ny = pos.y;
+        }
+        return (nx, ny);
+    }
+    (x, y)
 }
 
 // ---------- 设置窗口 ----------

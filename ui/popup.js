@@ -133,7 +133,6 @@ function resetCard() {
   el("error").textContent = "";
   el("actions").classList.remove("on");
   el("copy-src").classList.add("hidden");
-  el("translate-btn").classList.toggle("hidden", mode !== "input");
   el("src").readOnly = false;
 }
 
@@ -149,10 +148,13 @@ function render(p) {
 
   // 先复位再分支：不复位的话「error → 重译成功」会同时显示错误框和译文
   // （S1b 踩过的坑，注释见文件头）。
-  // 复位也会重置 copy-src / translate-btn 的可见性，所以它必须在下面那两行之前。
+  // 复位也会重置 copy-src 的可见性，所以它必须在下面那行之前。
   resetCard();
 
-  el("translate-btn").classList.toggle("hidden", mode !== "input");
+  // 「翻译」按钮两种模式都要有：划词弹窗里用户改了源文本或切了引擎之后，
+  // 需要一个明确的"翻这段"的入口（用户 m03664 报的第 1 个 bug）。
+  // 之前只在输入模式显示，划词模式改完字只能靠回车，而划词窗口默认不聚焦，
+  // 回车根本到不了前端。
   el("copy-src").classList.toggle("hidden", mode === "input");
 
   // 源文本：**输入模式下永远不覆盖**。用户正在打的东西是权威，
@@ -260,10 +262,10 @@ function doTranslate() {
   if (!text) return;
   clearTimeout(hideTimer);
   el("translate-btn").disabled = true;
-  invoke("translate_text", { text })
+  invoke("translate_text", { text, mode })
     .catch((e) => {
       // 命令本身报错（不是翻译失败）也要让用户看到
-      lastPayload = { state: "error", message: String(e) };
+      lastPayload = { state: "error", message: String(e), mode };
       render(lastPayload);
     })
     .finally(() => {

@@ -266,12 +266,24 @@ fn open_input_translate(app: AppHandle) {
 /// 是个 `async` 命令：翻译要发 HTTP，阻塞式 `reqwest` 若跑在命令线程上
 /// 会把整个 UI 卡住几秒。`spawn_blocking` 把它挪到阻塞线程池，
 /// 命令线程立刻返回、前端不冻结。
+///
+/// `mode` 由前端给：`input`（默认）或 `select`。同一段文字在两种模式下
+/// 都要能翻——划词弹窗里用户改了源文本、或切了引擎之后，需要能重翻一次。
+/// 模式只影响回给前端的 payload，翻译本身完全一样。
 #[tauri::command]
-async fn translate_text(text: String, app: AppHandle) -> Result<Value, String> {
+async fn translate_text(
+    text: String,
+    mode: Option<String>,
+    app: AppHandle,
+) -> Result<Value, String> {
     let t = text.trim().to_string();
     if t.is_empty() {
         return Err("没有要翻译的内容".into());
     }
+    let m: &'static str = match mode.as_deref() {
+        Some("select") => "select",
+        _ => "input",
+    };
     let cfg = config::load();
 
     // 先让弹窗进入「翻译中」。
@@ -280,7 +292,7 @@ async fn translate_text(text: String, app: AppHandle) -> Result<Value, String> {
     let a0 = app.clone();
     let cfg0 = cfg.clone();
     let _ = app.run_on_main_thread(move || {
-        let p = popup_payload("loading", "input", &cfg0, json!({ "src": "" }));
+        let p = popup_payload("loading", m, &cfg0, json!({ "src": "" }));
         popup::show(&a0, p);
     });
 
@@ -294,13 +306,13 @@ async fn translate_text(text: String, app: AppHandle) -> Result<Value, String> {
     let p = match &r {
         Ok(v) => {
             dlog::dlog(&format!(
-                "input_translate: ok {} -> {} chars",
+                "translate_text: ok {} -> {} chars（mode={m}）",
                 v.from,
                 v.dst.chars().count()
             ));
             popup_payload(
                 "done",
-                "input",
+                m,
                 &cfg,
                 json!({
                     "src": t,
@@ -315,8 +327,8 @@ async fn translate_text(text: String, app: AppHandle) -> Result<Value, String> {
             )
         }
         Err(e) => {
-            dlog::dlog(&format!("input_translate: 翻译失败：{e}"));
-            popup_payload("error", "input", &cfg, json!({ "src": t, "message": e }))
+            dlog::dlog(&format!("translate_text: 翻译失败：{e}（mode={m}）"));
+            popup_payload("error", m, &cfg, json!({ "src": t, "message": e }))
         }
     };
     let _ = app.run_on_main_thread(move || popup::show(&a, p));
@@ -325,7 +337,9 @@ async fn translate_text(text: String, app: AppHandle) -> Result<Value, String> {
         Ok(v) => Ok(json!({ "ok": true, "dst": v.dst })),
         Err(e) => Ok(json!({ "ok": false, "message": e })),
     }
-}/// 当前引擎是否配好了。用于「缺配置就直接开设置页」这条分支——
+}
+
+/// 当前引擎是否配好了。用于「缺配置就直接开设置页」这条分支——
 /// 以前这里是硬编码检查百度的 appid/secret，多引擎之后必须问引擎自己。
 fn engine_ready(cfg: &config::Config) -> bool {
     translate::engine_by_id(&cfg.engine)
@@ -810,8 +824,24 @@ fn focus_for_typing(app: AppHandle) {
 /// 弹窗里的「设置」按钮：打开设置页并停在翻译这一栏。
 #[tauri::command]
 fn open_settings_from_popup(app: AppHandle) {
+    crate::dlog::dlog("open_settings_from_popup: 命令到达");
+    // 先关弹窗，再开设置页。
+    //
+    // 这不是"顺手关一下"：实测从弹窗自己的命令里创建第二个 WebView 窗口，
+    // `WebviewWindowBuilder::build()` 会卡死（日志停在"主线程开始建窗"，
+    // 设置窗口白页、进程无响应）。同一时刻用托盘菜单开设置页却完全正常，
+    // 差别只在"命令来自弹窗自身"。产品语义上也不该两个窗口叠着——
+    // 用户点设置就是要配置，弹窗留着没用。
+    popup::close(&app);
     let a = app.clone();
-    let _ = app.run_on_main_thread(move || popup::open_settings_at(&a, "translate"));
+    // 关窗是异步的（销毁 + WebView2 子进程退出），等它收尾再建新窗口。
+    let _ = app.run_on_main_thread(move || {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            let a2 = a.clone();
+            let _ = a.run_on_main_thread(move || popup::open_settings_at(&a2, "translate"));
+        });
+    });
 }
 
 #[tauri::command]
