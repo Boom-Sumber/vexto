@@ -1,0 +1,13 @@
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+# 注意：profile 必须写在 workspace 根。写在成员包的 Cargo.toml 里会被 cargo 忽略
+# （提示 "profiles for the non root package will be ignored"），等于白写。
+# 任务书 S0.3 第 2 步把 profile 放在 src-tauri/Cargo.toml，那是 MVP 时代「src-tauri 就是根包」的残留。
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

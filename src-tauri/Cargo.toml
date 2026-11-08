@@ -1,0 +1,20 @@
+[package]
+name = "lightbox"
+version = "0.1.0"
+description = "轻量工具集：划词翻译 / 截图翻译 / 下载 / 局域网传文件"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+# release profile 在 workspace 根 Cargo.toml —— 写在成员包里不生效。
