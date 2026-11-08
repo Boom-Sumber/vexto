@@ -7,9 +7,8 @@
 use windows::Win32::System::ProcessStatus::EmptyWorkingSet;
 use windows::Win32::System::Threading::GetCurrentProcess;
 
-/// S0 没有任何窗口会被销毁，因此这个函数暂时没人调用；
-/// S1 里「弹窗 destroy 后 trim」会用上它。删掉 `allow` 要等真正接上调用点。
-#[allow(dead_code)]
+/// 延迟一会儿再收缩：窗口刚销毁时 WebView2 子进程还在退出的路上，
+/// 立刻调只会把还没回收的页又换出去一次，等 1.2s 更稳（09-MVP-BASELINE §9.2 实测值）。
 pub fn trim_soon(delay_ms: u64) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
