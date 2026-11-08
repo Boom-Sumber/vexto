@@ -309,6 +309,33 @@ pub fn resize(win: &tauri::WebviewWindow, height: f64, width: f64) {
 
 // ---------- 设置窗口 ----------
 
+/// 「下次打开设置页时要停在哪个工具」。托盘点工具项、或从翻译弹窗跳过来时置位，
+/// 前端加载完调 `take_pending_tool` 取走并跳转。
+///
+/// 为什么用「取走」而不是「读取」：跳转只该发生一次，用户之后自己切到别的工具
+/// 不该被拉回去。
+static PENDING_TOOL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 打开设置窗口并跳到指定工具。**必须在主线程调用。**
+pub fn open_settings_at(app: &AppHandle, tool_id: &str) {
+    if let Ok(mut g) = PENDING_TOOL.lock() {
+        *g = Some(tool_id.to_string());
+    }
+    let existed = app.get_webview_window(SETTINGS_LABEL).is_some();
+    open_settings(app);
+    if existed {
+        // 窗口已经在：它不会重新加载页面，所以直接推个事件过去
+        if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
+            let _ = w.emit("settings-goto", tool_id);
+        }
+    }
+}
+
+/// 前端取走待跳转的工具（可能为 `None`）。
+pub fn take_pending_tool() -> Option<String> {
+    PENDING_TOOL.lock().ok().and_then(|mut g| g.take())
+}
+
 /// 打开设置窗口。已存在则聚焦，不重复创建。**必须在主线程调用。**
 pub fn open_settings(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
