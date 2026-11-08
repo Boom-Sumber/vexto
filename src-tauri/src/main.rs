@@ -262,86 +262,6 @@ fn is_hotkey_key(k: &str) -> bool {
 
 // ---------- 命令：设置页 ----------
 
-// ── 临时兼容层：给 S1a 的旧设置页用 ─────────────────────────────────────
-//
-// S2a 把设置页的读写换成了按工具分组的 list_tools/get_tool_config/
-// save_tool_config，但 `ui/settings.*` 的重写属于 S2b。这两条命令让旧页面
-// 在 S2a 期间仍然可用，避免"后端先升级、前端瞬间变砖"。
-//
-// **S2b 重写设置页时必须删掉这两个函数和 ConfigOut**（03-STANDARDS §3.8
-// 禁止为具体页面留 get_xxx_config/save_xxx_config 这类成对命令）。
-
-/// 旧设置页要的整体配置视图。字段是旧页面的三个输入框 + 两个提示。
-#[derive(Serialize)]
-struct ConfigOut {
-    appid: String,
-    secret: String,
-    hotkey: String,
-    config_path: String,
-    /// 热键注册失败原因，空串表示正常
-    hotkey_error: String,
-}
-
-/// 兼容旧设置页：一次拿全部（新页面用 `get_tool_config`）。
-#[tauri::command]
-fn get_config() -> ConfigOut {
-    let cfg = config::load();
-    ConfigOut {
-        appid: cfg.appid,
-        secret: cfg.secret,
-        hotkey: cfg.hotkey,
-        config_path: config::config_path().display().to_string(),
-        hotkey_error: hotkey::last_error(),
-    }
-}
-
-/// 兼容旧设置页：整体保存。
-///
-/// 走的是和新路径同一套校验与生效逻辑——热键先验格式、再落盘、再注册、
-/// 最后更新托盘文案，所以旧页面存下来的热键和新页面没有行为差异。
-///
-/// **只在当前配置上覆盖旧页面认识的 5 个字段**，不是整份替换。
-/// 旧页面发来的 JSON 里没有 engine / openai_* / enable_* 等 S2 新字段，
-/// 若直接 `config::save(&config)`，那些字段会被 serde 默认值覆盖掉——
-/// 用户在新页面配好的 OpenAI 引擎会被旧页面悄悄改回百度。
-#[tauri::command]
-fn save_config(config: config::Config, app: AppHandle) -> SimpleOut {
-    let normalized = match hotkey::validate_hotkey(&config.hotkey) {
-        Ok(h) => h,
-        Err(e) => {
-            return SimpleOut {
-                ok: false,
-                message: e,
-            }
-        }
-    };
-
-    let mut cfg = config::load();
-    cfg.appid = config.appid;
-    cfg.secret = config.secret;
-    cfg.from = config.from;
-    cfg.to = config.to;
-    cfg.hotkey = normalized.clone();
-    if let Err(e) = config::save(&cfg) {
-        return SimpleOut {
-            ok: false,
-            message: e,
-        };
-    }
-
-    tray::update_hotkey_label(&app, &normalized);
-    match hotkey::register_hotkey(&app, &normalized, |a| translate_selection(a.clone())) {
-        Ok(()) => SimpleOut {
-            ok: true,
-            message: format!("已保存，热键 {normalized} 已生效"),
-        },
-        Err(e) => SimpleOut {
-            ok: true,
-            message: format!("已保存；但{e}"),
-        },
-    }
-}
-
 /// 设置页左列表的唯一数据源。
 #[tauri::command]
 fn list_tools() -> Vec<ToolOut> {
@@ -665,9 +585,6 @@ fn main() {
             take_pending_tool,
             config_path,
             hotkey_error,
-            // 旧设置页兼容，S2b 重写设置页时删掉
-            get_config,
-            save_config,
             // 翻译弹窗
             popup_ready,
             resize_popup,

@@ -6,29 +6,43 @@
 <link rel="stylesheet" href="settings.css" />
 </head>
 <body>
-  <h1>划词翻译</h1>
-  <p class="hint">密钥只保存在本机 <code id="cfgpath">%APPDATA%\lightbox\config.json</code>，不会上传。</p>
+<div class="app">
+  <!-- 左侧：工具列表。内容全部由 list_tools 生成，这里不写死任何一个工具名（ADR-015） -->
+  <aside class="sidebar">
+    <div class="brand">LightBox</div>
+    <nav id="tools" class="tools"></nav>
+    <div class="side-foot">
+      <code id="cfgpath" title="">config.json</code>
+    </div>
+  </aside>
 
-  <div id="tool-status" class="tool-status hidden"></div>
+  <!-- 右侧：当前工具的标题 / 说明 / 状态 / 标签栏 / 字段区 -->
+  <main class="pane">
+    <header class="pane-head">
+      <div class="pane-title">
+        <h1 id="tool-name">加载中…</h1>
+        <p id="tool-desc" class="hint"></p>
+        <p id="tool-status-line" class="status-line"></p>
+      </div>
+      <label class="enable" id="enable-wrap">
+        <input type="checkbox" id="tool-enabled" />
+        <span>启用</span>
+      </label>
+    </header>
 
-  <label>百度翻译 APPID
-    <input id="appid" type="text" placeholder="开发者信息页里的「APP ID」" autocomplete="off" spellcheck="false" />
-  </label>
+    <div id="tool-status" class="tool-status hidden"></div>
 
-  <label>百度翻译密钥
-    <input id="secret" type="password" placeholder="开发者信息页里的「密钥」" autocomplete="off" spellcheck="false" />
-  </label>
+    <div class="pane-body">
+      <div id="tabs" class="tabs hidden"></div>
+      <div id="fields" class="fields"></div>
+    </div>
 
-  <label>全局热键
-    <input id="hotkey" type="text" class="capture" readonly placeholder="点击设置" spellcheck="false" />
-  </label>
-  <p class="hint">点击输入框后直接按组合键：修饰键只能是 <b>Ctrl / Shift / Alt</b>（1–2 个），主键只能是 <b>0-9</b>、<b>A-Z</b>、<b>F1-F12</b>。按 Esc 取消。</p>
+    <footer class="pane-foot">
+      <span id="status"></span>
+    </footer>
+  </main>
+</div>
 
-  <div class="buttons">
-    <button id="save" class="primary">保存并生效</button>
-    <span id="status"></span>
-  </div>
-
-  <script src="settings.js"></script>
+<script src="settings.js"></script>
 </body>
 </html>

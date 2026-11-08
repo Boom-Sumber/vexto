@@ -1,30 +1,154 @@
+/* 设置页样式：左侧工具列表 + 右侧字段区。
+   布局与配色沿用 S1a 那版的变量，避免视觉断层；新增的部分只有左栏、标签栏与
+   各字段类型的容器。 */
+
 * { box-sizing: border-box; }
+
+html, body { height: 100%; }
 
 body {
   margin: 0;
-  padding: 22px 26px 26px;
   background: #16181d;
   color: #e8eaf0;
   font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.6;
+  overflow: hidden;
 }
 
-h1 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+.app {
+  display: flex;
+  height: 100%;
+}
+
+/* ── 左栏 ─────────────────────────────────────────────────────────────── */
+
+.sidebar {
+  flex: 0 0 150px;
+  display: flex;
+  flex-direction: column;
+  background: #131519;
+  border-right: 1px solid #23262e;
+  padding: 14px 10px 10px;
+}
+
+.brand {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7d8496;
+  letter-spacing: .04em;
+  padding: 0 8px 10px;
+}
+
+.tools {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  color: #b9c0cd;
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  text-align: left;
+  background: none;
+  font-family: inherit;
+  width: 100%;
+}
+.tool:hover { background: #1b1e24; color: #fff; }
+.tool.on {
+  background: #1f2735;
+  border-color: #2f6fe0;
+  color: #fff;
+}
+/* 停用的工具灰掉，但仍可点开看（ADR-015：设置页永远能进） */
+.tool.off { color: #6f7686; }
+.tool.off .dot { background: #4a5160; }
+
+.dot {
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3d84ff;
+}
+
+.side-foot {
+  padding: 8px;
+  border-top: 1px solid #23262e;
+  margin-top: 8px;
+}
+.side-foot code {
+  color: #5d6474;
+  font-size: 10px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 右侧 ─────────────────────────────────────────────────────────────── */
+
+.pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pane-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 24px 10px;
+}
+
+.pane-title { flex: 1; min-width: 0; }
+
+h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
 
 .hint {
   color: #8b93a3;
   font-size: 11.5px;
-  margin: 4px 0 14px;
+  margin: 0;
   line-height: 1.7;
 }
 .hint b { color: #b9c0cd; font-weight: 600; }
 
-code { color: #9fb6dd; font-size: 11px; }
+.status-line {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: #6cc07f;
+}
+.status-line.warn { color: #d8a13a; }
+.status-line.off { color: #6f7686; }
 
-/* 热键注册失败时显示在该工具分区顶部 */
+/* 工具级启用开关 */
+.enable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #b9c0cd;
+  padding-top: 4px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.enable input { width: 14px; height: 14px; margin: 0; accent-color: #2f6fe0; cursor: pointer; }
+
+/* 错误横幅（热键被占用、保存警告等） */
 .tool-status {
-  margin: 0 0 14px;
+  margin: 0 24px 10px;
   padding: 9px 12px;
   background: #3a1d1d;
   border: 1px solid #6b2b2b;
@@ -33,19 +157,59 @@ code { color: #9fb6dd; font-size: 11px; }
   font-size: 12px;
   line-height: 1.6;
   word-break: break-word;
+  white-space: pre-wrap;
 }
 
-label {
+.pane-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 16px;
+}
+
+/* ── 标签栏 ───────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #23262e;
+  margin-bottom: 16px;
+  position: sticky;
+  top: 0;
+  background: #16181d;
+  padding-top: 2px;
+  z-index: 1;
+}
+
+.tab {
+  padding: 7px 12px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: #8b93a3;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tab:hover { color: #cfd5e0; }
+.tab.on { color: #fff; border-bottom-color: #3d84ff; }
+
+/* ── 字段 ─────────────────────────────────────────────────────────────── */
+
+.field { margin: 0 0 14px; }
+
+.field-label {
   display: block;
-  margin: 0 0 14px;
   font-size: 12px;
   color: #b9c0cd;
+  margin-bottom: 6px;
 }
 
-input {
+.field input[type="text"],
+.field input[type="password"],
+.field input[type="number"] {
   display: block;
   width: 100%;
-  margin-top: 6px;
   padding: 8px 10px;
   font-family: inherit;
   font-size: 13px;
@@ -55,21 +219,82 @@ input {
   border-radius: 7px;
   outline: none;
 }
-input:focus { border-color: #3d84ff; background: #22262f; }
+.field input:focus { border-color: #3d84ff; background: #22262f; }
 
-/* 热键框：只读，点击进入捕获模式。不允许手打（ADR-018）。 */
-input.capture { cursor: pointer; user-select: none; }
-input.capture::placeholder { color: #6f7686; }
-input.capturing {
+/* 带单位的数字：输入框 + 后缀 */
+.num-row { position: relative; }
+.num-unit {
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11.5px;
+  color: #6f7686;
+  pointer-events: none;
+}
+.num-row.has-unit input { padding-right: 48px; }
+
+/* 热键框：只读 + 捕获模式，不允许手打（ADR-018） */
+.field input.capture { cursor: pointer; user-select: none; }
+.field input.capture::placeholder { color: #6f7686; }
+.field input.capturing {
   border-color: #d8a13a;
   background: #2a2418;
   color: #f0c674;
   cursor: default;
 }
 
-.buttons { display: flex; align-items: center; gap: 10px; margin-top: 20px; }
+/* 开关：一行 label + checkbox */
+.field.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.field.switch .field-label {
+  margin: 0;
+  order: 2;
+  flex: 1;
+  cursor: pointer;
+}
+.field.switch input[type="checkbox"] {
+  order: 1;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #2f6fe0;
+  cursor: pointer;
+}
 
-button {
+/* 下拉 */
+.field select {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #e8eaf0;
+  background: #1f222a;
+  border: 1px solid #32363f;
+  border-radius: 7px;
+  outline: none;
+  cursor: pointer;
+}
+.field select:focus { border-color: #3d84ff; }
+
+/* 说明文字 */
+.field.note {
+  color: #7d8496;
+  font-size: 11.5px;
+  line-height: 1.75;
+  margin: 0 0 14px;
+  white-space: pre-wrap;
+}
+
+/* 按钮 */
+.field.action { margin: 0 0 14px; }
+
+button.btn {
   font-family: inherit;
   font-size: 12.5px;
   color: #cfd5e0;
@@ -79,10 +304,32 @@ button {
   padding: 8px 16px;
   cursor: pointer;
 }
-button:hover { border-color: #4a5160; color: #fff; }
-button.primary { background: #2f6fe0; border-color: #2f6fe0; color: #fff; }
-button.primary:hover { background: #3d84ff; }
+button.btn:hover { border-color: #4a5160; color: #fff; }
+button.btn:disabled { opacity: .55; cursor: default; }
 
+/* 「测试一下」的结果框 */
+.result {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #1b1e24;
+  border: 1px solid #2b3038;
+  color: #b9c0cd;
+}
+.result.ok { border-color: #2f5b3c; background: #17231b; color: #9fd5ad; }
+.result.bad { border-color: #6b2b2b; background: #2a1818; color: #ff9b93; }
+
+/* ── 底栏 ─────────────────────────────────────────────────────────────── */
+
+.pane-foot {
+  border-top: 1px solid #23262e;
+  padding: 9px 24px;
+  min-height: 36px;
+}
 #status { font-size: 12px; color: #6cc07f; }
 #status.bad { color: #ff7b72; }
 
