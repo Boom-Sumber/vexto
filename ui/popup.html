@@ -47,10 +47,10 @@
       <button id="translate-btn" class="primary">翻译</button>
     </div>
 
-    <!-- 引擎行：点整行弹出引擎选择。当前引擎名由后端给 -->
-    <button id="engine-row" class="row">
+    <!-- 引擎选择：固定宽度的小选择框（不再整行铺开、不带下拉箭头）。
+         点它弹出引擎菜单，菜单在文档流里，卡片随之变高。 -->
+    <button id="engine-row" title="点击切换翻译引擎">
       <span id="engine-name">未配置引擎</span>
-      <span id="engine-caret">⌄</span>
     </button>
     <div id="engine-menu" class="hidden"></div>
 
@@ -76,11 +76,12 @@
       </button>
       <span id="actions-spacer"></span>
       <button id="open-settings" class="icon" title="设置">
-        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-          <path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"
-                stroke="currentColor" fill="none" stroke-width="1.4"/>
-          <path d="M8 1.6l.8 1.5 1.7-.3.5 1.6 1.5.8-.6 1.6.6 1.6-1.5.8-.5 1.6-1.7-.3L8 14.4l-.8-1.5-1.7.3-.5-1.6-1.5-.8.6-1.6-.6-1.6 1.5-.8.5-1.6 1.7.3L8 1.6Z"
-                stroke="currentColor" fill="none" stroke-width="1.2" stroke-linejoin="round"/>
+        <!-- 实心齿轮：6 齿 + 中心镂空（fill-rule=evenodd 让内圈挖空）。
+             以前那版是 1.2px 描边线条，16px 下齿形糊成一圈毛刺，用户说太丑。
+             现在纯填充、齿谷更深（R=7.55 / r=4.75），小尺寸下也能看出是齿轮。 -->
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+          <path fill="currentColor" fill-rule="evenodd"
+                d="M6.77 3.41L9.23 3.41L10.01 3.7L10.72 4.11L11.36 4.64L12.59 6.77L12.73 7.59L12.73 8.41L12.59 9.23L11.36 11.36L10.72 11.89L10.01 12.3L9.23 12.59L6.77 12.59L5.99 12.3L5.28 11.89L4.64 11.36L3.41 9.23L3.27 8.41L3.27 7.59L3.41 6.77L4.64 4.64L5.28 4.11L5.99 3.7ZM8 9.55a1.55 1.55 0 1 0 0-3.1 1.55 1.55 0 0 0 0 3.1Z"/>
         </svg>
       </button>
     </div>

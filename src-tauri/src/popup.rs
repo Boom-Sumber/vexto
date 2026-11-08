@@ -179,9 +179,6 @@ fn clamp_pos(app: &AppHandle, x: i32, y: i32, h: i32) -> (i32, i32) {
 ///
 /// **必须在主线程调用。**
 pub fn focus_for_typing(app: &AppHandle) {
-    if PINNED.load(Ordering::SeqCst) {
-        // 钉住不影响打字，这里只是提醒读者两者互不干扰
-    }
     set_focusable(app, true);
     if let Some(w) = app.get_webview_window(POPUP_LABEL) {
         let _ = w.emit("popup-focus", ());
@@ -352,12 +349,12 @@ pub fn show(app: &AppHandle, payload: Value) {
     // 否则下次划词弹窗会抢焦点、把用户选中的文字清掉（06-TESTING §6.4.1 第 4 条）。
     set_focusable(app, input);
 
-    // 换了一次新的翻译 = 上一次的图钉作废。图钉的语义是"钉住这次结果"，
-    // 不是"永远钉住弹窗"。用户按热键翻新内容时显然想要新的那个。
-    if is_loading && PINNED.load(Ordering::SeqCst) {
-        PINNED.store(false, Ordering::SeqCst);
-        crate::dlog::dlog("popup: 新一次翻译，图钉自动解除");
-    }
+    // 图钉**不能**在这里被清掉。用户 m05732 第 3 条报的正是这个：
+    // 钉住之后在弹窗里回车/点「翻译」/切引擎，每一轮都会收到一次
+    // `state:"loading"`，于是图钉被自动解除，窗口几秒后自己关掉。
+    // 钉住的语义是「钉住这个窗口，直到用户自己取消或关掉」——
+    // 同一轮里的重译（换引擎、改原文再翻）属于同一轮，不能动图钉。
+    // 新一轮的唤出走的是 close() → 那里会把 PINNED 复位。
 
     // 只在新一次唤出时摆位置。同一轮里的 loading→done→loading（点翻译按钮、
     // 按回车、切引擎都会走这条）不再挪窗口，否则弹窗每操作一次跳一次。

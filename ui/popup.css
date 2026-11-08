@@ -146,25 +146,30 @@ button.primary:disabled {
 
 /* ---------- 引擎行 ---------- */
 
+/* 引擎选择框：**固定宽度的小选择框**，不再整行铺开、不带下拉箭头。
+ * 用户 m05732 第 1 条：整行一条横杠看着像分隔线，箭头也没用（点名字就弹菜单）。
+ * 宽度给 132px（固定值，不随引擎名长短变）：最长选项「OpenAI 兼容」
+ * 在 12px 字号下约 70px，加上左右各 8px 内边距与边框仍留有余量，
+ * 两个引擎名都能完整显示，不会省略号。 */
 #engine-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  height: 26px;
-  padding: 0 4px;
-  border: none;
+  width: 132px;
+  height: 24px;
+  margin: 2px 0 2px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: transparent;
+  background: var(--bg-soft);
   color: var(--fg-dim);
   font-family: inherit;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
-#engine-row:hover { background: var(--bg-soft); color: var(--fg); }
+#engine-row:hover { border-color: #4a5160; color: var(--fg); }
 
-#engine-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#engine-caret { flex: 0 0 auto; color: var(--fg-dim); }
+#engine-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 引擎下拉：**放在文档流里**，不用 absolute。
  *
@@ -173,6 +178,7 @@ button.primary:disabled {
  * 改成在流里就自然：卡片跟着变高，窗口随之 resize，不需要额外算。
  * 代价是下方内容会往下推 —— 但用户正在选引擎，注意力就在这一区，可以接受。 */
 #engine-menu {
+  width: 132px;
   margin: 2px 0 4px;
   padding: 4px;
   border: 1px solid var(--border);
