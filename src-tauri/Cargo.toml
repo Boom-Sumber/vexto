@@ -26,6 +26,10 @@ reqwest = { version = "0.13", default-features = false, features = [
 ] }
 md-5 = "0.11"
 
+# 本地语种检测（S2.5 用）。MIT 许可（不是 GPL，符合 07-LICENSING）。
+# 选它而不是 lingua：whatlang 无外部数据文件、编译产物小，lingua 会带 ~50 MB 语料。
+whatlang = "0.18"
+
 # 取词（S1b 用）：剪贴板兜底 + UIA 路线。
 arboard = "3"
 uiautomation = "0.25"

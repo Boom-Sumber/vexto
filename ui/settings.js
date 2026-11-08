@@ -565,17 +565,6 @@ async function refreshHotkeyError() {
 async function boot() {
   await reloadTools();
 
-  // 路径显示（有就显示，没有就保持默认文案）
-  try {
-    const p = await invoke("config_path");
-    if (p) {
-      el("cfgpath").textContent = p;
-      el("cfgpath").title = p;
-    }
-  } catch {
-    /* 非关键 */
-  }
-
   // 托盘点了某个工具、或从别处跳过来：定位到它
   let pending = null;
   try {

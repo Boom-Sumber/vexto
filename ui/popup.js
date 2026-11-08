@@ -64,8 +64,10 @@ function render(p) {
   } else if (p.state === "done") {
     dstEl.textContent = p.dst || "";
     dstEl.classList.remove("hidden");
-    // src 为空时（比如重试）也把语种行显示出来，否则卡片第一行是空的
-    fromLangEl.textContent = (p.from || "auto") + " → " + (p.to || "zh");
+    // 语种行优先用后端给的中文名（payload.dir），退回代码兜底。
+    // 后端在检测出语种后能给准名字，比直接显示 en → zh 好读。
+    const d = p.dir || {};
+    fromLangEl.textContent = (d.from || p.from || "auto") + " → " + (d.to || p.to || "zh");
     actionsEl.classList.add("on");
     scheduleHide();
   } else if (p.state === "error") {
@@ -74,8 +76,8 @@ function render(p) {
     // 出错时没有译文可复制，藏掉「复制译文」，只留「重试」
     el("copy").classList.add("hidden");
     actionsEl.classList.add("on");
-    // 出错后留久一点，让用户看清原因
-    scheduleHide(30000);
+    // 出错后留久一点，让用户看清原因（用户配置的 2 倍，至少 30s）
+    scheduleHide(Math.max(30000, timeoutMs() * 2));
   }
 
   // 等布局落地再测高度，否则量到的是上一帧的尺寸
@@ -88,11 +90,21 @@ function render(p) {
  * 不抢焦点的窗口没法靠"失焦"判断用户走神了，所以仍然留这个定时器；
  * 鼠标悬停在卡片上时取消倒计时，用户正在读就不该关。
  * 另有"点击卡片外部关闭"，那是 Rust 侧 30ms 轮询实现的（popup.rs）。
+ *
+ * 时长来自配置 `popup_timeout_ms`，由后端塞进 payload 的 `timeout` 字段。
+ * **不要在这里写死数字**：S2 把它写死成 15000，导致设置页里那个
+ * 「弹窗自动关闭」输入框成了摆设（改了没反应）。
  */
 function scheduleHide(ms) {
   clearTimeout(hideTimer);
   if (hovering) return;
-  hideTimer = setTimeout(closePopup, ms || 15000);
+  hideTimer = setTimeout(closePopup, ms || timeoutMs());
+}
+
+/** 读当前 payload 里的超时时长，兜底 15s。 */
+function timeoutMs() {
+  const t = lastPayload && Number(lastPayload.timeout);
+  return Number.isFinite(t) && t >= 1000 ? t : 15000;
 }
 
 card.addEventListener("mouseenter", () => {

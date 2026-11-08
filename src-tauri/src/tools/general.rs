@@ -55,6 +55,8 @@ impl Tool for General {
                 Field::note("开着缓存时，同一段文字再次翻译直接用上次结果，不消耗额度。"),
                 Field::number_unit("popup_timeout_ms", "弹窗自动关闭", 3000, 120000, "毫秒"),
                 Field::note("日志默认关闭，避免常驻进程无谓写盘。"),
+                Field::button("open_config_file", "打开配置文件"),
+                Field::note("用记事本之类的程序打开 config.json。改完保存后部分设置要重启才生效。"),
                 Field::button("open_config_dir", "打开配置目录"),
             ],
         )]

@@ -13,6 +13,7 @@ mod capture;
 mod config;
 mod dlog;
 mod hotkey;
+mod lang;
 mod mem;
 mod popup;
 mod tools;
@@ -100,6 +101,18 @@ fn show_popup(app: &AppHandle, payload: Value) {
     let _ = app.run_on_main_thread(move || popup::show(&a, payload));
 }
 
+/// 给弹窗 payload 补上「多久自动关闭」。
+///
+/// `popup_timeout_ms` 在「通用」里可以改，但 S1 起前端一直是硬编码 15000，
+/// 这个配置从来没生效过。现在由后端统一塞进去，前端只负责用——
+/// 配置在后端、行为也在后端驱动，前端不该自己猜一个数。
+fn with_timeout(mut payload: Value, cfg: &config::Config) -> Value {
+    if let Value::Object(m) = &mut payload {
+        m.insert("timeout".to_string(), json!(cfg.popup_timeout_ms));
+    }
+    payload
+}
+
 // ---------- 核心流程 ----------
 
 /// 取词 → 翻译 → 弹窗，一次完整的翻译流程。
@@ -152,7 +165,8 @@ fn run_translate(app: AppHandle, reuse_last_src: bool) {
                 }
                 Err(e) => {
                     dlog::dlog(&format!("translate_selection: 取词失败：{e}"));
-                    show_popup(&app, json!({ "state": "error", "src": "", "message": e }));
+                    let p = with_timeout(json!({ "state": "error", "src": "", "message": e }), &cfg);
+                    show_popup(&app, p);
                     return;
                 }
             }
@@ -162,7 +176,8 @@ fn run_translate(app: AppHandle, reuse_last_src: bool) {
 
         // 3) 先弹「翻译中」，用户按下热键后 1 秒内必须有反应，
         //    等引擎返回（可能几秒）再弹窗会让人以为热键没生效。
-        show_popup(&app, json!({ "state": "loading", "src": src }));
+        let p = with_timeout(json!({ "state": "loading", "src": src }), &cfg);
+        show_popup(&app, p);
 
         // 4) 翻译
         match translate::translate(&cfg, &src) {
@@ -176,20 +191,26 @@ fn run_translate(app: AppHandle, reuse_last_src: bool) {
                 if cfg.auto_copy {
                     capture::write_clipboard_text(&r.dst);
                 }
-                show_popup(
-                    &app,
+                let p = with_timeout(
                     json!({
                         "state": "done",
                         "src": src,
                         "dst": r.dst,
                         "from": r.from,
                         "to": r.to,
+                        "dir": {
+                            "from": crate::lang::name_of(&r.from),
+                            "to": crate::lang::name_of(&r.to),
+                        },
                     }),
+                    &cfg,
                 );
+                show_popup(&app, p);
             }
             Err(e) => {
                 dlog::dlog(&format!("translate_selection: 翻译失败：{e}"));
-                show_popup(&app, json!({ "state": "error", "src": src, "message": e }));
+                let p = with_timeout(json!({ "state": "error", "src": src, "message": e }), &cfg);
+                show_popup(&app, p);
             }
         }
     });
@@ -515,6 +536,36 @@ fn take_pending_tool() -> Option<String> {
     popup::take_pending_tool()
 }
 
+/// 打开 `config.json` 本身（用系统默认程序，通常是记事本 / VS Code）。
+///
+/// 用户 m02639 要求把侧栏那行配置路径移进「通用」，并加一个按钮直接打开文件。
+/// 文件不存在时先写一份默认配置出来，否则点按钮只会弹一个「找不到文件」。
+#[tauri::command]
+fn open_config_file() -> SimpleOut {
+    let p = config::config_path();
+    if !p.exists() {
+        // 先落一份默认配置。用户点这个按钮的意图是「看看配置长什么样」，
+        // 给他一个空目录不如给他一份可读的示例。
+        let cfg = config::load();
+        if let Err(e) = config::save(&cfg) {
+            return SimpleOut {
+                ok: false,
+                message: format!("配置文件不存在，尝试创建也失败了：{e}\n路径：{}", p.display()),
+            };
+        }
+    }
+    match std::process::Command::new("explorer").arg(&p).spawn() {
+        Ok(_) => SimpleOut {
+            ok: true,
+            message: p.display().to_string(),
+        },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: format!("打开配置文件失败：{e}\n路径：{}", p.display()),
+        },
+    }
+}
+
 /// 配置文件的真实路径，设置页底部显示用。
 #[tauri::command]
 fn config_path() -> String {
@@ -582,6 +633,7 @@ fn main() {
             set_tool_enabled,
             test_translate,
             open_config_dir,
+            open_config_file,
             take_pending_tool,
             config_path,
             hotkey_error,

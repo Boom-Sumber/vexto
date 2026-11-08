@@ -23,8 +23,14 @@ body {
 
 /* ── 左栏 ─────────────────────────────────────────────────────────────── */
 
+/* 左栏固定宽度。
+   `flex: 0 0 160px` 只保证「理想宽度」，flex item 默认 `min-width: auto`，
+   内容里有长路径这类不可断行文本时仍会把整栏撑宽（S2 版把 config.json 的完整路径
+   放在这里，侧栏被撑到 300+ px）。所以必须显式 `min-width: 0`。
+   配置文件路径已移到「通用」里做成按钮，这里不再放任何长文本。 */
 .sidebar {
-  flex: 0 0 150px;
+  flex: 0 0 160px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: #131519;
@@ -80,20 +86,6 @@ body {
   height: 6px;
   border-radius: 50%;
   background: #3d84ff;
-}
-
-.side-foot {
-  padding: 8px;
-  border-top: 1px solid #23262e;
-  margin-top: 8px;
-}
-.side-foot code {
-  color: #5d6474;
-  font-size: 10px;
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ── 右侧 ─────────────────────────────────────────────────────────────── */

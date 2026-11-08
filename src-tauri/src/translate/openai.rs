@@ -33,16 +33,16 @@ fn endpoint(base: &str) -> String {
     format!("{b}/v1/chat/completions")
 }
 
+/// 系统提示词。
+///
+/// **语言名必须用中文名**（`中文`/`英语`/`日语`），不能把 `zh`/`jp`/`kor` 这类代码
+/// 塞给模型：这是一套「百度代码」，模型看不懂，会照字母照做翻译。
 fn system_prompt(cfg: &Config) -> String {
     let custom = cfg.openai_prompt.trim();
     if !custom.is_empty() {
         return custom.to_string();
     }
-    let to = if cfg.to.trim().is_empty() {
-        "zh"
-    } else {
-        cfg.to.trim()
-    };
+    let to = crate::lang::name_of(&cfg.to);
     format!(
         "你是翻译引擎。把用户输入翻译成目标语言（{to}），\
          只输出译文本身：不要解释、不要加引号、不要重复原文、不要 Markdown 代码块。\
@@ -55,8 +55,9 @@ fn user_prompt(cfg: &Config, text: &str) -> String {
     if from.is_empty() || from == "auto" {
         text.to_string()
     } else {
-        // 指定了源语言时明确告诉模型，比让它自己猜准确
-        format!("源语言：{from}\n\n{text}")
+        // 指定了源语言时明确告诉模型，比让它自己猜准确。
+        // 同样转成中文名——`源语言：jp` 对模型来说是噪音。
+        format!("源语言：{}\n\n{text}", crate::lang::name_of(from))
     }
 }
 

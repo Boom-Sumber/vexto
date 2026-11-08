@@ -4,36 +4,70 @@
 //! 「划词翻译」「截图翻译」两个左侧项，引擎配置无处可放——要么两边各渲染一遍
 //! （隐性耦合：改一处忘一处），要么写「去划词翻译里改」（跨分区跳转）。
 //! 用户 m01468 的建议正是这个方向：左侧按工具分，工具内部的子功能用标签页。
+//!
+//! S2.5 起「划词翻译」标签改名为「翻译配置」：它已经不只服务划词了——
+//! 语种检测、第二目标语言对划词 / 输入 / 截图三条链路都生效
+//! （输入的文本和 OCR 出来的文本走同一套检测流程，见 translate::resolve_direction）。
 
 use super::{Field, Section, Tool};
 use crate::config;
 use crate::translate::{engine_by_id, ENGINE_OPTIONS};
 
+// `LANGS` 只在 `target_options_match_lang_table` 里用到（生产代码走的是下面的
+// `TO_STATIC` 静态表），所以 import 挂在测试模块上，否则会报 unused import。
+#[cfg(test)]
+use crate::lang::LANGS;
+
 pub struct Translate;
 
-/// 目标语言选项。只列常用语种——百度支持 200+，全列出来下拉框没法用。
-const TO_OPTIONS: &[(&str, &str)] = &[
+/// 目标语言选项。
+///
+/// **必须和 `lang::LANGS` 严格一致**，不能手写代码——S1 手写的那一版用了
+/// `ja`/`ko`/`fr`/`es`（常见写法），百度一个都不认，用户选这四种语言时翻译必然
+/// 返回 `58001 INVALID_TO_PARAM`，这个 bug 活到 S2.5 才被逐码实测发现。
+/// `target_options_match_lang_table` 单测盯着这两张表不许漂移。
+const TO_STATIC: &[(&str, &str)] = &[
     ("zh", "中文"),
+    ("cht", "繁体中文"),
     ("en", "英语"),
-    ("ja", "日语"),
-    ("ko", "韩语"),
-    ("fr", "法语"),
+    ("jp", "日语"),
+    ("kor", "韩语"),
+    ("fra", "法语"),
     ("de", "德语"),
+    ("spa", "西班牙语"),
     ("ru", "俄语"),
-    ("es", "西班牙语"),
+    ("pt", "葡萄牙语"),
+    ("it", "意大利语"),
+    ("th", "泰语"),
+    ("vie", "越南语"),
+    ("ara", "阿拉伯语"),
+    ("nl", "荷兰语"),
+    ("pl", "波兰语"),
 ];
 
-const FROM_OPTIONS: &[(&str, &str)] = &[
+/// 源语言选项 = 目标语言 + 首项「自动检测」。
+/// 用户选了具体语言就不走检测（`translate::resolve_direction` 的第一条分支）。
+const FROM_STATIC: &[(&str, &str)] = &[
     ("auto", "自动检测"),
     ("zh", "中文"),
+    ("cht", "繁体中文"),
     ("en", "英语"),
-    ("ja", "日语"),
-    ("ko", "韩语"),
-    ("fr", "法语"),
+    ("jp", "日语"),
+    ("kor", "韩语"),
+    ("fra", "法语"),
     ("de", "德语"),
+    ("spa", "西班牙语"),
     ("ru", "俄语"),
-    ("es", "西班牙语"),
+    ("pt", "葡萄牙语"),
+    ("it", "意大利语"),
+    ("th", "泰语"),
+    ("vie", "越南语"),
+    ("ara", "阿拉伯语"),
+    ("nl", "荷兰语"),
+    ("pl", "波兰语"),
 ];
+
+const DETECT_OPTIONS: &[(&str, &str)] = &[("local", "本地检测（离线，推荐）"), ("baidu", "百度语种检测")];
 
 impl Tool for Translate {
     fn id(&self) -> &'static str {
@@ -104,12 +138,21 @@ impl Tool for Translate {
             ),
             Section::new(
                 "selection",
-                "划词翻译",
+                "翻译配置",
                 vec![
                     Field::hotkey("hotkey", "划词热键"),
                     Field::note("选中文字后按这个组合键，光标旁弹出译文。"),
-                    Field::select("from", "源语言", FROM_OPTIONS),
-                    Field::select("to", "目标语言", TO_OPTIONS),
+                    Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS),
+                    Field::note(
+                        "翻译前先判语种：非中文译成下面的「目标语言」，中文译成「第二目标语言」。",
+                    ),
+                    Field::select("from", "源语言", FROM_STATIC),
+                    Field::note(
+                        "选「自动检测」才会按上一条的规则自动定方向；\
+                         选了具体语言就固定「源语言 → 目标语言」，不再套第二目标语言。",
+                    ),
+                    Field::select("to", "目标语言", TO_STATIC),
+                    Field::select("to2", "第二目标语言", TO_STATIC),
                     Field::switch("auto_copy", "译完自动复制译文"),
                 ],
             ),
@@ -123,5 +166,73 @@ impl Tool for Translate {
                 ],
             ),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 选项表必须和 `lang::LANGS` 严格一致。
+    ///
+    /// 这条测试是给「选日语翻译失败」那个 bug 立的碑：两套语言代码各自维护，
+    /// 迟早会漂移。谁加了新语言却忘了改这里，`cargo test` 立刻红。
+    #[test]
+    fn target_options_match_lang_table() {
+        assert_eq!(
+            TO_STATIC.len(),
+            LANGS.len(),
+            "目标语言选项 {} 项，语言表 {} 项，两边必须一一对应",
+            TO_STATIC.len(),
+            LANGS.len()
+        );
+        for (i, l) in LANGS.iter().enumerate() {
+            let (code, name) = TO_STATIC[i];
+            assert_eq!(code, l.baidu, "第 {i} 项代码不一致");
+            assert_eq!(name, l.name, "第 {i} 项名字不一致");
+        }
+    }
+
+    #[test]
+    fn from_options_are_target_options_plus_auto() {
+        assert_eq!(FROM_STATIC[0], ("auto", "自动检测"));
+        assert_eq!(
+            &FROM_STATIC[1..],
+            TO_STATIC,
+            "源语言除了首项 auto，其余必须和目标语言完全一样"
+        );
+    }
+
+    /// 这个测试挡住 `ja`/`ko`/`fr`/`es` 那类「常见但百度不认」的代码再次混进来。
+    #[test]
+    fn options_avoid_baidu_invalid_codes() {
+        for bad in ["ja", "ko", "fr", "es", "vi", "pt-BR", "zh-CN"] {
+            assert!(
+                !TO_STATIC.iter().any(|(c, _)| *c == bad),
+                "{bad} 百度不认（返回 58001），不能进目标语言选项"
+            );
+        }
+    }
+
+    #[test]
+    fn sections_are_named_for_the_ui() {
+        let t = Translate;
+        let s = t.sections();
+        assert_eq!(s.len(), 3);
+        assert_eq!(s[0].id, "engine");
+        assert_eq!(s[1].id, "selection");
+        assert_eq!(s[1].name, "翻译配置", "S2.5 改名，不再叫「划词翻译」");
+        assert_eq!(s[2].id, "ocr");
+    }
+
+    /// 新加的三个字段必须在「翻译配置」标签页里，否则用户在界面上找不到。
+    #[test]
+    fn translation_config_exposes_direction_fields() {
+        let t = Translate;
+        let s = t.sections();
+        let keys: Vec<&str> = s[1].fields.iter().map(|f| f.key).collect();
+        for k in ["to", "to2", "lang_detect", "from", "hotkey", "auto_copy"] {
+            assert!(keys.contains(&k), "「翻译配置」里缺字段 {k}，实际：{keys:?}");
+        }
     }
 }

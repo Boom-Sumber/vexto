@@ -347,8 +347,10 @@ pub fn open_settings(app: &AppHandle) {
 
     let r = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
         .title("LightBox 设置")
-        .inner_size(560.0, 620.0)
-        .min_inner_size(460.0, 480.0)
+        // 760 = 原来的 560 + 200（用户 m02639 第 2 条要求）。
+        // 左侧栏 160 + 右侧字段区 600，长路径 / BaseURL 这类输入框才不至于挤成一条。
+        .inner_size(760.0, 620.0)
+        .min_inner_size(660.0, 480.0)
         .resizable(true)
         .center()
         .additional_browser_args(WEBVIEW_ARGS)

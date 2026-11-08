@@ -23,9 +23,16 @@ pub struct Config {
     /// 源语言。`auto` = 自动检测
     #[serde(default = "d_from")]
     pub from: String,
-    /// 目标语言
+    /// 目标语言。**非中文**的源文本译到这里
     #[serde(default = "d_to")]
     pub to: String,
+    /// 第二目标语言。**中文**的源文本译到这里（中文→英/日/…，用户的本意通常是
+    /// 「我看不懂的翻成中文，我写得出的翻成外语」）
+    #[serde(default = "d_to2")]
+    pub to2: String,
+    /// 语种检测方式：`local`（whatlang + 脚本启发式，默认）| `baidu`（调检测接口）
+    #[serde(default = "d_lang_detect")]
+    pub lang_detect: String,
 
     // ---- OpenAI 兼容（DeepSeek / 硅基流动 / Ollama）----
     /// 接口根地址，不含 `/v1/chat/completions`
@@ -50,6 +57,11 @@ pub struct Config {
     /// 下载热键（S3 才真正注册，S2 只存值）
     #[serde(default = "d_hotkey_download")]
     pub hotkey_download: String,
+    /// 输入翻译热键。**本轮只存值、不注册也不进设置页**——弹窗重做（输入框 +
+    /// 翻译按钮 + 可聚焦模式）是下一个会话的事，现在注册了按下去没反应，
+    /// 等于给用户造一个死配置。
+    #[serde(default = "d_hotkey_input")]
+    pub hotkey_input: String,
 
     // ---- 模块开关 ----
     #[serde(default = "d_true")]
@@ -93,6 +105,13 @@ fn d_from() -> String {
 fn d_to() -> String {
     "zh".to_string()
 }
+/// 默认第二目标语言 = 英语。中文文本最常见的去向。
+fn d_to2() -> String {
+    "en".to_string()
+}
+fn d_lang_detect() -> String {
+    "local".to_string()
+}
 fn d_openai_base() -> String {
     "https://api.deepseek.com".to_string()
 }
@@ -107,6 +126,9 @@ fn d_hotkey_ocr() -> String {
 }
 fn d_hotkey_download() -> String {
     "Ctrl+Alt+D".to_string()
+}
+fn d_hotkey_input() -> String {
+    "Ctrl+Alt+I".to_string()
 }
 fn d_true() -> bool {
     true
@@ -126,6 +148,8 @@ impl Default for Config {
             secret: String::new(),
             from: d_from(),
             to: d_to(),
+            to2: d_to2(),
+            lang_detect: d_lang_detect(),
             openai_base: d_openai_base(),
             openai_model: d_openai_model(),
             openai_key: String::new(),
@@ -133,6 +157,7 @@ impl Default for Config {
             hotkey: d_hotkey(),
             hotkey_ocr: d_hotkey_ocr(),
             hotkey_download: d_hotkey_download(),
+            hotkey_input: d_hotkey_input(),
             enable_translate: true,
             enable_download: false,
             enable_transfer: false,
@@ -203,6 +228,9 @@ mod tests {
         assert_eq!(c.popup_timeout_ms, 15000);
         assert_eq!(c.hotkey_ocr, "Ctrl+Alt+S");
         assert_eq!(c.hotkey_download, "Ctrl+Alt+D");
+        assert_eq!(c.to2, "en");
+        assert_eq!(c.lang_detect, "local");
+        assert_eq!(c.hotkey_input, "Ctrl+Alt+I");
         assert!(c.enable_translate);
         assert!(!c.enable_download);
         assert!(c.cache_enabled);
@@ -245,5 +273,17 @@ mod tests {
         assert!(!c.enable_translate);
         assert!(!c.cache_enabled);
         assert!(c.enable_download);
+    }
+
+    /// 第二目标语言和语种检测方式都是 S2.5 新加的，老配置没有它们时
+    /// 必须各自落到「英语」和「本地检测」——这两个默认值决定了划词翻译的实际行为：
+    /// 默认配置下应该是「非中文译成中文、中文译成英语」。
+    #[test]
+    fn lang_direction_defaults_are_sane() {
+        let cfg: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(cfg.to, "zh", "非中文的默认去向");
+        assert_eq!(cfg.to2, "en", "中文的默认去向");
+        assert_eq!(cfg.lang_detect, "local", "默认本地检测，不偷偷打网络");
+        assert_eq!(cfg.hotkey_input, "Ctrl+Alt+I");
     }
 }

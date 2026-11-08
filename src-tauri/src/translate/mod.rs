@@ -229,8 +229,61 @@ pub fn cache() -> &'static Cache {
     CACHE.get_or_init(|| Cache::new(CACHE_CAP))
 }
 
-fn cache_key(engine: &str, cfg: &Config, text: &str) -> String {
-    md5_hex(&format!("{engine}\u{1}{}\u{1}{}\u{1}{text}", cfg.from, cfg.to))
+fn cache_key(engine: &str, from: &str, to: &str, text: &str) -> String {
+    md5_hex(&format!("{engine}\u{1}{from}\u{1}{to}\u{1}{text}"))
+}
+
+// ───────────────────────── 语向解析 ─────────────────────────
+
+/// 本次翻译该往哪个方向走。
+///
+/// 两条路：
+/// - `from` 指定了具体语言（不是 `auto`/空）→ 用户明确说了源语言，就走 `from → to`。
+///   这时**不套第二目标语言规则**，否则用户设了 `from=zh, to=ja` 却被译成 `to2`，太反直觉。
+/// - `from` 是 `auto` → 先检测：非中文译到 `to`，中文译到 `to2`。
+///   （「我看不懂的翻成中文，我写得出的翻成外语」——这才是用户日常的真实需求）
+///
+/// 检测失败不算错误：退化成把 `auto` 交给引擎自己判，目标是 `to`。宁可少一层
+/// 智能，也不能因为没有网络就整个翻译功能不可用。
+pub fn resolve_direction(cfg: &Config, text: &str) -> (String, String) {
+    let from = cfg.from.trim();
+    let to = pick(&cfg.to, "zh");
+    let to2 = pick(&cfg.to2, "en");
+
+    if !from.is_empty() && !from.eq_ignore_ascii_case("auto") {
+        return (from.to_string(), to);
+    }
+
+    let detected = match crate::lang::detect(cfg, text) {
+        Ok(d) => d,
+        Err(e) => {
+            crate::dlog::dlog(&format!("translate: 语种检测失败，交回引擎自己判（{e}）"));
+            return ("auto".to_string(), to);
+        }
+    };
+
+    let target = if crate::lang::is_chinese(&detected) {
+        to2
+    } else {
+        to
+    };
+    crate::dlog::dlog(&format!(
+        "translate: 检测到 {}（{}）→ {}",
+        detected,
+        crate::lang::name_of(&detected),
+        target
+    ));
+    (detected, target)
+}
+
+/// 空字符串用兜底值。用户把目标语言清空也不该让翻译发出一个非法请求。
+fn pick(v: &str, fallback: &str) -> String {
+    let t = v.trim();
+    if t.is_empty() {
+        fallback.to_string()
+    } else {
+        t.to_string()
+    }
 }
 
 // ───────────────────────── 入口 ─────────────────────────
@@ -251,16 +304,18 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
         return Err("没有可翻译的文本".to_string());
     }
 
+    // 先定方向：这一步可能触发语种检测（本地或网络），所以必须在查缓存之前做，
+    // 让缓存 key 用的是**解析后的**语向。否则同一段中文在 to2 改动后会命中旧缓存。
+    let (from, to) = resolve_direction(cfg, text);
+    let mut call_cfg = cfg.clone();
+    call_cfg.from = from.clone();
+    call_cfg.to = to.clone();
+
     let use_cache = cfg.cache_enabled;
-    let key = cache_key(engine.id(), cfg, text);
+    let key = cache_key(engine.id(), &from, &to, text);
     if use_cache {
         if let Some(dst) = cache().get(&key) {
-            let to = if cfg.to.trim().is_empty() { "zh" } else { cfg.to.trim() };
-            return Ok(Translated {
-                from: cfg.from.clone(),
-                to: to.to_string(),
-                dst,
-            });
+            return Ok(Translated { from, to, dst });
         }
     }
 
@@ -277,14 +332,16 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
     };
 
     let mut dsts: Vec<String> = Vec::new();
-    let mut from_lang = cfg.from.clone();
-    let mut to_lang = cfg.to.clone();
+    let mut from_lang = from;
+    let mut to_lang = to;
 
     for (i, part) in parts.iter().enumerate() {
         if i > 0 {
             std::thread::sleep(Duration::from_millis(gap_ms));
         }
-        let r = engine.translate_one(cfg, part).map_err(|e| e.message())?;
+        let r = engine
+            .translate_one(&call_cfg, part)
+            .map_err(|e| e.message())?;
         from_lang = r.from;
         to_lang = r.to;
         dsts.push(r.dst);
@@ -419,23 +476,92 @@ mod tests {
 
     #[test]
     fn cache_key_varies_with_direction_and_engine() {
-        let a = Config::default();
-        let b = Config {
-            to: "en".into(),
-            ..Config::default()
-        };
         assert_ne!(
-            cache_key("baidu", &a, "hello"),
-            cache_key("baidu", &b, "hello")
+            cache_key("baidu", "auto", "zh", "hello"),
+            cache_key("baidu", "auto", "en", "hello"),
+            "目标语言不同必须不命中"
         );
         assert_ne!(
-            cache_key("baidu", &a, "hello"),
-            cache_key("openai", &a, "hello")
+            cache_key("baidu", "auto", "zh", "hello"),
+            cache_key("openai", "auto", "zh", "hello"),
+            "引擎不同必须不命中"
+        );
+        assert_ne!(
+            cache_key("baidu", "zh", "en", "hello"),
+            cache_key("baidu", "en", "en", "hello"),
+            "源语言不同必须不命中"
         );
         // 同样的输入必须得到同样的 key，否则缓存永远不命中
         assert_eq!(
-            cache_key("baidu", &a, "hello"),
-            cache_key("baidu", &a, "hello")
+            cache_key("baidu", "auto", "zh", "hello"),
+            cache_key("baidu", "auto", "zh", "hello")
         );
+    }
+
+    // ── 语向解析（S2.5）────────────────────────────────────
+    #[test]
+    fn explicit_from_skips_detection_and_second_target() {
+        // 用户明确写了源语言，就走用户说的那一条，不套「中文→to2」规则
+        let cfg = Config {
+            from: "zh".into(),
+            to: "ja".into(),
+            to2: "en".into(),
+            ..Config::default()
+        };
+        let (from, to) = resolve_direction(&cfg, "你好世界");
+        assert_eq!((from.as_str(), to.as_str()), ("zh", "ja"));
+    }
+
+    #[test]
+    fn non_chinese_text_goes_to_primary_target() {
+        let cfg = Config {
+            from: "auto".into(),
+            to: "zh".into(),
+            to2: "en".into(),
+            ..Config::default()
+        };
+        let (from, to) = resolve_direction(&cfg, "The quick brown fox jumps over the lazy dog");
+        assert_eq!(from, "en");
+        assert_eq!(to, "zh", "非中文应该译成第一目标语言");
+    }
+
+    /// 这是本功能的核心规则：中文译到第二目标语言。
+    #[test]
+    fn chinese_text_goes_to_second_target() {
+        let cfg = Config {
+            from: "auto".into(),
+            to: "zh".into(),
+            to2: "en".into(),
+            ..Config::default()
+        };
+        let (from, to) = resolve_direction(&cfg, "这是一段中文，应该翻译成英文");
+        assert_eq!(from, "zh");
+        assert_eq!(to, "en", "中文应该译成第二目标语言");
+    }
+
+    #[test]
+    fn empty_targets_fall_back_to_sane_defaults() {
+        let cfg = Config {
+            from: "auto".into(),
+            to: String::new(),
+            to2: String::new(),
+            ..Config::default()
+        };
+        let (from, to) = resolve_direction(&cfg, "hello world this is english text");
+        assert_eq!(from, "en");
+        assert_eq!(to, "zh", "目标语言被清空时要兜底成中文，不能发出空 to 请求");
+    }
+
+    /// 检测不出来时必须退化成 `auto` 交回引擎，而不是报错或瞎猜一个语言。
+    #[test]
+    fn undetectable_text_falls_back_to_auto() {
+        let cfg = Config {
+            from: "auto".into(),
+            to: "zh".into(),
+            ..Config::default()
+        };
+        let (from, to) = resolve_direction(&cfg, "12345 --- !!!");
+        assert_eq!(from, "auto", "判不出来就交给引擎，别硬猜");
+        assert_eq!(to, "zh");
     }
 }
