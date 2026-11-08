@@ -21,21 +21,14 @@ mod tray;
 mod translate;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 use std::time::Instant;
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// 托盘「退出」置位。没有它，`ExitRequested` 里的 `prevent_exit()` 会让进程永远关不掉。
 pub static QUITTING: AtomicBool = AtomicBool::new(false);
-
-pub struct AppState {
-    /// 上一次取到的原文。弹窗「重试」用它，否则重试时又得再取一次词
-    /// （用户那时可能已经把选中区取消了）。
-    pub last_src: Mutex<Option<String>>,
-}
 
 // ---------- 输出结构 ----------
 
@@ -113,17 +106,50 @@ fn with_timeout(mut payload: Value, cfg: &config::Config) -> Value {
     payload
 }
 
+/// 给弹窗 payload 补上引擎信息：当前引擎、可选引擎列表、图钉状态。
+///
+/// 引擎行要能点开选引擎（用户 m02735 的要求），所以列表必须随每次渲染一起给，
+/// 不能等前端点开了再问一次 —— 那会让弹窗闪一下。
+fn with_engine(mut payload: Value, cfg: &config::Config) -> Value {
+    if let Value::Object(m) = &mut payload {
+        m.insert("engine".to_string(), json!(cfg.engine));
+        m.insert(
+            "engineName".to_string(),
+            json!(translate::engine_by_id(&cfg.engine)
+                .map(|e| e.name())
+                .unwrap_or("未配置引擎")),
+        );
+        let list: Vec<Value> = translate::ENGINE_OPTIONS
+            .iter()
+            .map(|(id, name)| json!({ "id": id, "name": name }))
+            .collect();
+        m.insert("engines".to_string(), Value::Array(list));
+        m.insert("pinned".to_string(), json!(popup::is_pinned()));
+    }
+    payload
+}
+
+/// 组装一个完整的弹窗 payload：超时 + 引擎 + 模式。
+fn popup_payload(state: &str, mode: &str, cfg: &config::Config, mut body: Value) -> Value {
+    if let Value::Object(m) = &mut body {
+        m.insert("state".to_string(), json!(state));
+        m.insert("mode".to_string(), json!(mode));
+    }
+    with_engine(with_timeout(body, cfg), cfg)
+}
+
 // ---------- 核心流程 ----------
 
-/// 取词 → 翻译 → 弹窗，一次完整的翻译流程。
+/// 取词 → 翻译 → 弹窗，一次完整的划词翻译流程。
 ///
 /// 调用方可能是热键回调（事件循环线程）或托盘菜单，所以这里第一步就先
 /// `std::thread::spawn`，把后面所有阻塞操作（UIA、SendInput、HTTP）都挪出事件循环。
-fn run_translate(app: AppHandle, reuse_last_src: bool) {
+///
+/// **S3 起没有「复用上次原文」这条路了**：弹窗上的「重试」按钮已按用户要求去掉，
+/// 输入翻译走 `open_input_translate`。所以这里也不再需要 `reuse` 参数。
+fn run_translate(app: AppHandle) {
     std::thread::spawn(move || {
-        dlog::dlog(&format!(
-            "translate_selection: 开始（reuse={reuse_last_src}）"
-        ));
+        dlog::dlog("translate_selection: 开始");
 
         let cfg = config::load();
         if !cfg.enable_translate {
@@ -143,40 +169,19 @@ fn run_translate(app: AppHandle, reuse_last_src: bool) {
         }
 
         // 2) 取词
-        let cached_src = if reuse_last_src {
-            app.state::<AppState>()
-                .last_src
-                .lock()
-                .map(|g| g.clone())
-                .ok()
-                .flatten()
-                .unwrap_or_default()
-        } else {
-            String::new()
-        };
-
-        let src = if cached_src.trim().is_empty() {
-            match capture::capture_selection() {
-                Ok(t) => {
-                    if let Ok(mut g) = app.state::<AppState>().last_src.lock() {
-                        *g = Some(t.clone());
-                    }
-                    t
-                }
-                Err(e) => {
-                    dlog::dlog(&format!("translate_selection: 取词失败：{e}"));
-                    let p = with_timeout(json!({ "state": "error", "src": "", "message": e }), &cfg);
-                    show_popup(&app, p);
-                    return;
-                }
+        let src = match capture::capture_selection() {
+            Ok(t) => t,
+            Err(e) => {
+                dlog::dlog(&format!("translate_selection: 取词失败：{e}"));
+                let p = popup_payload("error", "select", &cfg, json!({ "src": "", "message": e }));
+                show_popup(&app, p);
+                return;
             }
-        } else {
-            cached_src
         };
 
         // 3) 先弹「翻译中」，用户按下热键后 1 秒内必须有反应，
         //    等引擎返回（可能几秒）再弹窗会让人以为热键没生效。
-        let p = with_timeout(json!({ "state": "loading", "src": src }), &cfg);
+        let p = popup_payload("loading", "select", &cfg, json!({ "src": src }));
         show_popup(&app, p);
 
         // 4) 翻译
@@ -191,9 +196,11 @@ fn run_translate(app: AppHandle, reuse_last_src: bool) {
                 if cfg.auto_copy {
                     capture::write_clipboard_text(&r.dst);
                 }
-                let p = with_timeout(
+                let p = popup_payload(
+                    "done",
+                    "select",
+                    &cfg,
                     json!({
-                        "state": "done",
                         "src": src,
                         "dst": r.dst,
                         "from": r.from,
@@ -203,20 +210,122 @@ fn run_translate(app: AppHandle, reuse_last_src: bool) {
                             "to": crate::lang::name_of(&r.to),
                         },
                     }),
-                    &cfg,
                 );
                 show_popup(&app, p);
             }
             Err(e) => {
                 dlog::dlog(&format!("translate_selection: 翻译失败：{e}"));
-                let p = with_timeout(json!({ "state": "error", "src": src, "message": e }), &cfg);
+                let p =
+                    popup_payload("error", "select", &cfg, json!({ "src": src, "message": e }));
                 show_popup(&app, p);
             }
         }
     });
 }
 
-/// 当前引擎是否配好了。用于「缺配置就直接开设置页」这条分支——
+/// 「输入翻译」：唤出可编辑的弹窗，用户自己打字，回车或点「翻译」出结果。
+///
+/// 和 `run_translate` 是两条路，不共用。理由：划词那条是
+/// 「取词 → 翻译 → 弹」三段式，取词会动剪贴板、会发 Ctrl+C；
+/// 输入模式压根没有取词阶段，硬塞进去只会让那个函数长出
+/// `if mode == input` 的分支，两边都难读。
+///
+/// 这里只做一件简单事：开窗（或复用）+ 告诉前端「这是输入模式，抢焦点」。
+fn open_input_translate(app: AppHandle) {
+    dlog::dlog("input_translate: 唤起");
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let cfg = config::load();
+        if !cfg.enable_translate {
+            dlog::dlog("input_translate: 翻译工具已停用，忽略");
+            return;
+        }
+        // 缺凭据时先去配置，不然弹个输入框让用户白打一段字
+        if !engine_ready(&cfg) {
+            dlog::dlog("input_translate: 引擎未配置，打开设置页");
+            popup::close(&a);
+            popup::open_settings_at(&a, "translate");
+            return;
+        }
+        // fresh = 这是刚按热键唤出的空框，前端要把上次输入清掉。
+        // 只有第一次开窗那一次带 fresh，后续 loading/done 都不带，
+        // 否则每翻译一次就把用户刚打的字清空。
+        let p = popup_payload("input", "input", &cfg, json!({ "src": "", "fresh": true }));
+        popup::show(&a, p);
+        // 窗口建出来之后才允许聚焦，否则 set_focus 打在还没显示的窗口上
+        popup::set_focusable(&a, true);
+        // 已经存在的窗口收到这个事件后把焦点放进源文本框
+        if let Some(w) = a.get_webview_window(popup::POPUP_LABEL) {
+            let _ = w.emit("popup-focus", ());
+        }
+    });
+}
+
+/// 弹窗里点了「翻译」按钮或按了回车。
+///
+/// 是个 `async` 命令：翻译要发 HTTP，阻塞式 `reqwest` 若跑在命令线程上
+/// 会把整个 UI 卡住几秒。`spawn_blocking` 把它挪到阻塞线程池，
+/// 命令线程立刻返回、前端不冻结。
+#[tauri::command]
+async fn translate_text(text: String, app: AppHandle) -> Result<Value, String> {
+    let t = text.trim().to_string();
+    if t.is_empty() {
+        return Err("没有要翻译的内容".into());
+    }
+    let cfg = config::load();
+
+    // 先让弹窗进入「翻译中」。
+    // 源文本给空串：前端在 input 模式下不会覆盖用户正在输入的文本
+    // （见 ui/popup.js 的 render() 注释），所以这里不会把框里内容清掉。
+    let a0 = app.clone();
+    let cfg0 = cfg.clone();
+    let _ = app.run_on_main_thread(move || {
+        let p = popup_payload("loading", "input", &cfg0, json!({ "src": "" }));
+        popup::show(&a0, p);
+    });
+
+    let cfg1 = cfg.clone();
+    let t1 = t.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || translate::translate(&cfg1, &t1))
+        .await
+        .map_err(|e| format!("翻译任务未能启动：{e}"))?;
+
+    let a = app.clone();
+    let p = match &r {
+        Ok(v) => {
+            dlog::dlog(&format!(
+                "input_translate: ok {} -> {} chars",
+                v.from,
+                v.dst.chars().count()
+            ));
+            popup_payload(
+                "done",
+                "input",
+                &cfg,
+                json!({
+                    "src": t,
+                    "dst": v.dst,
+                    "from": v.from,
+                    "to": v.to,
+                    "dir": {
+                        "from": crate::lang::name_of(&v.from),
+                        "to": crate::lang::name_of(&v.to),
+                    },
+                }),
+            )
+        }
+        Err(e) => {
+            dlog::dlog(&format!("input_translate: 翻译失败：{e}"));
+            popup_payload("error", "input", &cfg, json!({ "src": t, "message": e }))
+        }
+    };
+    let _ = app.run_on_main_thread(move || popup::show(&a, p));
+
+    match r {
+        Ok(v) => Ok(json!({ "ok": true, "dst": v.dst })),
+        Err(e) => Ok(json!({ "ok": false, "message": e })),
+    }
+}/// 当前引擎是否配好了。用于「缺配置就直接开设置页」这条分支——
 /// 以前这里是硬编码检查百度的 appid/secret，多引擎之后必须问引擎自己。
 fn engine_ready(cfg: &config::Config) -> bool {
     translate::engine_by_id(&cfg.engine)
@@ -226,7 +335,7 @@ fn engine_ready(cfg: &config::Config) -> bool {
 
 /// 热键 / 托盘「翻译选中文字」的入口。
 pub fn translate_selection(app: AppHandle) {
-    run_translate(app, false);
+    run_translate(app);
 }
 
 // ---------- 配置值 <-> JSON ----------
@@ -278,7 +387,30 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
 /// 哪些 key 是热键字段，需要格式校验 + （部分）重新注册。
 /// `hotkey_ocr` 与 `hotkey_download` 只存值不注册：功能分别在 S5 / S3。
 fn is_hotkey_key(k: &str) -> bool {
-    matches!(k, "hotkey" | "hotkey_ocr" | "hotkey_download")
+    matches!(k, "hotkey" | "hotkey_ocr" | "hotkey_download" | "hotkey_input")
+}
+
+/// 一次性注册所有全局热键（划词 / 输入翻译）。
+///
+/// **必须走 `hotkey::register_all`**，不能连着调两次 `register_hotkey`——
+/// 后者开头会 `unregister_all()`，第二次调用会把第一次注册的划词热键注销掉。
+fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
+    hotkey::register_all(
+        app,
+        vec![
+            (
+                "划词热键",
+                cfg.hotkey.clone(),
+                Box::new(|a: &AppHandle| translate_selection(a.clone()))
+                    as Box<dyn Fn(&AppHandle) + Send + Sync>,
+            ),
+            (
+                "输入翻译热键",
+                cfg.hotkey_input.clone(),
+                Box::new(|a: &AppHandle| open_input_translate(a.clone())),
+            ),
+        ],
+    )
 }
 
 // ---------- 命令：设置页 ----------
@@ -402,13 +534,19 @@ fn save_tool_config(
         };
     }
 
-    // 4) 副作用：热键重新注册
-    if let Some(h) = normalized.get("hotkey") {
-        match hotkey::register_hotkey(&app, h, |a| translate_selection(a.clone())) {
-            Ok(()) => tray::update_hotkey_label(&app, h),
-            // 注册失败不回滚保存：用户填的组合确实是他想要的，只是撞了别的软件。
-            // 回滚会让他以为"保存失败"，下次还得重填一遍。
-            Err(e) => warnings.push(e),
+    // 4) 副作用：热键重新注册。
+    //    任一热键变了都要**整体重注册**：register_all 开头会 unregister_all，
+    //    只重注册单个的话，另一个会被静默注销掉（S1 起就埋着的雷）。
+    let hotkey_changed = ["hotkey", "hotkey_input"]
+        .iter()
+        .any(|k| patch.contains_key(*k));
+    if hotkey_changed {
+        let errs = register_hotkeys(&app, &cfg);
+        // 注册失败不回滚保存：用户填的组合确实是他想要的，只是撞了别的软件。
+        // 回滚会让他以为"保存失败"，下次还得重填一遍。
+        warnings.extend(errs);
+        if let Some(h) = normalized.get("hotkey") {
+            tray::update_hotkey_label(&app, h);
         }
     }
 
@@ -605,11 +743,75 @@ fn copy_text(text: String) {
     capture::write_clipboard_text(&text);
 }
 
-/// 「重试」：复用上一次的原文重新翻译，不再取词
-/// （用户点按钮时选中区多半已经没了，重新取词必然失败）。
+/// 弹窗里点了图钉。**必须在主线程调用**（要改窗口置顶标志）。
 #[tauri::command]
-fn retry_translate(app: AppHandle) {
-    run_translate(app, true);
+fn set_pinned(pinned: bool, app: AppHandle) {
+    popup::set_pinned(&app, pinned);
+}
+
+/// 弹窗里在标题栏按下了鼠标左键 → 拖动窗口。
+///
+/// 底层是 `tao` 的 `handle_os_dragging`：`ReleaseCapture()` +
+/// `PostMessage(WM_NCLBUTTONDOWN, HTCAPTION)`，交给系统进入窗口移动循环。
+///
+/// **不检查窗口是否 `focusable`**：这一步在 `WS_EX_NOACTIVATE` 窗口上也能工作
+/// （系统移动循环不要求窗口可激活），实测划词模式的弹窗照样能拖。
+#[tauri::command]
+fn start_dragging(win: tauri::WebviewWindow) -> Result<(), String> {
+    dlog::dlog("popup: start_dragging");
+    win.start_dragging().map_err(|e| {
+        let msg = format!("拖动失败：{e}");
+        dlog::dlog(&format!("popup: {msg}"));
+        msg
+    })
+}
+
+/// 弹窗里点了引擎行里的某一项 → 切引擎并立刻重翻当前源文本。
+///
+/// 存进配置（用户切了引擎就是一次配置变更，下次热键还用这个），
+/// 然后复用 `translate_text` 的逻辑重翻 —— 但那条命令要 AppHandle + 源文本，
+/// 前端自己已经有源文本，所以这里只负责切引擎，重翻由前端再调一次 `translate_text`。
+#[tauri::command]
+fn switch_engine(engine_id: String) -> SimpleOut {
+    if translate::engine_by_id(&engine_id).is_none() {
+        return SimpleOut {
+            ok: false,
+            message: format!("未知的翻译引擎「{engine_id}」"),
+        };
+    }
+    let mut cfg = config::load();
+    cfg.engine = engine_id.clone();
+    if let Err(e) = config::save(&cfg) {
+        return SimpleOut {
+            ok: false,
+            message: e,
+        };
+    }
+    SimpleOut {
+        ok: true,
+        message: format!(
+            "已切换到{}",
+            translate::engine_by_id(&engine_id)
+                .map(|e| e.name())
+                .unwrap_or(&engine_id)
+        ),
+    }
+}
+
+/// 弹窗里点了源文本框（划词模式）。门 3 选项 A：用户点了才允许抢焦点。
+///
+/// 不这么做的话，划词弹窗一出现就抢焦点，用户选中的文字会被清掉，
+/// 而用户按热键的本意是"翻译我刚选的东西"，选中消失后连源文本都没了。
+#[tauri::command]
+fn focus_for_typing(app: AppHandle) {
+    popup::focus_for_typing(&app);
+}
+
+/// 弹窗里的「设置」按钮：打开设置页并停在翻译这一栏。
+#[tauri::command]
+fn open_settings_from_popup(app: AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || popup::open_settings_at(&a, "translate"));
 }
 
 #[tauri::command]
@@ -622,9 +824,6 @@ fn open_settings_cmd(app: AppHandle) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(AppState {
-            last_src: Mutex::new(None),
-        })
         .invoke_handler(tauri::generate_handler![
             // 设置页（schema 驱动，加工具不用动这里）
             list_tools,
@@ -642,7 +841,12 @@ fn main() {
             resize_popup,
             close_popup,
             copy_text,
-            retry_translate,
+            translate_text,
+            switch_engine,
+            set_pinned,
+            start_dragging,
+            focus_for_typing,
+            open_settings_from_popup,
             open_settings_cmd
         ])
         .setup(|app| {
@@ -652,10 +856,18 @@ fn main() {
             tray::build(&handle, &cfg.hotkey)?;
 
             // 热键注册失败不阻断启动：托盘菜单仍然可用，设置页会显示红字原因。
-            match hotkey::register_hotkey(&handle, &cfg.hotkey, |a| translate_selection(a.clone()))
-            {
-                Ok(()) => dlog::dlog(&format!("setup: 热键 {} 注册成功", cfg.hotkey)),
-                Err(e) => dlog::dlog(&format!("setup: {e}")),
+            // 必须一次注册全部（划词 + 输入翻译）：register_hotkey 开头会
+            // unregister_all，连着调两次会把前一个注销掉。
+            let errs = register_hotkeys(&handle, &cfg);
+            if errs.is_empty() {
+                dlog::dlog(&format!(
+                    "setup: 热键 {} / {} 注册成功",
+                    cfg.hotkey, cfg.hotkey_input
+                ));
+            } else {
+                for e in &errs {
+                    dlog::dlog(&format!("setup: {e}"));
+                }
             }
 
             dlog::dlog("setup: 托盘已创建");

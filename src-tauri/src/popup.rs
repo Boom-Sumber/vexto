@@ -61,6 +61,61 @@ static PENDING: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
 /// （先 loading、再 done），每次都得判断"这个窗口的监视器起了没有"。
 static WATCHED_HWND: AtomicIsize = AtomicIsize::new(0);
 
+/// 弹窗是否被图钉钉住。
+///
+/// 钉住 = 用户明确说"这个别自己消失"：不自动关闭、不响应点击外部、
+/// 也不需要一直置顶（窗口本来就 `always_on_top(true)`）。
+/// 放在 Rust 侧而不是只放前端，是因为「点击外部关闭」的轮询线程在 Rust 里，
+/// 前端改个变量它看不见。
+static PINNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 当前弹窗是不是「输入翻译」模式（可编辑、要能收键盘）。
+///
+/// 划词模式必须 `focusable(false)`（Windows 上是 `WS_EX_NOACTIVATE`）：
+/// 窗口弹出不抢焦点，用户选中的文字才不会被清掉——06-TESTING §6.4.1 第 4 条。
+/// 输入模式则相反，必须能收键盘，否则用户没法打字。
+/// 同一个窗口按模式切换，所以每次 `show()` 都要重新设一遍，不能只在建窗时设。
+static INPUT_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn is_pinned() -> bool {
+    PINNED.load(Ordering::SeqCst)
+}
+
+/// 设置图钉状态。**必须在主线程调用**（会改窗口标志）。
+pub fn set_pinned(app: &AppHandle, pinned: bool) {
+    PINNED.store(pinned, Ordering::SeqCst);
+    crate::dlog::dlog(&format!("popup: 图钉 = {pinned}"));
+    // 钉住时把窗口的 always_on_top 再确认一次：用户可能拖到别的置顶窗口后面，
+    // 取消置顶再置顶一次能把它拉回最上层。
+    if pinned {
+        if let Some(w) = app.get_webview_window(POPUP_LABEL) {
+            let _ = w.set_always_on_top(false);
+            let _ = w.set_always_on_top(true);
+        }
+    }
+}
+
+/// 切换弹窗的「可聚焦」状态。**必须在主线程调用。**
+///
+/// 划词模式传 `false`（不抢焦点，保住选中高亮）；输入模式传 `true`（要收键盘）。
+/// 从输入模式切回划词模式时必须显式设回 `false`，
+/// 否则下一次划词弹窗会带着可聚焦状态出现，把用户的选中清掉。
+pub fn set_focusable(app: &AppHandle, on: bool) {
+    INPUT_MODE.store(on, Ordering::SeqCst);
+    let Some(w) = app.get_webview_window(POPUP_LABEL) else {
+        return;
+    };
+    if let Err(e) = w.set_focusable(on) {
+        crate::dlog::dlog(&format!("popup: set_focusable({on}) 失败：{e}"));
+        return;
+    }
+    if on {
+        // 可聚焦之后还得主动要一次焦点，否则窗口只是"允许被聚焦"，
+        // 键盘输入仍然进不到输入框。
+        let _ = w.set_focus();
+    }
+}
+
 fn cursor() -> (i32, i32) {
     let mut p = POINT { x: 0, y: 0 };
     unsafe {
@@ -101,6 +156,39 @@ fn clamp_pos(app: &AppHandle, x: i32, y: i32, h: i32) -> (i32, i32) {
         return (nx, ny);
     }
     (x, y)
+}
+
+/// 划词模式下用户主动点进源文本框 → 这时才允许窗口抢焦点。
+///
+/// 门 3 选项 A（用户 m03141 选的）：划词弹窗默认不抢焦点，保住选中高亮
+/// （06-TESTING §6.4.1 第 4 条）；但源文本是可编辑的，用户点进来想改字，
+/// 那一刻必须能收键盘。所以焦点是"用户点了才给"，不是"弹窗一出现就给"。
+///
+/// **必须在主线程调用。**
+pub fn focus_for_typing(app: &AppHandle) {
+    if PINNED.load(Ordering::SeqCst) {
+        // 钉住不影响打字，这里只是提醒读者两者互不干扰
+    }
+    set_focusable(app, true);
+    if let Some(w) = app.get_webview_window(POPUP_LABEL) {
+        let _ = w.emit("popup-focus", ());
+    }
+}
+
+/// 屏幕中部偏上。输入翻译用的固定位置。
+///
+/// 划词模式跟着光标走；输入模式用户在打字，窗口位置必须稳定，
+/// 否则每翻译一次就跳一次，眼睛和手都跟不上。
+fn center_pos(app: &AppHandle) -> (i32, i32) {
+    if let Ok(Some(m)) = app.primary_monitor() {
+        let size = m.size();
+        let pos = m.position();
+        let nx = pos.x + (size.width as i32 - POPUP_W as i32) / 2;
+        // 偏上 1/6 屏高：下方留给译文展开，上方留出桌面看背景
+        let ny = pos.y + (size.height as i32 / 6).max(40);
+        return (nx, ny.max(pos.y + 8));
+    }
+    (200, 160)
 }
 
 fn create_popup(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
@@ -179,6 +267,12 @@ fn watch_outside_click(app: AppHandle, hwnd: isize) {
             break;
         }
 
+        // 图钉钉住时用户说了"别自己消失"，点击外部不算数
+        if PINNED.load(Ordering::SeqCst) {
+            prev_down = left_button_down();
+            continue;
+        }
+
         let down = left_button_down();
         if down && !prev_down {
             let (cx, cy) = cursor();
@@ -223,6 +317,8 @@ pub fn show(app: &AppHandle, payload: Value) {
         *g = Some(payload.clone());
     }
     let is_loading = payload.get("state").and_then(|s| s.as_str()) == Some("loading");
+    let mode = payload.get("mode").and_then(|s| s.as_str()).unwrap_or("select");
+    let input = mode == "input";
 
     let existing = app.get_webview_window(POPUP_LABEL);
     let just_created = existing.is_none();
@@ -237,15 +333,33 @@ pub fn show(app: &AppHandle, payload: Value) {
         },
     };
 
+    // 模式决定窗口能不能收键盘。**每次 show 都设一遍**：
+    // 窗口可能是上一次划词时建的，现在要复用它做输入翻译。
+    // 反过来从输入模式回到划词模式也必须设回 false，
+    // 否则下次划词弹窗会抢焦点、把用户选中的文字清掉（06-TESTING §6.4.1 第 4 条）。
+    set_focusable(app, input);
+
+    // 换了一次新的翻译 = 上一次的图钉作废。图钉的语义是"钉住这次结果"，
+    // 不是"永远钉住弹窗"。用户按热键翻新内容时显然想要新的那个。
+    if is_loading && PINNED.load(Ordering::SeqCst) {
+        PINNED.store(false, Ordering::SeqCst);
+        crate::dlog::dlog("popup: 新一次翻译，图钉自动解除");
+    }
+
     if is_loading {
-        // 新一轮翻译：先把高度收回去，再挪到当前光标附近（用户可能已换了位置）
-        let (cx, cy) = cursor();
-        let (x, y) = clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32);
+        // 新一轮翻译：先把高度收回去，再挪到当前光标附近（用户可能已换了位置）。
+        // 输入模式下位置固定在屏幕中部偏上，跟着光标跑会边打字边漂。
+        let (x, y) = if input {
+            center_pos(app)
+        } else {
+            let (cx, cy) = cursor();
+            clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32)
+        };
         let _ = win.set_size(tauri::PhysicalSize::new(POPUP_W as u32, POPUP_H_MIN as u32));
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
 
-    crate::dlog::dlog("popup::show: emit");
+    crate::dlog::dlog(&format!("popup::show: emit（mode={mode}）"));
     let _ = win.emit("popup-render", payload);
 
     if just_created {
@@ -254,6 +368,10 @@ pub fn show(app: &AppHandle, payload: Value) {
         return;
     }
     let _ = win.show();
+    if input {
+        // 复用已有窗口时，set_focus 可能早于 show 生效，再补一次
+        let _ = win.set_focus();
+    }
     ensure_outside_watcher(app, &win);
 }
 
@@ -266,6 +384,14 @@ pub fn ready(app: &AppHandle) {
             let _ = w.emit("popup-render", p);
         }
         let _ = w.show();
+        // 窗口是"先建好藏着、等前端 ready 了才 show"，所以第一次 show 之前
+        // 设的焦点一律无效（对不可见窗口 set_focus 是空操作）。
+        // 输入模式必须在 show 之后再要一次焦点，否则键盘进不到输入框。
+        if INPUT_MODE.load(Ordering::SeqCst) {
+            let _ = w.set_focusable(true);
+            let _ = w.set_focus();
+            let _ = w.emit("popup-focus", ());
+        }
         ensure_outside_watcher(app, &w);
     }
 }
@@ -278,6 +404,11 @@ pub fn ready(app: &AppHandle) {
 pub fn close(app: &AppHandle) {
     // 先让监视器退场，避免它对着正在销毁的句柄继续轮询
     WATCHED_HWND.store(0, Ordering::SeqCst);
+    // 图钉与输入模式是「这一次弹窗」的状态，窗口销毁就该复位。
+    // 不复位的话下次划词弹窗会带着图钉/可聚焦状态出现：图钉让点击外部关不掉，
+    // 可聚焦会把用户选中的文字清掉（06-TESTING §6.4.1 第 4 条）。
+    PINNED.store(false, Ordering::SeqCst);
+    INPUT_MODE.store(false, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(POPUP_LABEL) {
         crate::dlog::dlog("popup::close: destroy");
         let _ = w.destroy();

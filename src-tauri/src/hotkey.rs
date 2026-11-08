@@ -81,43 +81,71 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-/// 校验 → 归一化 → 注册。替换旧热键（先 `unregister_all`）。
+/// 一个待注册的热键：给用户看的名字、组合键原文、按下时的回调。
+type Binding = (&'static str, String, Box<dyn Fn(&AppHandle) + Send + Sync>);
+
+/// 一次性注册多个全局热键。返回给用户看的错误列表（空 = 全部成功）。
 ///
-/// `on_pressed` 只在**按下**时调用（不响应松开），且运行在事件循环线程上——
-/// 里面**不能**做 UIA / 网络 / 文件 IO，必须 `std::thread::spawn` 再干活。
-pub fn register_hotkey<F>(app: &AppHandle, hotkey: &str, on_pressed: F) -> Result<(), String>
-where
-    F: Fn(&AppHandle) + Send + Sync + 'static,
-{
+/// **本程序只走这一个入口，没有「只注册一个」的版本**：划词与输入翻译必须同时存在，
+/// 而注册前要先 `unregister_all()`——那是唯一正确的顺序（同一组合在系统里
+/// 只能被一个进程占用，想"先注册新的、成功后再注销旧的"做不到）。
+/// 只提供一个批量接口，就不会有人写出"连着调两次、把前一个注销掉"的代码。
+///
+/// 一个失败不影响其余：用户把划词热键改成被占用的组合，输入翻译热键该照常可用。
+pub fn register_all(app: &AppHandle, list: Vec<Binding>) -> Vec<String> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-    // 先校验：不合法就不要动已注册的旧热键，避免"改错了反而把好的也弄没了"
-    let normalized = validate_hotkey(hotkey)?;
-    let sc = tauri_plugin_global_shortcut::Shortcut::from_str(&normalized)
-        .map_err(|e| format!("热键格式不对（{normalized}）：{e}"))?;
-
     let gs = app.global_shortcut();
-    // 改热键时先注销旧的；注销失败不致命（旧的可能本来就没注册上）
+    // 注销失败不致命（旧的可能本来就没注册上）
     let _ = gs.unregister_all();
 
-    match gs.on_shortcut(sc, move |app, _sc, ev| {
-        if ev.state() == ShortcutState::Pressed {
-            on_pressed(app);
+    let mut errors: Vec<String> = Vec::new();
+    let mut done: Vec<String> = Vec::new();
+
+    for (what, raw, on_pressed) in list {
+        let normalized = match validate_hotkey(&raw) {
+            Ok(h) => h,
+            Err(e) => {
+                errors.push(format!("{what}：{e}"));
+                continue;
+            }
+        };
+
+        // 两个用途填了同一个组合：第二个必然注册失败，提前说清楚，
+        // 否则用户看到的是「注册失败：已被别的程序占用」，会去别的软件里乱找。
+        if done.contains(&normalized) {
+            errors.push(format!(
+                "{what}：{normalized} 和前面某个热键重复了，换一个组合"
+            ));
+            continue;
         }
-    }) {
-        Ok(()) => {
-            *HOTKEY_ERR.lock().unwrap_or_else(|e| e.into_inner()) = None;
-            Ok(())
-        }
-        Err(e) => {
-            // Windows 上 RegisterHotKey 被别的程序占用时就是走到这里
-            let msg = format!(
-                "热键 {normalized} 注册失败：{e}。多半是已被别的程序占用，换一个组合试试。"
-            );
-            *HOTKEY_ERR.lock().unwrap_or_else(|e| e.into_inner()) = Some(msg.clone());
-            Err(msg)
+
+        let sc = match tauri_plugin_global_shortcut::Shortcut::from_str(&normalized) {
+            Ok(s) => s,
+            Err(e) => {
+                errors.push(format!("{what}：热键格式不对（{normalized}）：{e}"));
+                continue;
+            }
+        };
+
+        match gs.on_shortcut(sc, move |app, _sc, ev| {
+            if ev.state() == ShortcutState::Pressed {
+                on_pressed(app);
+            }
+        }) {
+            Ok(()) => done.push(normalized),
+            Err(e) => errors.push(format!(
+                "{what}：热键 {normalized} 注册失败：{e}。多半是已被别的程序占用，换一个组合试试。"
+            )),
         }
     }
+
+    *HOTKEY_ERR.lock().unwrap_or_else(|e| e.into_inner()) = if errors.is_empty() {
+        None
+    } else {
+        Some(errors.join("\n"))
+    };
+    errors
 }
 
 /// 读最近一次注册失败的原因（空串表示正常）。

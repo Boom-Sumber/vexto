@@ -142,6 +142,11 @@ impl Tool for Translate {
                 vec![
                     Field::hotkey("hotkey", "划词热键"),
                     Field::note("选中文字后按这个组合键，光标旁弹出译文。"),
+                    Field::hotkey("hotkey_input", "输入翻译热键"),
+                    Field::note(
+                        "按这个组合键唤出一个可输入的翻译框，打完字回车即翻译。\
+                         它和划词翻译共用一个弹窗，只是不会自动取词。",
+                    ),
                     Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS),
                     Field::note(
                         "翻译前先判语种：非中文译成下面的「目标语言」，中文译成「第二目标语言」。",
@@ -153,6 +158,7 @@ impl Tool for Translate {
                     ),
                     Field::select("to", "目标语言", TO_STATIC),
                     Field::select("to2", "第二目标语言", TO_STATIC),
+                    Field::note("源文本是中文时译到这里。常用：目标=中文、第二目标=英语，中英双向免切。"),
                     Field::switch("auto_copy", "译完自动复制译文"),
                 ],
             ),

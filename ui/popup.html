@@ -8,24 +8,76 @@
 <body>
   <!-- 窗口是透明 + 无边框的，圆角和阴影全靠这一层 CSS 画 -->
   <div id="card">
-    <div id="close" title="关闭">×</div>
-    <div id="from-row">
-      <span id="from-lang">…</span>
-      <span id="spacer"></span>
-      <span id="brand">LightBox</span>
+
+    <!-- 标题栏：只放图钉和关闭。按住这里可以拖动整个弹窗 -->
+    <div id="titlebar">
+      <button id="pin" class="icon" title="钉住（不自动关闭）" aria-pressed="false">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M9.5 1.5 6 5 3 6l-1 1 3.5 3.5L2 14.5l.5.5 4-4L10 14.5l1-1 1-3 3.5-3.5z"
+                fill="currentColor"/>
+        </svg>
+      </button>
+      <span id="title-spacer"></span>
+      <button id="close" class="icon" title="关闭">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <path d="M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" fill="none"/>
+        </svg>
+      </button>
     </div>
-    <div id="src" class="src"></div>
+
+    <!-- 源文本：两种模式都可编辑，但划词模式点进来才抢焦点（见 popup.rs 注释） -->
+    <div id="src-wrap">
+      <textarea id="src" rows="1" spellcheck="false"
+                placeholder="在这里输入要翻译的文字，回车翻译"></textarea>
+    </div>
+
+    <!-- 源文本工具栏：复制原文 / 语种胶囊 / 翻译按钮 -->
+    <div id="src-tools">
+      <button id="copy-src" class="icon" title="复制原文">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"
+                stroke="currentColor" fill="none" stroke-width="1.4"/>
+          <path d="M10.5 3.5H3.5a1 1 0 0 0-1 1v7" stroke="currentColor"
+                stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <span id="lang-pill" class="pill" title="检测到的源语言">自动</span>
+      <span id="tools-spacer"></span>
+      <button id="translate-btn" class="primary">翻译</button>
+    </div>
+
+    <!-- 引擎行：点整行弹出引擎选择。当前引擎名由后端给 -->
+    <button id="engine-row" class="row">
+      <span id="engine-name">未配置引擎</span>
+      <span id="engine-caret">⌄</span>
+    </button>
+    <div id="engine-menu" class="hidden"></div>
+
     <div id="divider"></div>
+
     <div id="loading" class="loading">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="loading-text">翻译中</span>
     </div>
+
     <div id="dst" class="dst"></div>
     <div id="error" class="error"></div>
+
     <div id="actions">
-      <button id="copy">复制译文</button>
-      <button id="retry">重试</button>
+      <button id="copy-dst" class="icon-text" title="复制译文">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"
+                stroke="currentColor" fill="none" stroke-width="1.4"/>
+          <path d="M10.5 3.5H3.5a1 1 0 0 0-1 1v7" stroke="currentColor"
+                stroke-width="1.4" fill="none" stroke-linecap="round"/>
+        </svg>
+        <span>复制译文</span>
+      </button>
+      <span id="actions-spacer"></span>
+      <button id="open-settings" class="link">设置</button>
     </div>
+
   </div>
   <script src="popup.js"></script>
 </body>

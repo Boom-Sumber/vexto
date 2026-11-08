@@ -123,8 +123,14 @@ pub const LANGS: &[Lang] = &[
 ];
 
 /// 中转站名。未知代码原样返回，免得给出空字符串。
+///
+/// `auto` 是"没检测出来"的兜底值（引擎自己判），它不在语言表里，
+/// 但直接显示 `auto` 对用户没意义，所以单独翻成「自动」。
 pub fn name_of(baidu_code: &str) -> &str {
     let c = baidu_code.trim();
+    if c.eq_ignore_ascii_case("auto") {
+        return "自动";
+    }
     LANGS
         .iter()
         .find(|l| l.baidu.eq_ignore_ascii_case(c))
@@ -204,6 +210,37 @@ pub fn detect_local(text: &str) -> Option<String> {
     let info = whatlang::detect(t)?;
     let baidu = whatlang_to_baidu(info.lang().code())?;
     Some(baidu.to_string())
+}
+
+/// 专给**短文本**用的本地检测。
+///
+/// `detect_local` 对 "Hello LightBox" 这种两个词的输入会判不出来：whatlang
+/// 用三元组统计，词太少时结果不可信——实测 "Hello world" 被判成荷兰语 `nl`。
+/// 而短句恰恰是最常见的输入（输入翻译里用户就打一句问候语）。
+///
+/// 所以这里放宽一格：**短拉丁文本（字母数 < 24）除了中文/日文等脚本特征明确的，
+/// 一律当英语**。这个近似对目标语言规则完全够用——规则只关心"是不是中文"，
+/// 拉丁字母一律走"非中文 → 目标语言"那条路。界面上显示「英语」也比显示
+/// 「荷兰语」更接近用户预期。长文本仍交给 whatlang 精细判定。
+pub fn detect_local_lenient(text: &str) -> Option<String> {
+    let t = text.trim();
+    if t.is_empty() {
+        return None;
+    }
+    // 脚本特征明确的（中日韩泰阿）先判，这些和文本长短无关
+    if let Some(l) = detect_local(t) {
+        let latin_letters = t.chars().filter(|c| c.is_ascii_alphabetic()).count();
+        let is_latin_lang = !matches!(l.as_str(), "zh" | "cht" | "jp" | "kor" | "th" | "ara");
+        if !(is_latin_lang && latin_letters < 24) {
+            return Some(l);
+        }
+        // 短拉丁文本落到下面统一当英语
+    }
+    let latin = t.chars().filter(|c| c.is_ascii_alphabetic()).count();
+    if latin >= 2 {
+        return Some("en".to_string());
+    }
+    None
 }
 
 /// 百度语种检测接口。
@@ -305,11 +342,15 @@ fn salt() -> String {
 
 /// 按配置选检测方式。`lang_detect` 只认 `baidu`，其余一律本地——
 /// 配置里就算写了不认识的值也不该让翻译挂掉。
+///
+/// 本地检测用 `detect_local_lenient`：短句（"Hello LightBox"）在严格版里
+/// 判不出来，会让语种规则失效；宽松版把拉丁字母兜成英语，对
+/// 「非中文 → 目标语言」这条规则来说已经足够准。
 pub fn detect(cfg: &Config, text: &str) -> Result<String, String> {
     if cfg.lang_detect.trim().eq_ignore_ascii_case("baidu") {
         detect_baidu(cfg, text)
     } else {
-        detect_local(text)
+        detect_local_lenient(text)
             .ok_or_else(|| "本地语种检测没认出这段文字是什么语言".to_string())
     }
 }
@@ -381,6 +422,50 @@ mod tests {
         assert_eq!(name_of("jp"), "日语");
         assert_eq!(name_of("zh"), "中文");
         assert_eq!(name_of("xx"), "xx");
+        // auto 不在语言表里，但直接显示 "auto" 用户看不懂
+        assert_eq!(name_of("auto"), "自动");
+        assert_eq!(name_of(" AUTO "), "自动");
+    }
+
+    /// 短句是输入翻译最常见的输入，宽松版必须认出来。
+    /// 严格版对 "Hello LightBox" 会返回 None（whatlang 三元组统计在词太少时不可信），
+    /// 对 "Hello world" 甚至判成荷兰语。
+    #[test]
+    fn lenient_detection_catches_short_latin_sentences() {
+        assert_eq!(detect_local_lenient("Hello LightBox").as_deref(), Some("en"));
+        assert_eq!(detect_local_lenient("Hi there").as_deref(), Some("en"));
+        assert_eq!(detect_local_lenient("Hello world").as_deref(), Some("en"));
+        // 中文/日文不受影响，走的还是严格版的脚本启发式
+        assert_eq!(detect_local_lenient("你好").as_deref(), Some("zh"));
+        assert_eq!(detect_local_lenient("こんにちは").as_deref(), Some("jp"));
+    }
+
+    /// 长拉丁文本仍交给 whatlang 精细判定，不被一律兜成英语。
+    #[test]
+    fn lenient_detection_keeps_long_text_precise() {
+        let fr = "Bonjour le monde, ceci est une phrase assez longue pour que \
+                  la detection statistique fonctionne correctement et donne du francais";
+        assert_eq!(
+            detect_local_lenient(fr).as_deref(),
+            Some("fra"),
+            "长法语文本应该被 whatlang 判成 fra"
+        );
+    }
+
+    /// 宽松不等于乱猜：没有拉丁字母的字符串不能被兜成英语。
+    #[test]
+    fn lenient_detection_does_not_guess_without_latin_letters() {
+        assert!(detect_local_lenient("12345").is_none());
+        assert!(detect_local_lenient("---").is_none());
+        assert!(detect_local_lenient("").is_none());
+        // 单个字母太弱（"I" 这种），不判
+        assert!(detect_local_lenient("I").is_none());
+    }
+
+    #[test]
+    fn detect_uses_lenient_mode_for_short_text() {
+        let cfg = Config::default();
+        assert_eq!(detect(&cfg, "Hello world").unwrap(), "en");
     }
 
     // ── 本地检测的脚本启发式 ──────────────────────────────
