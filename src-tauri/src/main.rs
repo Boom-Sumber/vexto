@@ -220,8 +220,8 @@ fn popup_ready(app: AppHandle) {
 }
 
 #[tauri::command]
-fn resize_popup(win: tauri::WebviewWindow, height: f64) {
-    popup::resize(&win, height);
+fn resize_popup(win: tauri::WebviewWindow, height: f64, width: f64) {
+    popup::resize(&win, height, width);
 }
 
 #[tauri::command]

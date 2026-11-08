@@ -18,9 +18,27 @@ use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect, IsWin
 pub const POPUP_LABEL: &str = "popup";
 pub const SETTINGS_LABEL: &str = "settings";
 
-const POPUP_W: f64 = 420.0;
-const POPUP_H_MIN: f64 = 110.0;
-const POPUP_H_MAX: f64 = 640.0;
+/// 卡片（可见部分）的左右内边距，即 CSS `#card` 的 `margin` 左右值。
+///
+/// 窗口是透明的，可见卡片比窗口小一圈，那一圈是给 `box-shadow` 留的画布。
+/// **窗口矩形以外的阴影会被裁掉**，所以这组数字必须 ≥ 阴影扩散范围：
+/// `box-shadow: 0 4px 12px` → 左右各 12、上 8（12-4）、下 16（12+4）。
+///
+/// 必须与 `ui/popup.css` 的 `#card { margin: 8px 12px 16px }` 和
+/// `ui/popup.js` 的 `PAD_TOP / PAD_X / PAD_BOTTOM` 三处保持一致。
+const CARD_PAD_X: i32 = 12;
+const CARD_PAD_TOP: i32 = 8;
+const CARD_PAD_BOTTOM: i32 = 16;
+
+/// 卡片默认宽度。窗口宽度 = 这个值 + 左右边距。
+const CARD_W: f64 = 420.0;
+/// 卡片高度范围（不含阴影边距）。
+const CARD_H_MIN: f64 = 110.0;
+const CARD_H_MAX: f64 = 640.0;
+
+const POPUP_W: f64 = CARD_W + (CARD_PAD_X * 2) as f64;
+const POPUP_H_MIN: f64 = CARD_H_MIN + (CARD_PAD_TOP + CARD_PAD_BOTTOM) as f64;
+const POPUP_H_MAX: f64 = CARD_H_MAX + (CARD_PAD_TOP + CARD_PAD_BOTTOM) as f64;
 
 /// 点击外部关闭的轮询间隔。30ms 人感知不到，又不会像 10ms 那样白烧 CPU。
 const OUTSIDE_POLL_MS: u64 = 30;
@@ -52,9 +70,12 @@ fn cursor() -> (i32, i32) {
 }
 
 /// 把弹窗摆到光标右下方，并保证整块不越出主屏。
-fn clamp_pos(app: &AppHandle, x: i32, y: i32) -> (i32, i32) {
+///
+/// `h` 必须是**即将使用的真实窗口高度**，不能拿最小高度糊弄：
+/// 弹窗内容一变高就会冲出屏幕底部（S1b 实测出现过 bottom=1106 > 屏高 1080，
+/// 底部 26 px 跑到屏幕外，用户看不到也点不到）。
+fn clamp_pos(app: &AppHandle, x: i32, y: i32, h: i32) -> (i32, i32) {
     let w = POPUP_W as i32;
-    let h = POPUP_H_MIN as i32;
     if let Ok(Some(m)) = app.primary_monitor() {
         let size = m.size();
         let pos = m.position();
@@ -64,6 +85,7 @@ fn clamp_pos(app: &AppHandle, x: i32, y: i32) -> (i32, i32) {
             nx = pos.x + size.width as i32 - w - 8;
         }
         if ny + h > pos.y + size.height as i32 {
+            // 下方放不下就翻到光标上方
             ny = y - h - 20;
         }
         if nx < pos.x + 8 {
@@ -72,6 +94,10 @@ fn clamp_pos(app: &AppHandle, x: i32, y: i32) -> (i32, i32) {
         if ny < pos.y + 8 {
             ny = pos.y + 8;
         }
+        // 屏幕太矮、上下都放不下时，至少保证底边不越界
+        if ny + h > pos.y + size.height as i32 {
+            ny = (pos.y + size.height as i32 - h).max(pos.y);
+        }
         return (nx, ny);
     }
     (x, y)
@@ -79,7 +105,7 @@ fn clamp_pos(app: &AppHandle, x: i32, y: i32) -> (i32, i32) {
 
 fn create_popup(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let (cx, cy) = cursor();
-    let (x, y) = clamp_pos(app, cx + 14, cy + 18);
+    let (x, y) = clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32);
     WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App("popup.html".into()))
         .title("LightBox")
         .inner_size(POPUP_W, POPUP_H_MIN)
@@ -117,13 +143,21 @@ fn left_button_down() -> bool {
     unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 }
 }
 
+/// 光标是否落在**卡片**矩形内（不是窗口矩形）。
+///
+/// 窗口比卡片大一圈（给阴影留的画布），那一圈是透明的。若按窗口矩形判定，
+/// 用户点在卡片外 5~12 px 的透明区就既不会关闭弹窗、也点不到下面的程序，
+/// 变成"看不见却吃鼠标"的死区。所以这里要把边距扣掉，只认可见卡片。
 fn point_in_window(hwnd: isize, x: i32, y: i32) -> bool {
     let mut r = RECT::default();
     let ok = unsafe { GetWindowRect(HWND(hwnd as *mut core::ffi::c_void), &mut r) }.is_ok();
     if !ok {
         return false;
     }
-    x >= r.left && x < r.right && y >= r.top && y < r.bottom
+    x >= r.left + CARD_PAD_X
+        && x < r.right - CARD_PAD_X
+        && y >= r.top + CARD_PAD_TOP
+        && y < r.bottom - CARD_PAD_BOTTOM
 }
 
 /// 弹窗是 `focusable(false)`（不抢焦点，才保得住用户选中的文字），
@@ -206,7 +240,7 @@ pub fn show(app: &AppHandle, payload: Value) {
     if is_loading {
         // 新一轮翻译：先把高度收回去，再挪到当前光标附近（用户可能已换了位置）
         let (cx, cy) = cursor();
-        let (x, y) = clamp_pos(app, cx + 14, cy + 18);
+        let (x, y) = clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32);
         let _ = win.set_size(tauri::PhysicalSize::new(POPUP_W as u32, POPUP_H_MIN as u32));
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
@@ -253,11 +287,24 @@ pub fn close(app: &AppHandle) {
     }
 }
 
-/// 由前端报告内容高度。原生窗口高度必须后端设置（ADR-011），
-/// 前端算出来的 CSS 高度后端不知道。
-pub fn resize(win: &tauri::WebviewWindow, height: f64) {
-    let h = height.clamp(60.0, POPUP_H_MAX);
-    let _ = win.set_size(tauri::PhysicalSize::new(POPUP_W as u32, h as u32));
+/// 由前端报告卡片尺寸。原生窗口尺寸必须后端设置（ADR-011），
+/// 前端算出来的 CSS 尺寸后端不知道。
+///
+/// `height` / `width` 是**卡片**尺寸（前端已把阴影边距加上，所以其实是窗口尺寸）。
+/// 变高后必须重新夹取位置：否则从 110 撑到 640 时会冲出屏幕底部。
+pub fn resize(win: &tauri::WebviewWindow, height: f64, width: f64) {
+    let w = width.clamp(POPUP_W - 200.0, POPUP_W + 200.0);
+    let h = height.clamp(POPUP_H_MIN * 0.5, POPUP_H_MAX);
+    let _ = win.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
+
+    // 变高/变宽后重新夹到屏幕内（用新高度判断，不是最小高度）
+    let app = win.app_handle();
+    if let Ok(pos) = win.outer_position() {
+        let (nx, ny) = clamp_pos(app, pos.x, pos.y, h as i32);
+        if nx != pos.x || ny != pos.y {
+            let _ = win.set_position(tauri::PhysicalPosition::new(nx, ny));
+        }
+    }
 }
 
 // ---------- 设置窗口 ----------

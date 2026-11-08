@@ -22,13 +22,20 @@ let lastPayload = null;
 let hideTimer = null;
 let hovering = false;
 
-// 内容变化后告诉 Rust 该多高（原生窗口高度必须由后端设置）
+// 卡片四周给阴影留的边距（px），必须和 popup.css 的 #card margin 一致：
+//   margin: 8px 12px 16px  →  上 8、左右 12、下 16
+// 窗口尺寸 = 卡片尺寸 + 这些边距，后端 resize_popup 会按这个算原生窗口大小。
+const PAD_TOP = 8;
+const PAD_X = 12;
+const PAD_BOTTOM = 16;
+
+// 内容变化后告诉 Rust 该多大（原生窗口尺寸必须由后端设置，ADR-011）
 function reportHeight() {
   const h = Math.ceil(
-    card.getBoundingClientRect().height +
-      (parseFloat(getComputedStyle(card).marginTop) || 0) * 2
+    card.getBoundingClientRect().height + PAD_TOP + PAD_BOTTOM
   );
-  invoke("resize_popup", { height: Math.max(60, h) }).catch(() => {});
+  const w = Math.ceil(card.getBoundingClientRect().width + PAD_X * 2);
+  invoke("resize_popup", { height: Math.max(60, h), width: Math.max(120, w) }).catch(() => {});
 }
 
 function closePopup() {
