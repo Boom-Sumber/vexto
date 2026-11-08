@@ -1,0 +1,40 @@
+# ── Rust ─────────────────────────────────────────────
+/target
+**/target
+**/*.rs.bk
+*.pdb
+
+# ── Tauri ────────────────────────────────────────────
+/src-tauri/target
+/src-tauri/gen/schemas
+
+# ── 构建与运行产物 ───────────────────────────────────
+*.exe
+*.msi
+*.nsis
+*.log
+run.out
+run.err
+build*.log
+
+# ── WebView2 调试残留（MVP 时期踩过坑，别带进来）──────
+wv2data*
+EBWebView/
+
+# ── 第三方二进制（体积大，按 07-LICENSING 手动放）────
+# 如果你希望 aria2c 一起进版本管理，删掉下面这两行
+/src-tauri/binaries/*.exe
+!/src-tauri/binaries/.gitkeep
+
+# ── 编辑器 / 系统 ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ── 本地敏感信息（绝对不要提交）──────────────────────
+config.json
+*.secret
+.env
