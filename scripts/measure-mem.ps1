@@ -1,4 +1,4 @@
-# 内存三态实测。数字必须来自这个脚本，不许估算（AGENTS.md 铁律 4）。
+﻿# 内存三态实测。数字必须来自这个脚本，不许估算（AGENTS.md 铁律 4）。
 #
 # 用法：
 #   powershell -File scripts\measure-mem.ps1              # 进程已在跑，直接读

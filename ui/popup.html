@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LightBox</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- 窗口是透明 + 无边框的，圆角和阴影全靠这一层 CSS 画 -->
+  <div id="card">
+    <div id="close" title="关闭">×</div>
+    <div id="from-row">
+      <span id="from-lang">…</span>
+      <span id="spacer"></span>
+      <span id="brand">LightBox</span>
+    </div>
+    <div id="src" class="src"></div>
+    <div id="divider"></div>
+    <div id="loading" class="loading">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="loading-text">翻译中</span>
+    </div>
+    <div id="dst" class="dst"></div>
+    <div id="error" class="error"></div>
+    <div id="actions">
+      <button id="copy">复制译文</button>
+      <button id="retry">重试</button>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
