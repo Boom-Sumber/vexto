@@ -99,6 +99,18 @@ pub struct Config {
     #[serde(default = "d_max_concurrent")]
     pub max_concurrent: u32,
 
+    // ---- 浏览器插件接管（兼容 Rayburst-Connect v3）----
+    /// 是否在本机启动 HTTP 接口，让浏览器扩展把下载交过来。
+    /// 只绑 `127.0.0.1`，端口与密钥必须和扩展 Options 页一致。
+    #[serde(default = "d_true")]
+    pub extension_bridge_enabled: bool,
+    /// 扩展 Options 页里的端口。默认 29110（Rayburst 的默认值）。
+    #[serde(default = "d_bridge_port")]
+    pub extension_bridge_port: u16,
+    /// 扩展 Options 页里的密钥。空串 = 不校验（与 Rayburst 语义一致）。
+    #[serde(default)]
+    pub extension_bridge_secret: String,
+
     // ---- 版本 ----
     /// 配置格式版本，从 1 开始。老配置没有这个字段时按 1 处理
     #[serde(default = "d_version")]
@@ -149,6 +161,10 @@ fn d_popup_timeout() -> u64 {
 fn d_max_concurrent() -> u32 {
     5
 }
+/// Rayburst-Connect 的默认端口；用户在扩展 Options 页改过的话这里也要改。
+fn d_bridge_port() -> u16 {
+    29110
+}
 fn d_version() -> u32 {
     1
 }
@@ -182,6 +198,9 @@ impl Default for Config {
             receive_dir: String::new(),
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
+            extension_bridge_enabled: true,
+            extension_bridge_port: d_bridge_port(),
+            extension_bridge_secret: String::new(),
             version: d_version(),
         }
     }

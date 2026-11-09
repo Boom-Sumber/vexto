@@ -22,11 +22,41 @@ pub const MAIN_LABEL: &str = "main";
 /// 新建下载任务窗口。列表页点「+」时与主窗口**同时存在**。
 pub const NEW_TASK_LABEL: &str = "new-task";
 
-/// 新建窗口要预填的链接。热键读到的剪贴板内容先放这里，前端 ready 后取走。
-///
-/// 用「取走」而不是「读取」：预填只该发生一次，用户改完内容后窗口再被聚焦
-/// 不该把输入框覆盖回原链接。
-static NEW_TASK_PREFILL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
+/// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct NewTaskPrefill {
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub referer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_agent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cookie: Option<String>,
+}
+
+impl NewTaskPrefill {
+    /// 热键 / 剪贴板只有链接时的构造器。
+    pub fn url_only(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            filename: None,
+            size: None,
+            referer: None,
+            user_agent: None,
+            cookie: None,
+        }
+    }
+}
+
+/// 待预填队列。用「取走」而不是「读取」：预填只该发生一次，用户改完内容后
+/// 窗口再被聚焦不该覆盖回原链接。用 `Vec` 而不是单个值，是因为浏览器里连续
+/// 点两个下载时，两条都要进同一个新建页（用户选「合并进同一窗口」）。
+static NEW_TASK_PREFILL: std::sync::Mutex<Vec<NewTaskPrefill>> = std::sync::Mutex::new(Vec::new());
 
 /// 卡片（可见部分）的左右内边距，即 CSS `#card` 的 `margin` 左右值。
 ///
@@ -621,11 +651,11 @@ pub fn open_main_window(app: &AppHandle) {
 ///
 /// 与列表窗口是两个独立的 `WebviewWindow`（用户明确要求两窗同时存在）：
 /// 列表页点「+」→ 新建成窗；新建页点「新建」→ 关自己、开/聚焦列表。
-pub fn open_new_task(app: &AppHandle, prefill: Option<String>) {
+pub fn open_new_task(app: &AppHandle, prefill: Option<NewTaskPrefill>) {
     let has_prefill = prefill.is_some();
     if let Some(p) = prefill {
         if let Ok(mut g) = NEW_TASK_PREFILL.lock() {
-            *g = Some(p);
+            g.push(p);
         }
     }
 
@@ -633,11 +663,13 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<String>) {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
-        // 窗口已存在时页面不会重新加载，只能推事件把新链接填进去。
+        // 窗口已存在时页面不会重新加载，只能推事件让前端来取。
+        // **事件只是个「有新东西」的通知，不携带也不取走数据**：窗口刚建、
+        // 页面还没注册监听时，带数据的 emit 会丢失（浏览器连续点两个下载时
+        // 实测两条都丢）。前端收到通知后再调 `take_new_task_prefill` 取，
+        // 即使通知丢了，初始化时的那次 take 也能把队列一次取干净。
         if has_prefill {
-            if let Some(p) = take_new_task_prefill() {
-                let _ = w.emit("new-task-prefill", p);
-            }
+            let _ = w.emit("new-task-prefill", ());
         }
         return;
     }
@@ -670,9 +702,12 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<String>) {
     }
 }
 
-/// 前端取走待预填的链接（可能为 `None`）。
-pub fn take_new_task_prefill() -> Option<String> {
-    NEW_TASK_PREFILL.lock().ok().and_then(|mut g| g.take())
+/// 前端取走待预填的条目（可能为空）。
+pub fn take_new_task_prefill() -> Vec<NewTaskPrefill> {
+    NEW_TASK_PREFILL
+        .lock()
+        .map(|mut g| std::mem::take(&mut *g))
+        .unwrap_or_default()
 }
 
 /// 只关新建窗口（「取消」/ 自绘标题栏的关闭按钮）。**必须在主线程调用。**

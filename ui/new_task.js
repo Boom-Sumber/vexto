@@ -9,6 +9,10 @@ const invoke = T.core.invoke;
 const listen = T.event.listen;
 const el = (id) => document.getElementById(id);
 
+// 浏览器扩展交过来的附加信息：url → { filename, size, referer, userAgent, cookie }。
+// 热键预填只有 url，不会有这些字段。
+const extras = new Map();
+
 let defaultDir = "";
 let submitting = false;
 let probeSeq = 0;
@@ -155,14 +159,30 @@ async function submit() {
   }
 
   const base = {
-    name: el("name").value.trim(),
     dir: el("dir").value.trim() || defaultDir,
     max_speed_kb: Number(el("speed").value) || 0,
     connections: Number(el("conn").value) || 0,
     user_agent: el("ua").value.trim(),
     referer: el("referer").value.trim(),
   };
-  const tasks = links.map((uri) => ({ uri, ...base }));
+  const single = links.length === 1;
+  const typedName = single ? el("name").value.trim() : "";
+  const tasks = links.map((uri) => {
+    const ex = extras.get(uri) || {};
+    return {
+      uri,
+      dir: base.dir,
+      max_speed_kb: base.max_speed_kb,
+      connections: base.connections,
+      // 优先级：用户在框里改的 > 扩展给的原文件名 > 空（后端从 URL 推）
+      name: typedName || ex.filename || "",
+      // UA / Referer 以用户手填为准；没填则用扩展带来的（防盗链/登录态需要）
+      user_agent: base.user_agent || ex.userAgent || "",
+      referer: base.referer || ex.referer || "",
+      // Cookie 不上界面，直接随任务下发（扩展抢来的登录态）
+      cookie: ex.cookie || "",
+    };
+  });
 
   submitting = true;
   el("submit").disabled = true;
@@ -193,14 +213,51 @@ async function submit() {
 
 // ── 初始化 ──────────────────────────────────────────────────────────────
 
-function fillPrefill(text) {
-  if (!text) return;
-  el("links").value = text;
+/// 追加预填条目。热键只给一条纯 URL；浏览器扩展会给 url + 文件名/大小/cookie。
+/// 窗口已开着时**追加**到输入框末尾，不覆盖用户已经改过的内容。
+function addPrefill(payload) {
+  const list = Array.isArray(payload) ? payload : payload ? [payload] : [];
+  if (!list.length) return;
+
+  const known = new Set(splitLinks());
+  const fresh = [];
+  for (const raw of list) {
+    const item = typeof raw === "string" ? { url: raw } : raw || {};
+    const url = String(item.url || "").trim();
+    if (!url || known.has(url)) continue;
+    known.add(url);
+    fresh.push(url);
+    extras.set(url, {
+      filename: String(item.filename || "").trim(),
+      size: Number(item.size) || 0,
+      referer: String(item.referer || "").trim(),
+      userAgent: String(item.user_agent || item.userAgent || "").trim(),
+      cookie: String(item.cookie || ""),
+    });
+  }
+  if (!fresh.length) return;
+
+  const cur = el("links").value.trim();
+  el("links").value = cur ? cur + "\n" + fresh.join("\n") : fresh.join("\n");
+
+  const links = splitLinks();
+  const ex = links.length === 1 ? extras.get(links[0]) || {} : null;
   el("name").dataset.userEdited = "";
+  if (ex && ex.filename) {
+    el("name").value = ex.filename;
+    // 别让自动探测把扩展给的原文件名覆盖掉；用户仍可点「重新获取」。
+    el("name").dataset.userEdited = "1";
+    el("nameSize").textContent = ex.size ? fmtBytes(ex.size) : "";
+  }
   syncNameState();
+
+  // 扩展给了大小时不再探测：探测失败会把刚显示的大小清空。
+  if (ex && ex.size) updateSpaceHint(ex.size);
+  else scheduleProbe();
+
   el("links").focus();
-  el("links").setSelectionRange(text.length, text.length);
-  scheduleProbe();
+  const v = el("links").value;
+  el("links").setSelectionRange(v.length, v.length);
 }
 
 (async function init() {
@@ -262,13 +319,21 @@ function fillPrefill(text) {
   });
 
   try {
-    await listen("new-task-prefill", (ev) => fillPrefill(ev.payload));
+    // 事件只是通知：数据统一由 take_new_task_prefill 取走，避免窗口刚建、
+    // 监听还没注册时事件丢失（连续两个下载会一起丢）。
+    await listen("new-task-prefill", async () => {
+      try {
+        addPrefill(await invoke("take_new_task_prefill"));
+      } catch (e) {
+        /* 取不到不是错误 */
+      }
+    });
   } catch (e) {
     showError("订阅预填事件失败：" + errText(e));
   }
 
   try {
-    fillPrefill(await invoke("take_new_task_prefill"));
+    addPrefill(await invoke("take_new_task_prefill"));
   } catch (e) {
     /* 没有预填不是错误 */
   }

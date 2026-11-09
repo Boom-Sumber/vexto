@@ -13,6 +13,7 @@ mod capture;
 mod config;
 mod dlog;
 mod download;
+mod extension_bridge;
 mod hotkey;
 mod lang;
 mod mem;
@@ -450,7 +451,10 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
                     ));
                     let a2 = app.clone();
                     let _ = app.run_on_main_thread(move || {
-                        crate::popup::open_new_task(&a2, prefill);
+                        crate::popup::open_new_task(
+                            &a2,
+                            prefill.map(crate::popup::NewTaskPrefill::url_only),
+                        );
                     });
                 });
             }),
@@ -630,6 +634,15 @@ fn save_tool_config(
         translate::cache().clear();
     }
 
+    // 7) 扩展接管的开关 / 端口 / 密钥变了：重启本地监听。
+    //    端口是 bind 时占用的，改完不重启等于没改；密钥也只在新连接上生效。
+    if ["extension_bridge_enabled", "extension_bridge_port", "extension_bridge_secret"]
+        .iter()
+        .any(|k| patch.contains_key(*k))
+    {
+        extension_bridge::restart(app.clone());
+    }
+
     SaveOut {
         ok: true,
         message: "已保存".to_string(),
@@ -666,6 +679,12 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
         // 下载工具启停会改变「要不要注册下载热键」。必须整体重注册：
         // register_all 开头 unregister_all，单独注册一个会把划词热键静默注销。
         warnings.extend(register_hotkeys(&app, &config::load()));
+        // 停用下载工具就不要再对外提供扩展接口，避免「接管了却不干活」。
+        if enabled {
+            extension_bridge::restart(app.clone());
+        } else {
+            extension_bridge::stop();
+        }
     }
     SaveOut {
         ok: true,
@@ -1044,9 +1063,9 @@ fn download_default_dir() -> String {
     crate::download::engine::default_download_dir()
 }
 
-/// 新建页取热键预填的链接（取走后清空）。
+/// 新建页取热键 / 扩展预填的条目（取走后清空）。
 #[tauri::command]
-fn take_new_task_prefill() -> Option<String> {
+fn take_new_task_prefill() -> Vec<crate::popup::NewTaskPrefill> {
     crate::popup::take_new_task_prefill()
 }
 
@@ -1358,6 +1377,10 @@ fn main() {
                     },
                 );
             }
+
+            // 浏览器扩展接管（兼容 Rayburst-Connect v3）：只绑 127.0.0.1。
+            // 端口占用等失败只写状态行与日志，不阻断启动。
+            extension_bridge::start(handle.clone());
 
             dlog::dlog("setup: 托盘已创建");
             Ok(())

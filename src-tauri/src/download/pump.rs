@@ -24,6 +24,16 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 static STARTED: AtomicBool = AtomicBool::new(false);
 static WAKE: OnceLock<(Mutex<bool>, Condvar)> = OnceLock::new();
 
+/// 最近一次取到的快照。`/stat`（浏览器扩展的就绪探针）直接用缓存，
+/// **不能现取**：扩展给 `/stat` 的超时只有 500 ms，而 aria2 忙时一次
+/// RPC 就可能超过这个数，探针会误判「桌面端不可用」。
+static LAST: Mutex<Option<rpc::Snapshot>> = Mutex::new(None);
+
+/// 复制一份最近快照；没取过时返回 `None`。
+pub fn last_snapshot() -> Option<rpc::Snapshot> {
+    LAST.lock().ok().and_then(|g| g.clone())
+}
+
 fn wake_pair() -> &'static (Mutex<bool>, Condvar) {
     WAKE.get_or_init(|| (Mutex::new(false), Condvar::new()))
 }
@@ -101,13 +111,20 @@ where
     let mut idle_since: Option<Instant> = None;
     while RUNNING.load(Ordering::SeqCst) {
         let Some(handle) = engine::rpc_handle() else {
-            // 本来就没有进程可关，不累计空闲时间。
+            // 本来就没有进程可关，不累计空闲时间；缓存也清掉，别把上一轮的
+            // 速度/任务数当成「现在」的（扩展的 /stat 会读这份缓存）。
+            if let Ok(mut g) = LAST.lock() {
+                *g = None;
+            }
             idle_since = None;
             wait_or_wake(NO_ENGINE_INTERVAL);
             continue;
         };
         match handle.snapshot() {
             Ok(snap) => {
+                if let Ok(mut g) = LAST.lock() {
+                    *g = Some(snap.clone());
+                }
                 let pending = has_pending(&snap.tasks);
                 emit(snap);
                 if pending {

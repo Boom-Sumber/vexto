@@ -26,6 +26,10 @@ pub struct NewTask {
     pub user_agent: String,
     #[serde(default)]
     pub referer: String,
+    /// 浏览器扩展交过来的 Cookie。写进 aria2 的 `header` 选项，
+    /// **不进界面、不写日志**：它等于用户的登录态。
+    #[serde(default)]
+    pub cookie: String,
 }
 
 /// 新建任务窗口提交：目录、文件名、单任务限速与连接数都可以覆盖全局设置。

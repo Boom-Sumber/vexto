@@ -206,6 +206,10 @@ pub fn add_task(
     if !t.referer.trim().is_empty() {
         opts.insert("referer".into(), serde_json::json!(t.referer.trim()));
     }
+    // 浏览器扩展交过来的登录态：只走 Cookie 头，Referer / UA 用各自的 option。
+    if let Some(h) = cookie_header(&t.cookie) {
+        opts.insert("header".into(), h);
+    }
 
     let gid = rpc.add_uri(&t.uri, serde_json::Value::Object(opts))?;
     let st = rpc.tell_status(&gid)?;
@@ -444,12 +448,37 @@ fn remove_conf(p: Option<PathBuf>) {
     }
 }
 
+/// Cookie → aria2 的 `header` 数组。
+///
+/// 空值返回 `None`（不要发一个空的 Cookie 头）；换行必须剔掉——aria2 把
+/// header 值按行拼进请求，多一行就等于请求头注入。
+fn cookie_header(cookie: &str) -> Option<serde_json::Value> {
+    let c = cookie.replace(['\r', '\n'], "");
+    let c = c.trim();
+    if c.is_empty() {
+        None
+    } else {
+        Some(serde_json::json!([format!("Cookie: {c}")]))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn cookie_header_skips_empty_and_strips_newlines() {
+        assert!(cookie_header("   ").is_none());
+        assert!(cookie_header("\r\n\t").is_none());
+        let v = cookie_header("sid=1; theme=dark").unwrap();
+        assert_eq!(v, serde_json::json!(["Cookie: sid=1; theme=dark"]));
+        // 请求头注入：换行必须被剔掉，不能变成第二个头
+        let v = cookie_header("sid=1\r\nX-Evil: 1").unwrap();
+        assert_eq!(v, serde_json::json!(["Cookie: sid=1X-Evil: 1"]));
+    }
     use std::sync::Arc;
 
     const BODY: &[u8] = b"lightbox-s3a-probe-payload";

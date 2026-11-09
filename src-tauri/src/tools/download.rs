@@ -46,7 +46,11 @@ impl Tool for Download {
         if !cfg.enable_download {
             return "未启用".to_string();
         }
-        crate::download::engine::status_line()
+        format!(
+            "{}；{}",
+            crate::download::engine::status_line(),
+            crate::extension_bridge::status_line()
+        )
     }
 
     fn sections(&self) -> Vec<Section> {
@@ -59,6 +63,15 @@ impl Tool for Download {
                 Field::number_unit("max_speed_kb", "全局限速", 0, 102_400, "KB/s"),
                 Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
                 Field::hotkey("hotkey_download", "打开新建下载任务"),
+                // 浏览器插件接管：端口 / 密钥必须与扩展 Options 页一致。
+                Field::switch("extension_bridge_enabled", "浏览器插件接管"),
+                Field::number_unit("extension_bridge_port", "插件端口", 1024, 65535, ""),
+                Field::password("extension_bridge_secret", "插件密钥"),
+                Field::note(
+                    "「浏览器插件接管」会启动一个只监听 127.0.0.1 的接口，供 Rayburst-Connect 扩展把网页下载交过来。\n\
+                     端口与密钥要和扩展 Options 页里填的完全一致；密钥留空 = 不校验（与 Rayburst 相同）。\n\
+                     改端口或密钥后需要重新保存才会重启监听；LightBox 没运行时扩展无法唤醒它，请保持托盘常驻。",
+                ),
             ],
         )]
     }
