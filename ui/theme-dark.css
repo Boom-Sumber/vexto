@@ -62,7 +62,9 @@
   --accent-hover: var(--c-violet-400);
   --accent-active: var(--c-violet-600);
   --accent-soft: rgba(124, 92, 255, .16);
-  --accent-ring: rgba(124, 92, 255, .38);
+  /* 焦点环：第一层是 20% 的淡环（保证键盘焦点可见），第二层是 14px 模糊的柔光。
+     只用 `0 0 0 3px` 实心环会很生硬（blur=0，像贴了一圈塑料边），必须有第二层。 */
+  --accent-ring: rgba(124, 92, 255, .20);
   --accent-text: #ffffff;
 
   /* ── 状态色：与主题色分开，不要混用 ───────────────────────────────── */
@@ -81,5 +83,5 @@
   --shadow-float: 0 2px 8px rgba(0, 0, 0, .35);
   --shadow-popup: 0 8px 28px rgba(0, 0, 0, .45);
   --shadow-window: 0 12px 40px rgba(0, 0, 0, .5);
-  --ring: 0 0 0 3px var(--accent-ring);
+  --ring: 0 0 0 3px var(--accent-ring), 0 0 14px rgba(124, 92, 255, .28);
 }
