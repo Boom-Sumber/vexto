@@ -21,11 +21,20 @@ use crate::dlog;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// 与本仓 `rustc --print host-tuple` 一致；`externalBin` 的源文件名要带这个后缀。
 const TRIPLE: &str = "x86_64-pc-windows-msvc";
+/// Windows 的 CREATE_NO_WINDOW：aria2c 是控制台程序，不加这个标志会弹一个
+/// 黑色控制台窗口盖住下载主窗口（会话 14 实机取证发现）。
+/// **只影响子进程的控制台，不改 aria2 的任何启动参数**；stdout/stderr 本来就
+/// 指向 Stdio::null()，加它不会丢日志。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// 避开 aria2 默认的 6800——用户机器上可能另有一个 aria2 占着它。
 const PREFERRED_PORT: u16 = 16800;
 const READY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -182,6 +191,8 @@ fn spawn(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 aria2c 失败：{e}"))?;

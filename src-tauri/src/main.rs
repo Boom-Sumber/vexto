@@ -90,6 +90,13 @@ pub fn open_settings_at(app: &AppHandle, tool_id: &str) {
     let _ = app.run_on_main_thread(move || popup::open_settings_at(&a, &id));
 }
 
+/// 打开下载主窗口。窗口必须在事件循环线程创建（setup() 里建窗会 os error 5），
+/// 所以热键的工作线程与托盘菜单都统一走这里。
+pub fn open_download_window(app: &AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || popup::open_main_window(&a));
+}
+
 fn show_popup(app: &AppHandle, payload: Value) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || popup::show(&a, payload));
@@ -429,12 +436,17 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
             cfg.hotkey_download.clone(),
             // 热键回调跑在事件循环线程：读剪贴板 / spawn / HTTP 一律挪到工作线程
             // （03 §3.5.2）。这里不捕获 AppHandle，闭包天然是 'static。
-            Box::new(|_a: &AppHandle| {
-                std::thread::spawn(|| match download::add_from_clipboard() {
-                    Ok(st) => dlog::dlog(&format!(
-                        "download: 入队成功 gid={} status={} {}/{} B",
-                        st.gid, st.status, st.completed_length, st.total_length
-                    )),
+            Box::new(|a: &AppHandle| {
+                let app = a.clone();
+                std::thread::spawn(move || match download::add_from_clipboard() {
+                    Ok(st) => {
+                        dlog::dlog(&format!(
+                            "download: 入队成功 gid={} status={} {}/{} B",
+                            st.gid, st.status, st.completed_length, st.total_length
+                        ));
+                        // 06 §6.4.2 第 1 条：入队后主窗口自动打开。
+                        open_download_window(&app);
+                    }
                     Err(e) => dlog::dlog(&format!("download: {e}")),
                 });
             }),
@@ -904,9 +916,23 @@ fn download_unpause(gid: String) -> Result<(), String> {
     with_download_rpc(|r| r.unpause(&gid))
 }
 
+/// `06` §6.4.2 第 5 条要「删掉所有任务」，含已完成 / 出错的记录。
+/// aria2 对这类记录调 `remove` 会报 GID not found，必须分流。
 #[tauri::command]
 fn download_remove(gid: String) -> Result<(), String> {
-    with_download_rpc(|r| r.remove(&gid))
+    with_download_rpc(|r| {
+        let status = r
+            .snapshot()?
+            .tasks
+            .into_iter()
+            .find(|t| t.gid == gid)
+            .map(|t| t.status)
+            .unwrap_or_default();
+        match crate::download::rpc::removal_method(&status) {
+            "aria2.remove" => r.remove(&gid),
+            _ => r.remove_result(&gid),
+        }
+    })
 }
 
 #[tauri::command]
@@ -914,17 +940,25 @@ fn download_clear_finished() -> Result<(), String> {
     with_download_rpc(|r| r.purge())
 }
 
-/// 打开任务的下载目录。`06` §6.4.2 第 8 条还要求「选中文件」，
-/// 需要 `TaskRow` 带上 `files[0].path`，会话 14 与主窗口 UI 一起补。
+/// `06` §6.4.2 第 8 条：打开所在目录**并选中文件**。
+/// `explorer /select,<绝对路径>` 才会在资源管理器里高亮文件；文件还没落盘
+/// （下载中 / BT 取 metadata）时退回只打开目录，不硬造一个不存在的路径。
 #[tauri::command]
 fn download_open_dir(gid: String) -> Result<(), String> {
-    let dir = crate::download::engine::rpc_handle()
+    let task = crate::download::engine::rpc_handle()
         .and_then(|r| r.snapshot().ok())
-        .and_then(|s| s.tasks.into_iter().find(|t| t.gid == gid).map(|t| t.dir))
-        .filter(|d| !d.trim().is_empty())
-        .ok_or_else(|| "找不到这个任务的下载目录".to_string())?;
+        .and_then(|s| s.tasks.into_iter().find(|t| t.gid == gid))
+        .ok_or_else(|| "找不到这个任务".to_string())?;
+    let arg = if !task.file_path.is_empty() && std::path::Path::new(&task.file_path).is_file() {
+        format!("/select,{}", task.file_path)
+    } else {
+        task.dir
+    };
+    if arg.trim().is_empty() {
+        return Err("这个任务没有下载目录".to_string());
+    }
     std::process::Command::new("explorer.exe")
-        .arg(&dir)
+        .arg(&arg)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("打开目录失败：{e}"))
@@ -993,18 +1027,22 @@ fn main() {
                 }
             }
 
-            // S3b：轮询泵只发事件、不建窗。主窗口 UI 在会话 14 接上，
-            // 在那之前 is_visible() 恒为 false，泵按后台 2s 间隔跑。
+            // S3b：轮询泵只发事件、不建窗。主窗口可见时 500ms、否则 2s；
+            // 窗口 label 与 popup::open_main_window() 共用常量。
             {
                 let for_emit = handle.clone();
                 let for_visible = handle.clone();
                 download::pump::start(
                     move |snap| {
-                        let _ = for_emit.emit("tasks:snapshot", snap);
+                        // 不能 `let _ =`：事件发不出去时主窗口会永远停在第一帧，
+                        // 用户看到的是「进度卡住」。把失败写进日志以便定位。
+                        if let Err(e) = for_emit.emit("tasks:snapshot", snap) {
+                            dlog::dlog(&format!("pump: 推送 tasks:snapshot 失败：{e}"));
+                        }
                     },
                     move || {
                         for_visible
-                            .get_webview_window("main")
+                            .get_webview_window(popup::MAIN_LABEL)
                             .and_then(|w| w.is_visible().ok())
                             .unwrap_or(false)
                     },

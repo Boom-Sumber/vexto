@@ -3,8 +3,9 @@
 //! 菜单**从注册表生成**（ADR-015）：每个工具一项「<工具名>…」，点了直接打开设置页
 //! 并跳到该工具。加一个新工具不需要动这个文件。
 //!
-//! 特殊项只有三个：「翻译选中文字」（带当前热键提示，热键注册失败时是唯一的手动
-//! 入口）、「设置…」（打开设置页第一个工具）、「退出 LightBox」。
+//! 特殊项有四个：「翻译选中文字」（带当前热键提示，热键注册失败时是唯一的手动
+//! 入口）、「查看下载…」（S3b 主窗口）、「设置…」（打开设置页第一个工具）、
+//! 「退出 LightBox」。工具项仍全部由注册表生成，配置入口不变。
 //!
 //! 菜单 id 约定：工具项是 `tool:<id>`，其余是固定字符串。
 
@@ -38,6 +39,16 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     )?;
     *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate_item.clone());
     items.push(Box::new(translate_item));
+
+    // 「查看下载…」是固定项，不是注册表里的工具项：`tool:download` 按 ADR-015
+    // 仍然负责打开设置页的下载分区，主窗口单独给一个入口，两不冲突。
+    items.push(Box::new(MenuItem::with_id(
+        app,
+        "downloads",
+        "查看下载…",
+        true,
+        None::<&str>,
+    )?));
 
     items.push(Box::new(tauri::menu::PredefinedMenuItem::separator(app)?));
 
@@ -85,6 +96,7 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
             }
             match id.as_str() {
                 "translate" => crate::translate_selection(app.clone()),
+                "downloads" => crate::open_download_window(app),
                 "settings" => crate::open_settings(app),
                 "quit" => {
                     // 顺序不能反：先置位、再 exit，否则 prevent_exit 会把这次退出也挡掉。

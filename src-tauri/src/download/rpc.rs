@@ -41,6 +41,9 @@ pub struct TaskRow {
     /// 速度为 0 / 已完成 / 总长为 0 时没有可算的剩余时间。
     pub eta_seconds: Option<u64>,
     pub dir: String,
+    /// `files[0].path`：`06` §6.4.2 第 8 条「打开目录并**选中文件**」要用。
+    /// 只取第一个文件，BT 种子可能有上万个（§S3.5.5）。
+    pub file_path: String,
     pub error_message: Option<String>,
 }
 
@@ -147,6 +150,11 @@ pub fn parse_task_row(v: &Value) -> Option<TaskRow> {
         upload_speed: decimal(v, "uploadSpeed"),
         eta_seconds: eta_seconds(completed, total, speed),
         dir: text(v, "dir"),
+        file_path: v
+            .pointer("/files/0/path")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         error_message: v
             .get("errorMessage")
             .and_then(Value::as_str)
@@ -190,6 +198,18 @@ fn unwrap_subcall(v: &Value) -> Option<&Value> {
     }
     // 兼容某些版本不包装、直接把值放在这一格的情况。
     Some(v)
+}
+
+/// 删除任务该用哪个方法。
+///
+/// aria2 把「已完成 / 出错 / 已移除」放在结果记录里，不在活动队列，
+/// 对它们调 `aria2.remove` 会报 `GID not found`，必须改用
+/// `aria2.removeDownloadResult`。抽成纯函数是为了能单测这个分支。
+pub fn removal_method(status: &str) -> &'static str {
+    match status {
+        "active" | "waiting" | "paused" => "aria2.remove",
+        _ => "aria2.removeDownloadResult",
+    }
 }
 
 /// 解析 multicall 的 result。**任一子调用失败不能毁掉整批**：跳过坏格，其余照常显示。
@@ -321,9 +341,15 @@ impl Rpc {
         self.call("aria2.unpause", vec![json!(gid)]).map(|_| ())
     }
 
-    /// 删除活动 / 等待 / 暂停中的任务。已完成的任务要用 `purge()`。
+    /// 删除活动 / 等待 / 暂停中的任务。已完成的任务要用 `remove_result()`。
     pub fn remove(&self, gid: &str) -> Result<(), String> {
         self.call("aria2.remove", vec![json!(gid)]).map(|_| ())
+    }
+
+    /// 删掉一条已完成 / 出错 / 已移除的结果记录（不删磁盘文件）。
+    pub fn remove_result(&self, gid: &str) -> Result<(), String> {
+        self.call("aria2.removeDownloadResult", vec![json!(gid)])
+            .map(|_| ())
     }
 
     /// 清空已完成 / 出错的任务记录（不删磁盘文件）。
@@ -443,6 +469,7 @@ mod tests {
         assert_eq!(s.tasks.len(), 3);
         assert_eq!(s.tasks[0].name, "a.zip");
         assert_eq!(s.tasks[0].eta_seconds, Some(15)); // (1000-250)/50
+        assert_eq!(s.tasks[0].file_path, "/tmp/dl/a.zip");
         assert_eq!(s.tasks[2].status, "complete");
     }
 
@@ -462,6 +489,17 @@ mod tests {
         assert_eq!(s.tasks[0].eta_seconds, None, "总长 0 不该算出剩余时间");
         assert_eq!(s.tasks[0].name, "未知文件");
         assert_eq!(parse_snapshot(&json!({})), Snapshot::default());
+    }
+
+    /// `06` §6.4.2 第 5 条要能删掉已完成记录，否则队列永远不空、sidecar 不退出。
+    #[test]
+    fn removal_method_splits_active_and_result_records() {
+        assert_eq!(removal_method("active"), "aria2.remove");
+        assert_eq!(removal_method("waiting"), "aria2.remove");
+        assert_eq!(removal_method("paused"), "aria2.remove");
+        assert_eq!(removal_method("complete"), "aria2.removeDownloadResult");
+        assert_eq!(removal_method("error"), "aria2.removeDownloadResult");
+        assert_eq!(removal_method("removed"), "aria2.removeDownloadResult");
     }
 
     #[test]

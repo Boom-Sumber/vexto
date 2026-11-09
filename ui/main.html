@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LightBox 下载</title>
+<link rel="stylesheet" href="main.css" />
+</head>
+<body>
+<div class="app">
+  <header class="head">
+    <div class="title">
+      <h1>LightBox 下载</h1>
+      <p class="hint">复制 http / https / ftp / magnet 链接或 .torrent 路径后按下载热键即可入队</p>
+    </div>
+    <button id="clear" class="btn" type="button">清空已完成</button>
+  </header>
+
+  <div id="error" class="error hidden"></div>
+
+  <main id="list" class="list"></main>
+  <div id="empty" class="empty">
+    还没有下载任务。<br />复制一个链接，按下载热键就会自动打开这个窗口。
+  </div>
+
+  <footer class="foot">
+    <span id="global">↓ 0 B/s　↑ 0 B/s</span>
+    <span id="counts">0 个任务 · 0 个活动</span>
+  </footer>
+</div>
+<script src="main.js"></script>
+</body>
+</html>

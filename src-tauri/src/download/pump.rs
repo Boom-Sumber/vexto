@@ -148,6 +148,7 @@ mod tests {
             upload_speed: 0,
             eta_seconds: None,
             dir: String::new(),
+            file_path: String::new(),
             error_message: None,
         }
     }

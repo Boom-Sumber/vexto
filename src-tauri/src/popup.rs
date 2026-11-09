@@ -17,6 +17,8 @@ use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect, IsWin
 
 pub const POPUP_LABEL: &str = "popup";
 pub const SETTINGS_LABEL: &str = "settings";
+/// 下载主窗口。pump 用同一个 label 判断「窗口是否可见」。
+pub const MAIN_LABEL: &str = "main";
 
 /// 卡片（可见部分）的左右内边距，即 CSS `#card` 的 `margin` 左右值。
 ///
@@ -557,5 +559,44 @@ pub fn open_settings(app: &AppHandle) {
             });
         }
         Err(e) => crate::dlog::dlog(&format!("create settings failed: {e}")),
+    }
+}
+
+/// 打开下载主窗口。已存在则聚焦，不重复创建。**必须在主线程调用。**
+///
+/// 关闭即销毁（ADR-007 / 任务书 §S3.7.3）：主窗口体量大，用 hide 会让
+/// 6 个 msedgewebview2.exe 一直驻留；数据全在后端 pump 里，重建窗口后
+/// 前端调 `download_snapshot()` 就能恢复列表，进度不会重新开始。
+pub fn open_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(MAIN_LABEL) {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+
+    let r = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("main.html".into()))
+        .title("LightBox 下载")
+        .inner_size(760.0, 520.0)
+        .min_inner_size(560.0, 360.0)
+        .resizable(true)
+        .center()
+        .additional_browser_args(WEBVIEW_ARGS)
+        .build();
+
+    match r {
+        Ok(win) => {
+            // 新建的窗口要抢焦点：实测不调 set_focus() 时，热键入队后窗口会
+            // 落在其它窗口后面，用户以为「没反应」（会话 14 实机取证）。
+            // 只有已存在的分支会走上面的 set_focus，新建分支必须自己补。
+            let _ = win.set_focus();
+            win.on_window_event(|ev| {
+                if matches!(ev, tauri::WindowEvent::Destroyed) {
+                    crate::dlog::dlog("popup: 下载主窗口已销毁，1.2s 后收缩工作集");
+                    crate::mem::trim_soon(1200);
+                }
+            });
+        }
+        Err(e) => crate::dlog::dlog(&format!("create main window failed: {e}")),
     }
 }
