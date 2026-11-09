@@ -2,57 +2,108 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>新建下载任务</title>
+<title>新建任务</title>
 <link rel="stylesheet" href="new_task.css" />
 </head>
 <body>
 <div class="app">
-  <header class="head">
-    <h1>新建下载任务</h1>
-    <p class="hint">支持 http / https / ftp / magnet，每行一个链接</p>
+  <header class="titlebar" data-tauri-drag-region>
+    <span class="titlebar-text" data-tauri-drag-region>新建任务</span>
+    <div class="titlebar-btns">
+      <button id="winMin" class="win-btn" type="button" title="最小化">
+        <svg viewBox="0 0 12 12" width="10" height="10"><rect x="1.5" y="6" width="9" height="1" fill="currentColor"/></svg>
+      </button>
+      <button id="winClose" class="win-btn close" type="button" title="关闭">
+        <svg viewBox="0 0 12 12" width="10" height="10" stroke="currentColor" stroke-width="1.2">
+          <path d="M2 2l8 8M10 2l-8 8"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
-  <div id="error" class="error hidden"></div>
+  <nav class="tabs">
+    <button id="tabLink" class="tab active" type="button">链接任务</button>
+    <button id="tabTorrent" class="tab" type="button">种子任务</button>
+  </nav>
 
-  <main class="form">
-    <label class="lbl" for="links">下载链接</label>
-    <textarea id="links" class="textarea" rows="6" spellcheck="false"
-              placeholder="每行一个下载链接（支持磁力链）"></textarea>
+  <main class="body">
+    <div id="paneLink" class="pane">
+      <textarea id="links" class="textarea" spellcheck="false"
+                placeholder="每行一个下载链接（支持磁力链）"></textarea>
 
-    <div class="grid">
-      <label class="lbl" for="name">重命名</label>
-      <input id="name" class="input" type="text" spellcheck="false"
-             placeholder="选填：留空按链接里的文件名保存" />
+      <div id="error" class="error hidden"></div>
 
-      <label class="lbl" for="dir">存储路径</label>
-      <div class="row">
-        <input id="dir" class="input" type="text" spellcheck="false" placeholder="" />
-        <button id="resetDir" class="btn" type="button">用默认</button>
+      <div class="field">
+        <label class="lbl" for="name">重命名：</label>
+        <div class="input-wrap">
+          <input id="name" class="input has-suffix" type="text" spellcheck="false" placeholder="选填" />
+          <span id="nameSize" class="suffix"></span>
+        </div>
+        <button id="reprobe" class="btn" type="button">重新获取</button>
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="dir">存储路径：</label>
+        <div class="input-wrap">
+          <input id="dir" class="input" type="text" spellcheck="false" />
+          <button id="pickDir" class="icon-btn" type="button" title="在资源管理器中打开">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2h7A1.5 1.5 0 0 1 19 9.5v7A1.5 1.5 0 0 1 17.5 18h-13A1.5 1.5 0 0 1 3 16.5z"/>
+            </svg>
+          </button>
+          <button id="defaultDir" class="icon-btn" type="button" title="填入默认下载目录">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="spaceHint" class="hint-row"></div>
+
+      <label class="adv-toggle">
+        <input id="advToggle" type="checkbox" />
+        <span>高级选项</span>
+      </label>
+
+      <div id="advPane" class="adv hidden">
+        <div class="field">
+          <label class="lbl" for="speed">限速：</label>
+          <div class="input-wrap">
+            <input id="speed" class="input has-suffix" type="number" min="0" max="102400" step="64" placeholder="0" />
+            <span class="suffix">KB/s</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="conn">连接数：</label>
+          <div class="input-wrap">
+            <input id="conn" class="input has-suffix" type="number" min="0" max="16" step="1" placeholder="0" />
+            <span class="suffix">个</span>
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="ua">User-Agent：</label>
+          <div class="input-wrap">
+            <input id="ua" class="input" type="text" spellcheck="false" placeholder="选填" />
+          </div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="referer">Referer：</label>
+          <div class="input-wrap">
+            <input id="referer" class="input" type="text" spellcheck="false" placeholder="选填" />
+          </div>
+        </div>
       </div>
     </div>
 
-    <details class="adv">
-      <summary>高级选项</summary>
-      <div class="grid adv-grid">
-        <label class="lbl" for="speed">限速</label>
-        <div class="row">
-          <input id="speed" class="input num" type="number" min="0" max="102400" step="64" placeholder="0" />
-          <span class="unit">KB/s（0 = 用全局设置）</span>
-        </div>
-
-        <label class="lbl" for="conn">连接数</label>
-        <div class="row">
-          <input id="conn" class="input num" type="number" min="0" max="16" step="1" placeholder="0" />
-          <span class="unit">0 = 用全局设置</span>
-        </div>
-
-        <label class="lbl" for="ua">User-Agent</label>
-        <input id="ua" class="input" type="text" spellcheck="false" placeholder="选填" />
-
-        <label class="lbl" for="referer">Referer</label>
-        <input id="referer" class="input" type="text" spellcheck="false" placeholder="选填" />
+    <div id="paneTorrent" class="pane hidden">
+      <div class="torrent-empty">
+        种子任务暂未支持。<br />
+        可以先把 `.torrent` 文件的下载地址粘到「链接任务」里。
       </div>
-    </details>
+    </div>
   </main>
 
   <footer class="foot">

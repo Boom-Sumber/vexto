@@ -58,15 +58,11 @@ pub enum FieldKind {
     },
     /// 热键：前端只读 + 捕获模式，用户点一下直接按组合键
     Hotkey,
-    /// 目录选择
+    /// 目录选择。
     ///
-    /// `placeholder` 用来显示运行时才算得出来的提示（例如
-    /// 「默认：C:\Users\x\Downloads」）。前端 `settings.js` 的 `dir` 分支
-    /// 本来就读 `f.placeholder`，所以这里加上字段**不需要改前端**（ADR-015）。
-    Dir {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        placeholder: Option<String>,
-    },
+    /// 会话 17 起**不再用 placeholder 提示默认路径**：用户要求输入框里直接是
+    /// 具体路径，默认值由 `get_tool_config` / `save_tool_config` 在留空时回填。
+    Dir,
     /// 按钮（点了发命令，不是存值字段）
     Button,
     /// 纯说明文字，没有值。文案在 `text` 里
@@ -146,22 +142,7 @@ impl Field {
     }
 
     pub fn dir(key: &'static str, label: &'static str) -> Self {
-        Self::new(key, label, FieldKind::Dir { placeholder: None })
-    }
-
-    /// 目录字段 + 运行时提示。提示由后端算，前端只负责显示成灰色占位符。
-    pub fn dir_with_placeholder(
-        key: &'static str,
-        label: &'static str,
-        placeholder: impl Into<String>,
-    ) -> Self {
-        Self::new(
-            key,
-            label,
-            FieldKind::Dir {
-                placeholder: Some(placeholder.into()),
-            },
-        )
+        Self::new(key, label, FieldKind::Dir)
     }
 
     pub fn button(key: &'static str, label: &'static str) -> Self {

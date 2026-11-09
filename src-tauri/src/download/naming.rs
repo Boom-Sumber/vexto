@@ -43,7 +43,7 @@ fn hex(b: u8) -> Option<u8> {
 /// `%E4%B8%AD.zip` → `中.zip`。
 ///
 /// 只解 path 段：`+` 不当空格（那是 query 的规则，在文件名里它是合法字符）。
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;

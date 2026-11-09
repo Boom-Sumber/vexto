@@ -635,10 +635,15 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<String>) {
     }
 
     let r = WebviewWindowBuilder::new(app, NEW_TASK_LABEL, WebviewUrl::App("new_task.html".into()))
-        .title("新建下载任务")
-        .inner_size(620.0, 560.0)
-        .min_inner_size(520.0, 440.0)
-        .resizable(true)
+        .title("新建任务")
+        // 无边框 + 自绘标题栏（用户要求）。系统标题栏去掉后，拖动只能靠前端
+        // 标题栏上的 `data-tauri-drag-region`；最小化 / 关闭也由自绘按钮接管。
+        .decorations(false)
+        .shadow(true)
+        // 600×540 与参考界面（Rayburst 新建任务）保持同一比例。
+        .inner_size(600.0, 540.0)
+        .min_inner_size(600.0, 540.0)
+        .resizable(false)
         .center()
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
@@ -662,12 +667,19 @@ pub fn take_new_task_prefill() -> Option<String> {
     NEW_TASK_PREFILL.lock().ok().and_then(|mut g| g.take())
 }
 
-/// 只关新建窗口（「取消」按钮）。**必须在主线程调用。**
+/// 只关新建窗口（「取消」/ 自绘标题栏的关闭按钮）。**必须在主线程调用。**
 ///
 /// 取消不该打开列表窗口 —— 用户可能只是一时误按热键。
 pub fn close_new_task(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
         let _ = w.destroy();
+    }
+}
+
+/// 最小化新建窗口（自绘标题栏用）。**必须在主线程调用。**
+pub fn minimize_new_task(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
+        let _ = w.minimize();
     }
 }
 

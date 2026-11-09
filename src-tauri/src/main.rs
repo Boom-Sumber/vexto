@@ -485,7 +485,17 @@ fn get_tool_config(tool_id: String) -> ToolConfigOut {
     let mut out = Map::new();
     for k in tool_value_keys(&tool_id) {
         if let Some(v) = all.get(k) {
-            out.insert(k.to_string(), v.clone());
+            let mut v = v.clone();
+            // 下载目录留空时**直接把默认路径填给前端**：用户要求输入框里看到
+            // 具体路径，而不是一个占位符提示（会话 17）。
+            if k == "download_dir" {
+                if let Some(s) = v.as_str() {
+                    if s.trim().is_empty() {
+                        v = Value::String(crate::download::engine::default_download_dir());
+                    }
+                }
+            }
+            out.insert(k.to_string(), v);
         }
     }
     ToolConfigOut {
@@ -552,6 +562,20 @@ fn save_tool_config(
                 patch.insert(k.clone(), v.clone());
             }
         }
+    }
+
+    // 2.5) 下载目录被清空时回写成默认路径。
+    //      用户要求：输入框里直接是具体路径；清空后失焦保存，也要变回那个默认地址，
+    //      而不是留一个空框。所以配置里不再保留「空串 = 跟随系统」这个中间态。
+    if patch
+        .get("download_dir")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.trim().is_empty())
+    {
+        patch.insert(
+            "download_dir".to_string(),
+            Value::String(crate::download::engine::default_download_dir()),
+        );
     }
 
     // 3) 目录字段：不存在就提示（不阻塞保存，用户可能马上就要去建）
@@ -1040,6 +1064,169 @@ fn close_new_task(app: AppHandle) {
     let _ = app.run_on_main_thread(move || crate::popup::close_new_task(&a));
 }
 
+/// 自绘标题栏的「最小化」。
+#[tauri::command]
+fn minimize_new_task(app: AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || crate::popup::minimize_new_task(&a));
+}
+
+/// 新建页「重新获取」用的探测结果。
+#[derive(serde::Serialize)]
+struct ProbeOut {
+    name: Option<String>,
+    size: Option<u64>,
+}
+
+/// 从 `Content-Disposition` 取文件名。
+///
+/// 优先 `filename*=UTF-8''%E4%B8%AD.zip`（RFC 5987），其次 `filename="a.zip"`。
+fn content_disposition_name(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    let raw = headers
+        .get(reqwest::header::CONTENT_DISPOSITION)?
+        .to_str()
+        .ok()?;
+    for part in raw.split(';') {
+        let part = part.trim();
+        if let Some(v) = part.strip_prefix("filename*=") {
+            let v = v.trim().trim_matches('"');
+            if let Some((_, enc)) = v.split_once("''") {
+                return Some(crate::download::naming::percent_decode(enc));
+            }
+            return Some(v.to_string());
+        }
+        if let Some(v) = part.strip_prefix("filename=") {
+            let v = v.trim().trim_matches('"');
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// `bytes 0-0/12345` → `12345`（`*` 表示总长未知）。
+fn content_range_total(v: &str) -> Option<u64> {
+    let total = v.rsplit('/').next()?.trim();
+    if total == "*" {
+        None
+    } else {
+        total.parse().ok()
+    }
+}
+
+/// 读响应头里的 `Content-Length`。
+///
+/// **不能用 `resp.content_length()`**：reqwest 0.13 那个方法读的是 body 的
+/// `size_hint().exact()`，HEAD 响应 body 为空，永远返回 `Some(0)` —— 实测踩过。
+fn header_content_length(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .filter(|n| *n > 0)
+}
+
+/// 新建页探测：文件名 + 文件大小。只读取响应头，不下载正文。
+///
+/// **这个 client 不能 `.no_proxy()`**：探测的是外网 URL，要走用户的系统代理；
+/// 与 `download::rpc::Rpc::new()` 那个回环 RPC 客户端正好相反（那个必须禁用代理）。
+///
+/// HEAD 拿不到（简单静态服务常返回 405/501）就退回 `GET` + `Range: bytes=0-0`，
+/// 从 `Content-Range` 里读总长。
+#[tauri::command]
+fn download_probe(url: String) -> ProbeOut {
+    let u = url.trim();
+    let lower = u.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+        return ProbeOut {
+            name: None,
+            size: None,
+        };
+    }
+    let is_loopback = lower.contains("://127.0.0.1") || lower.contains("://localhost");
+    let builder = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(8));
+    // 回环地址不能走系统代理（本机 HTTP_PROXY 会把 127.0.0.1 也发给代理），
+    // 外网地址则必须走代理 —— 两种情况的 client 配置正好相反。
+    let builder = if is_loopback { builder.no_proxy() } else { builder };
+    let Ok(client) = builder.build() else {
+        return ProbeOut {
+            name: None,
+            size: None,
+        };
+    };
+
+    let mut name = None;
+    let mut size = None;
+
+    if let Ok(resp) = client.head(u).send() {
+        if resp.status().is_success() {
+            size = header_content_length(resp.headers());
+            name = content_disposition_name(resp.headers());
+        }
+    }
+    if size.is_none() {
+        if let Ok(resp) = client.get(u).header("Range", "bytes=0-0").send() {
+            // 服务器支持 Range 时返回 206：`Content-Length` 只是这 1 字节的长度，
+            // 总长在 `Content-Range: bytes 0-0/12345` 里；不支持时返回 200 + 完整长度。
+            size = resp
+                .headers()
+                .get("content-range")
+                .and_then(|v| v.to_str().ok())
+                .and_then(content_range_total)
+                .or_else(|| header_content_length(resp.headers()));
+            if name.is_none() {
+                name = content_disposition_name(resp.headers());
+            }
+        }
+    }
+    if name.is_none() {
+        name = crate::download::naming::file_name_from_uri(u);
+    }
+    ProbeOut { name, size }
+}
+
+/// 目录所在卷的可用字节数。新建页「可用 153.3 GB」用。
+#[tauri::command]
+fn disk_free(dir: String) -> Option<u64> {
+    #[cfg(windows)]
+    {
+        use windows::core::HSTRING;
+        use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let d = if dir.trim().is_empty() {
+            crate::download::engine::default_download_dir()
+        } else {
+            dir.trim().to_string()
+        };
+        let mut avail = 0u64;
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                &HSTRING::from(d.as_str()),
+                Some(&mut avail as *mut u64),
+                None,
+                None,
+            )
+        };
+        if ok.is_ok() {
+            return Some(avail);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = dir;
+    None
+}
+
+/// 新建页的「文件夹」按钮：在资源管理器里打开指定目录。
+#[tauri::command]
+fn open_path(path: String) {
+    let p = path.trim();
+    if p.is_empty() {
+        return;
+    }
+    let _ = std::process::Command::new("explorer.exe").arg(p).spawn();
+}
+
 /// 列表页「+」：打开新建任务窗口，**不关列表**（两窗并存，用户明确要求）。
 ///
 /// 与 `new_task_done` 同理：第二个 WebviewWindow 要在当前 IPC tick 之后建，
@@ -1092,9 +1279,13 @@ fn main() {
             // 新建下载任务（会话 16）
             download_add,
             download_default_dir,
+            download_probe,
+            disk_free,
+            open_path,
             take_new_task_prefill,
             new_task_done,
             close_new_task,
+            minimize_new_task,
             open_new_task
         ])
         .setup(|app| {
