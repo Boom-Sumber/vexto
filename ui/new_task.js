@@ -1,6 +1,8 @@
 // 新建任务窗口（按 Rayburst 参考界面还原）。
 //
-// 两个页签：「链接任务」可用，「种子任务」暂未支持（只做占位，不假装能用）。
+// 两个页签：「链接任务」（http/https/ftp/magnet）与「种子任务」（.torrent）。
+// 存储路径 / 可用空间 / 高级选项是**共享区**，两个页签都能改；仅链接任务
+// 有意义的字段（UA / Referer / 校验和 / HTTP 鉴权）在种子页签隐藏。
 // 单链接时自动探测文件名与大小；多链接时名字框留空、只提示「选填」，
 // 「重新获取」禁用——一个名字框表达不了多个不同文件名。
 
@@ -18,6 +20,15 @@ let submitting = false;
 let probeSeq = 0;
 let probeTimer = null;
 let lastSize = 0;
+
+// 当前页签与已读入的种子文件（base64 / 原始字节数 / 文件名）。
+let activeTab = "link";
+let torrentB64 = "";
+let torrentBytes = 0;
+let torrentName = "";
+
+// 与后端 `validate::MAX_TORRENT_B64` 对应的原文件上限（约 4 MB）。
+const MAX_TORRENT_FILE = 4 * 1024 * 1024;
 
 // ── 小工具 ──────────────────────────────────────────────────────────────
 
@@ -39,10 +50,15 @@ function errText(e) {
   return String(e);
 }
 
-function showError(msg) {
-  const box = el("error");
+function showError(msg, which) {
+  const box = el(which === "torrent" ? "tError" : "error");
   box.textContent = msg || "";
   box.classList.toggle("hidden", !msg);
+}
+
+function clearErrors() {
+  showError("");
+  showError("", "torrent");
 }
 
 function splitLinks() {
@@ -67,10 +83,18 @@ function guessName(url) {
 
 function setTab(which) {
   const link = which === "link";
+  activeTab = link ? "link" : "torrent";
   el("tabLink").classList.toggle("active", link);
   el("tabTorrent").classList.toggle("active", !link);
   el("paneLink").classList.toggle("hidden", !link);
   el("paneTorrent").classList.toggle("hidden", link);
+  // 校验和 / HTTP 鉴权 / UA / Referer 对 BT 没有意义，切到种子页签就藏起来，
+  // 免得用户填了却不生效（种子里的分片校验由 torrent 自己带）。
+  for (const row of document.querySelectorAll("[data-link-only]")) {
+    row.classList.toggle("hidden", !link);
+  }
+  clearErrors();
+  updateSpaceHint();
 }
 
 // ── 重命名 / 大小 / 可用空间 ────────────────────────────────────────────
@@ -81,9 +105,14 @@ function syncNameState() {
   const multi = n > 1;
   el("reprobe").disabled = multi || n === 0;
   el("name").placeholder = "选填";
+  // 校验和对多条链接不适用（每个文件内容不同），UI 上直接禁掉，
+  // 免得用户填了却在提交时被静默丢弃。
+  el("checksum").disabled = multi;
+  el("checksum").title = multi ? "多条链接不能共用一个校验和" : "";
   if (multi) {
     el("name").value = "";
     el("nameSize").textContent = "";
+    el("checksum").value = "";
     lastSize = 0;
   }
 }
@@ -98,7 +127,13 @@ async function updateSpaceHint(size) {
     free = null;
   }
   const parts = [];
-  if (lastSize) parts.push("需下载 " + fmtBytes(lastSize));
+  if (activeTab === "torrent") {
+    // 种子文件本身的大小 ≠ 任务总大小（要解析 bencode 才知道），
+    // 所以只如实写「种子 x KB」，不冒充「需下载 x」。
+    if (torrentBytes) parts.push("种子 " + fmtBytes(torrentBytes));
+  } else if (lastSize) {
+    parts.push("需下载 " + fmtBytes(lastSize));
+  }
   if (free) parts.push("可用 " + fmtBytes(free));
   el("spaceHint").textContent = parts.join("，");
 }
@@ -148,24 +183,90 @@ function scheduleProbe() {
   probeTimer = setTimeout(() => probeNow(false), 450);
 }
 
+// ── 种子文件 ────────────────────────────────────────────────────────────
+
+/// Uint8Array → base64。分块避免 `apply` 一次塞太多参数导致栈溢出。
+function bytesToBase64(bytes) {
+  let s = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(s);
+}
+
+function resetTorrent() {
+  torrentB64 = "";
+  torrentBytes = 0;
+  torrentName = "";
+  el("torrentName").value = "";
+  el("torrentSize").textContent = "";
+  updateSpaceHint();
+}
+
+/// 只做两道轻量校验：大小上限 + bencode 顶层必须是 `d…e` 字典。
+/// 真正的种子解析交给 aria2（它会给出明确的 RPC 错误），前端不引 bencode 库。
+async function onTorrentPicked(ev) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  // 允许连续选同一个文件（否则第二次 change 不触发）
+  ev.target.value = "";
+  showError("", "torrent");
+
+  if (file.size > MAX_TORRENT_FILE) {
+    resetTorrent();
+    showError("种子文件过大（上限 4 MB）", "torrent");
+    return;
+  }
+  let bytes;
+  try {
+    bytes = new Uint8Array(await file.arrayBuffer());
+  } catch (e) {
+    resetTorrent();
+    showError("读取种子文件失败：" + errText(e), "torrent");
+    return;
+  }
+  if (bytes.length < 2 || bytes[0] !== 0x64 || bytes[bytes.length - 1] !== 0x65) {
+    resetTorrent();
+    showError("这不像是 .torrent 文件（内容应为 bencode 字典 d…e）", "torrent");
+    return;
+  }
+
+  torrentB64 = bytesToBase64(bytes);
+  torrentBytes = bytes.length;
+  torrentName = file.name;
+  el("torrentName").value = file.name;
+  el("torrentSize").textContent = fmtBytes(bytes.length);
+  updateSpaceHint();
+}
+
 // ── 提交 ────────────────────────────────────────────────────────────────
 
 async function submit() {
   if (submitting) return;
+  return activeTab === "torrent" ? submitTorrent() : submitLinks();
+}
+
+async function submitLinks() {
   const links = splitLinks();
   if (!links.length) {
     showError("至少填一个下载链接");
     return;
   }
 
+  const single = links.length === 1;
   const base = {
     dir: el("dir").value.trim() || defaultDir,
     max_speed_kb: Number(el("speed").value) || 0,
     connections: Number(el("conn").value) || 0,
     user_agent: el("ua").value.trim(),
     referer: el("referer").value.trim(),
+    // 校验和只对单条链接有意义：多条链接内容是不同文件，不可能共用一个摘要。
+    // 后端 `validate::checksum_option` 会再校验格式，这里只在多链接时丢弃。
+    checksum: single ? el("checksum").value.trim() : "",
+    http_user: el("httpUser").value.trim(),
+    http_passwd: el("httpPasswd").value,
   };
-  const single = links.length === 1;
   const typedName = single ? el("name").value.trim() : "";
   const tasks = links.map((uri) => {
     const ex = extras.get(uri) || {};
@@ -181,6 +282,9 @@ async function submit() {
       referer: base.referer || ex.referer || "",
       // Cookie 不上界面，直接随任务下发（扩展抢来的登录态）
       cookie: ex.cookie || "",
+      checksum: base.checksum,
+      http_user: base.http_user,
+      http_passwd: base.http_passwd,
     };
   });
 
@@ -204,6 +308,36 @@ async function submit() {
     }
   } catch (e) {
     showError("创建任务失败：" + errText(e));
+    el("status").textContent = "";
+  } finally {
+    submitting = false;
+    el("submit").disabled = false;
+  }
+}
+
+async function submitTorrent() {
+  if (!torrentB64) {
+    showError("请先选择一个 .torrent 文件", "torrent");
+    return;
+  }
+  const task = {
+    torrent_base64: torrentB64,
+    // 名字只用于设置页状态行回显；aria2 用种子里的 info.name，不接受覆盖。
+    name: torrentName,
+    dir: el("dir").value.trim() || defaultDir,
+    max_speed_kb: Number(el("speed").value) || 0,
+  };
+
+  submitting = true;
+  el("submit").disabled = true;
+  el("status").textContent = "正在创建…";
+  showError("", "torrent");
+  try {
+    await invoke("download_add_torrent", { task });
+    el("status").textContent = "已创建 1 个种子任务";
+    invoke("new_task_done").catch(() => {});
+  } catch (e) {
+    showError("创建种子任务失败：" + errText(e), "torrent");
     el("status").textContent = "";
   } finally {
     submitting = false;
@@ -236,6 +370,9 @@ function addPrefill(payload) {
     });
   }
   if (!fresh.length) return;
+
+  // 热键 / 扩展送来的都是链接，别让它们填进一个当前不可见的输入框。
+  setTab("link");
 
   const cur = el("links").value.trim();
   el("links").value = cur ? cur + "\n" + fresh.join("\n") : fresh.join("\n");
@@ -271,6 +408,10 @@ function addPrefill(payload) {
 
   el("tabLink").addEventListener("click", () => setTab("link"));
   el("tabTorrent").addEventListener("click", () => setTab("torrent"));
+
+  // 原生 file input 藏在 .hidden 里，只由自绘按钮触发（系统部件是白底）。
+  el("pickTorrent").addEventListener("click", () => el("torrentFile").click());
+  el("torrentFile").addEventListener("change", onTorrentPicked);
 
   // 标题栏的最小化 / 关闭由 titlebar.js 统一接管（window_action），
   // 页面里不再绑窗口事件，也不写 SVG（docs/13-UI-DESIGN-SYSTEM.md §13.5）。

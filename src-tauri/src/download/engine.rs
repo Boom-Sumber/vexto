@@ -210,6 +210,17 @@ pub fn add_task(
     if let Some(h) = cookie_header(&t.cookie) {
         opts.insert("header".into(), h);
     }
+    // 校验和与 HTTP 鉴权：先过一遍纯函数校验，非法值直接拦在发起 RPC 之前，
+    // 别让用户面对 aria2 那句看不懂的英文错误。
+    if let Some(cs) = crate::download::validate::checksum_option(&t.checksum)? {
+        opts.insert("checksum".into(), serde_json::json!(cs));
+    }
+    if !t.http_user.trim().is_empty() {
+        opts.insert("http-user".into(), serde_json::json!(t.http_user.trim()));
+    }
+    if !t.http_passwd.is_empty() {
+        opts.insert("http-passwd".into(), serde_json::json!(t.http_passwd));
+    }
 
     let gid = rpc.add_uri(&t.uri, serde_json::Value::Object(opts))?;
     let st = rpc.tell_status(&gid)?;
@@ -218,6 +229,45 @@ pub fn add_task(
     set_message(format!(
         "已入队 {} · {} · {pct:.0}% · {}/{} B",
         st.gid, st.status, st.completed_length, st.total_length
+    ));
+    Ok(st)
+}
+
+/// 种子任务入队：`aria2.addTorrent` 收的是 `.torrent` 文件内容的 base64，
+/// 不是文件路径——WebView2 里读文件由前端做，Rust 侧不需要碰用户的磁盘。
+///
+/// 与 URI 任务的差别：BT 的文件名由种子里的 `info.name` 决定，**不能**用 `out`
+/// 覆盖；`checksum` / `http-user` / UA / Referer 对 BT 没有意义，一律不传。
+pub fn add_torrent(
+    cfg: &config::Config,
+    t: &crate::download::NewTorrent,
+) -> Result<crate::download::rpc::TaskStatus, String> {
+    let rpc = ensure_running(cfg)?;
+    let b64 = crate::download::validate::torrent_base64(&t.torrent_base64)?;
+    let dir = PathBuf::from(resolve_dir(cfg, &t.dir));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
+
+    let mut opts = serde_json::Map::new();
+    opts.insert("dir".into(), serde_json::json!(dir.display().to_string()));
+    if t.max_speed_kb > 0 {
+        opts.insert(
+            "max-download-limit".into(),
+            serde_json::json!(format!("{}K", t.max_speed_kb)),
+        );
+    }
+
+    let gid = rpc.add_torrent(&b64, serde_json::Value::Object(opts))?;
+    let st = rpc.tell_status(&gid)?;
+    let pct = crate::download::rpc::progress_ratio(st.completed_length, st.total_length) * 100.0;
+    // 种子名只用于让设置页状态行看得懂「刚加的是哪个」，不传给 aria2。
+    let label = if t.name.trim().is_empty() {
+        st.gid.as_str()
+    } else {
+        t.name.trim()
+    };
+    set_message(format!(
+        "已入队 {label} · {} · {pct:.0}% · {}/{} B",
+        st.status, st.completed_length, st.total_length
     ));
     Ok(st)
 }

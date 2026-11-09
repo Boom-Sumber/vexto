@@ -1,5 +1,5 @@
 //! 下载模块（S3a 后端闭环 + S3b 轮询泵 + S3c 新建任务与重名递增
-//! + S3.5 历史、通知与代理）。
+//! + S3.5 历史、通知、代理、种子与高级选项）。
 //!
 //! 除 `notify` 外**不依赖 tauri**：状态用静态量、路径从自身 exe 推导，这样
 //! `Tool::status_line()` / `Tool::set_enabled()` 没有 AppHandle 也能读。
@@ -12,6 +12,7 @@ pub mod notify;
 pub mod proxy;
 pub mod pump;
 pub mod rpc;
+pub mod validate;
 
 use crate::config;
 
@@ -35,6 +36,46 @@ pub struct NewTask {
     /// **不进界面、不写日志**：它等于用户的登录态。
     #[serde(default)]
     pub cookie: String,
+    /// `Content-Disposition` 之外的校验和，格式 `类型=摘要`（如 `sha-256=abcd…`）。
+    /// 由 `validate::checksum_option` 校验后写进 aria2 的 `checksum` 选项。
+    #[serde(default)]
+    pub checksum: String,
+    /// HTTP Basic / Digest 鉴权用户名，写进 aria2 的 `http-user`。
+    #[serde(default)]
+    pub http_user: String,
+    /// HTTP Basic / Digest 鉴权密码，写进 aria2 的 `http-passwd`。
+    /// **不写日志、不回显**：和 Cookie 一样按敏感值处理。
+    #[serde(default)]
+    pub http_passwd: String,
+}
+
+/// 「种子任务」页提交的一条。
+///
+/// `.torrent` 文件由前端 `<input type="file">` 读成 base64 传进来：Rust 侧不碰
+/// 文件对话框、也不需要 `dialog` 插件与文件权限（无边框窗口的 WebView2 里，
+/// 原生文件选择器由前端触发最省事，也不破坏自绘 UI 规范）。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct NewTorrent {
+    /// `.torrent` 文件内容的 base64。
+    pub torrent_base64: String,
+    /// 只用于界面显示与错误回显；aria2 用种子里的名字，不接受 `out` 覆盖。
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub dir: String,
+    #[serde(default)]
+    pub max_speed_kb: u32,
+}
+
+/// 种子任务入队。与 `add_task` 分开：校验和、HTTP 鉴权、UA / Referer 对 BT
+/// 没有意义，不往里塞；`checksum` 只作用于 HTTP/FTP 下载。
+pub fn add_torrent(cfg: &config::Config, t: &NewTorrent) -> Result<rpc::TaskStatus, String> {
+    if !cfg.enable_download {
+        return Err("下载工具还没启用：右键托盘 → 设置… → 下载 → 打开开关".into());
+    }
+    let st = engine::add_torrent(cfg, t)?;
+    pump::notify();
+    Ok(st)
 }
 
 /// 新建任务窗口提交：目录、文件名、单任务限速与连接数都可以覆盖全局设置。

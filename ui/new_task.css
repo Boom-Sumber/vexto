@@ -134,13 +134,22 @@
 .adv { margin-top: var(--sp-1); }
 .adv .field:first-child { margin-top: var(--sp-3); }
 
-/* ── 种子页签占位 ─────────────────────────────────────────────────────── */
+/* ── 种子页签 ─────────────────────────────────────────────────────────── */
 
-.torrent-empty {
-  margin-top: 40px;
-  text-align: center;
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
+/* 只读的文件名框：值由脚本写入，鼠标点击不产生输入光标 */
+#torrentName[readonly] {
+  color: var(--text-secondary);
+  cursor: default;
+}
+#torrentName[readonly]:focus {
+  box-shadow: none;
+  border-color: var(--border-default);
+  background-color: var(--bg-input);
+}
+
+/* 种子页签的说明文字：与表单 label 右边缘对齐（.hint-row 已有 86px 缩进） */
+#paneTorrent .hint-row {
+  margin-top: var(--sp-2);
   line-height: var(--lh-loose);
 }
 

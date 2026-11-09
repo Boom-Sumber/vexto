@@ -297,6 +297,12 @@ pub fn request_body(method: &str, secret: &str, extra: Vec<Value>) -> Value {
     })
 }
 
+/// `aria2.addTorrent` 的 extra 参数顺序：`(torrent, uris, options)`。
+/// 抽成纯函数是为了让单测能锁住顺序——写反了 aria2 会报一堆看不懂的参数错误。
+fn add_torrent_params(torrent_base64: &str, options: Value) -> Vec<Value> {
+    vec![json!(torrent_base64), json!([]), options]
+}
+
 /// 一个 RPC 端点。每次 spawn 后新建一个（端口和 secret 都会变）。
 pub struct Rpc {
     url: String,
@@ -354,6 +360,21 @@ impl Rpc {
         r.as_str()
             .map(str::to_string)
             .ok_or_else(|| "aria2.addUri 没返回 gid".to_string())
+    }
+
+    /// 加一个种子任务，返回 gid。
+    ///
+    /// `aria2.addTorrent` 的签名是 `(secret, torrent, uris, options)`：`torrent`
+    /// 是 `.torrent` 文件内容的 **base64 字符串**（不是路径），`uris` 是附加的
+    /// HTTP/FTP 源（本项目不用，传空数组）。token 由 `request_body` 统一放到首位。
+    pub fn add_torrent(&self, torrent_base64: &str, options: Value) -> Result<String, String> {
+        let r = self.call(
+            "aria2.addTorrent",
+            add_torrent_params(torrent_base64, options),
+        )?;
+        r.as_str()
+            .map(str::to_string)
+            .ok_or_else(|| "aria2.addTorrent 没返回 gid".to_string())
     }
 
     /// 查单任务进度。
@@ -463,6 +484,22 @@ mod tests {
         assert_eq!(body["method"], "aria2.addUri");
         assert_eq!(body["params"][0], "token:s3cr3t");
         assert_eq!(body["params"][1][0], "https://x/f.zip");
+    }
+
+    /// `addTorrent` 的参数顺序：(token, base64, uris, options)。
+    #[test]
+    fn add_torrent_params_keep_rpc_signature() {
+        let opts = json!({ "dir": "D:\\Downloads" });
+        let body = request_body(
+            "aria2.addTorrent",
+            "s3cr3t",
+            add_torrent_params("ZDg6YW5ub3VuY2Vl", opts.clone()),
+        );
+        assert_eq!(body["params"][0], "token:s3cr3t");
+        assert_eq!(body["params"][1], "ZDg6YW5ub3VuY2Vl");
+        assert_eq!(body["params"][2], json!([]));
+        assert_eq!(body["params"][3], opts);
+        assert_eq!(body["params"].as_array().unwrap().len(), 4);
     }
 
     /// 错误响应必须转成中文，而不是把 `{"error":...}` 原样抛给用户。

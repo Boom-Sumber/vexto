@@ -1086,6 +1086,17 @@ fn download_add(tasks: Vec<crate::download::NewTask>) -> DownloadAddOut {
     DownloadAddOut { ok, failed }
 }
 
+/// 种子任务页提交：一次一个 `.torrent`。返回 gid，失败时把原因交给前端显示。
+///
+/// 不做「批量种子」：种子文件是用户从磁盘逐个挑的，没有「一次贴多行」的场景；
+/// 失败也不该像 `download_add` 那样把链接回填，直接报错让用户重选就行。
+#[tauri::command]
+fn download_add_torrent(task: crate::download::NewTorrent) -> Result<String, String> {
+    let cfg = config::load();
+    let st = crate::download::add_torrent(&cfg, &task)?;
+    Ok(st.gid)
+}
+
 /// 新建页拿默认下载目录（显示成输入框的灰色占位符）。
 #[tauri::command]
 fn download_default_dir() -> String {
@@ -1334,8 +1345,9 @@ fn main() {
             download_remove,
             download_clear_finished,
             download_open_dir,
-            // 新建下载任务（会话 16）
+            // 新建下载任务（会话 16 / 会话 24 种子与高级选项）
             download_add,
+            download_add_torrent,
             download_default_dir,
             download_probe,
             disk_free,
