@@ -871,6 +871,65 @@ fn open_settings_cmd(app: AppHandle) {
     open_settings(&app);
 }
 
+// ---------- 命令：下载主窗口（S3b 后端） ----------
+
+/// 前端初始化时主动拉一次快照；之后靠 pump 的 `tasks:snapshot` 事件增量更新。
+/// 没有 aria2c 时返回**空快照**而不是报错：「当前没任务」是正常状态。
+#[tauri::command]
+fn download_snapshot() -> Result<crate::download::rpc::Snapshot, String> {
+    match crate::download::engine::rpc_handle() {
+        Some(r) => r.snapshot(),
+        None => Ok(crate::download::rpc::Snapshot::default()),
+    }
+}
+
+/// 写操作统一入口：拿只读句柄 → 执行 → 唤醒 pump 立刻刷新一次。
+fn with_download_rpc<T>(
+    f: impl FnOnce(&crate::download::rpc::Rpc) -> Result<T, String>,
+) -> Result<T, String> {
+    let r = crate::download::engine::rpc_handle()
+        .ok_or_else(|| "下载引擎还没启动（当前没有任务）".to_string())?;
+    let out = f(&r)?;
+    crate::download::pump::notify();
+    Ok(out)
+}
+
+#[tauri::command]
+fn download_pause(gid: String) -> Result<(), String> {
+    with_download_rpc(|r| r.pause(&gid))
+}
+
+#[tauri::command]
+fn download_unpause(gid: String) -> Result<(), String> {
+    with_download_rpc(|r| r.unpause(&gid))
+}
+
+#[tauri::command]
+fn download_remove(gid: String) -> Result<(), String> {
+    with_download_rpc(|r| r.remove(&gid))
+}
+
+#[tauri::command]
+fn download_clear_finished() -> Result<(), String> {
+    with_download_rpc(|r| r.purge())
+}
+
+/// 打开任务的下载目录。`06` §6.4.2 第 8 条还要求「选中文件」，
+/// 需要 `TaskRow` 带上 `files[0].path`，会话 14 与主窗口 UI 一起补。
+#[tauri::command]
+fn download_open_dir(gid: String) -> Result<(), String> {
+    let dir = crate::download::engine::rpc_handle()
+        .and_then(|r| r.snapshot().ok())
+        .and_then(|s| s.tasks.into_iter().find(|t| t.gid == gid).map(|t| t.dir))
+        .filter(|d| !d.trim().is_empty())
+        .ok_or_else(|| "找不到这个任务的下载目录".to_string())?;
+    std::process::Command::new("explorer.exe")
+        .arg(&dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开目录失败：{e}"))
+}
+
 // ---------- 入口 ----------
 
 fn main() {
@@ -899,7 +958,14 @@ fn main() {
             start_dragging,
             focus_for_typing,
             open_settings_from_popup,
-            open_settings_cmd
+            open_settings_cmd,
+            // 下载主窗口（S3b 后端）
+            download_snapshot,
+            download_pause,
+            download_unpause,
+            download_remove,
+            download_clear_finished,
+            download_open_dir
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -927,6 +993,24 @@ fn main() {
                 }
             }
 
+            // S3b：轮询泵只发事件、不建窗。主窗口 UI 在会话 14 接上，
+            // 在那之前 is_visible() 恒为 false，泵按后台 2s 间隔跑。
+            {
+                let for_emit = handle.clone();
+                let for_visible = handle.clone();
+                download::pump::start(
+                    move |snap| {
+                        let _ = for_emit.emit("tasks:snapshot", snap);
+                    },
+                    move || {
+                        for_visible
+                            .get_webview_window("main")
+                            .and_then(|w| w.is_visible().ok())
+                            .unwrap_or(false)
+                    },
+                );
+            }
+
             dlog::dlog("setup: 托盘已创建");
             Ok(())
         })
@@ -947,8 +1031,12 @@ fn main() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if !QUITTING.load(Ordering::SeqCst) {
                     api.prevent_exit();
-                } else if let Err(e) = download::engine::shutdown_all() {
-                    dlog::dlog(&format!("exit: 关闭 aria2c 失败：{e}"));
+                } else {
+                    // 先停泵，避免它拿着已经 shutdown 的 RPC 继续发快照。
+                    download::pump::stop();
+                    if let Err(e) = download::engine::shutdown_all() {
+                        dlog::dlog(&format!("exit: 关闭 aria2c 失败：{e}"));
+                    }
                 }
             }
             _ => {}

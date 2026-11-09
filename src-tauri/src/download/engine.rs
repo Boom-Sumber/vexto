@@ -1,15 +1,17 @@
-//! aria2c sidecar 的生命周期（S3a）。
+//! aria2c sidecar 的生命周期（S3a 起，S3b 补空闲退出）。
 //!
-//! 状态机：未运行 →（第一个任务）spawn → 运行中 →（程序退出 / 关掉工具）
-//! `aria2.shutdown` → 等进程退出 → 句柄 `kill()` 兜底 → 未运行。
-//! **空闲 60 秒自动退出属于 S3b**，本阶段只在退出时主动关闭。
+//! 状态机：未运行 →（第一个任务）spawn → 运行中 →
+//! （程序退出 / 关掉工具 / 队列空且空闲 60 秒）→ `aria2.shutdown` →
+//! 等进程退出 → 句柄 `kill()` 兜底 → 未运行。
+//! 空闲判定与关停动作在 `pump.rs`，这里只提供只读句柄 `rpc_handle()`。
 //!
 //! 三条不可动摇的约定：
 //! - 杀进程只用 spawn 时拿到的 `Child` 句柄，绝不按 PID 反查（03 §3.5.5）。
 //! - 长参数（下载目录、session 路径）写进临时 conf 文件，命令行只传一个短的
 //!   `--conf-path`（03 §3.5.4）。**不传 `--no-conf`**：本机实测它会把
 //!   `--conf-path` 一起废掉，详见 `licenses/aria2-VERSION.txt`。
-//! - RPC 只监听回环（`--rpc-listen-all=false`），不弹 Windows 防火墙。
+//! - RPC 只监听回环（`--rpc-listen-all=false`）。这个参数**管不了 BT / DHT**；
+//!   对外监听与防火墙弹窗的实测结论见 `licenses/aria2-VERSION.txt`。
 //!
 //! 状态放在静态 `OnceLock<Mutex<..>>` 而不是 `app.manage()`：`Tool::status_line()`
 //! 与 `Tool::set_enabled()` 拿不到 `AppHandle`，用 Tauri state 会让设置页读不到状态。
@@ -94,6 +96,23 @@ pub fn shutdown_all() -> Result<(), String> {
     g.message = "已停止（aria2c 已退出）".to_string();
     dlog::dlog("engine: aria2c 已退出，无孤儿进程");
     Ok(())
+}
+
+/// 给轮询泵用的**只读**句柄：绝不在这里偷偷 spawn。
+/// 进程已经退出时返回 None，让 pump 等下一次唤醒即可。
+/// 每次调用会新建一个 `reqwest::blocking::Client`（本地回环，开销可忽略）；
+/// 端口与 secret 从全局状态读，不与 pump 共享可变引用。
+pub fn rpc_handle() -> Option<crate::download::rpc::Rpc> {
+    let mut g = lock();
+    let alive = g
+        .child
+        .as_mut()
+        .is_some_and(|ch| matches!(ch.try_wait(), Ok(None)));
+    if alive {
+        crate::download::rpc::Rpc::new(g.port, &g.secret).ok()
+    } else {
+        None
+    }
 }
 
 /// 确保有一个活着的 aria2c，返回可直接用的 RPC 端点。
@@ -381,6 +400,15 @@ mod tests {
             let v = r.get_version()?;
             assert!(!v.is_empty(), "getVersion 不能返回空版本");
             let gid = r.add_uri(&uri)?;
+
+            // S3b：一次 system.multicall 拿全量快照，刚入队的 gid 必须在里面。
+            let snap = r.snapshot()?;
+            assert!(
+                snap.tasks.iter().any(|t| t.gid == gid),
+                "multicall 快照里应该有刚入队的任务，实际 {} 条",
+                snap.tasks.len()
+            );
+
             let mut st = r.tell_status(&gid)?;
             for _ in 0..50 {
                 if st.status == "complete" {
@@ -389,6 +417,22 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(100));
                 st = r.tell_status(&gid)?;
             }
+
+            // 完成后应出现在 tellStopped 桶里，purge 之后则彻底消失。
+            let after = r.snapshot()?;
+            assert!(
+                after
+                    .tasks
+                    .iter()
+                    .any(|t| t.gid == gid && t.status == "complete"),
+                "完成的任务应该出现在 stopped 桶"
+            );
+            r.purge()?;
+            let cleared = r.snapshot()?;
+            assert!(
+                !cleared.tasks.iter().any(|t| t.gid == gid),
+                "purgeDownloadResult 之后快照里不该再有这条记录"
+            );
             Ok::<_, String>(st)
         })();
 
@@ -405,7 +449,7 @@ mod tests {
         assert_eq!(st.total_length, BODY.len() as u64);
         assert_eq!(st.completed_length, BODY.len() as u64);
         eprintln!(
-            "sidecar 真实闭环通过：gid={} status={} {}/{} B，shutdown 后进程已退出",
+            "sidecar 真实闭环通过：gid={} status={} {}/{} B；multicall 快照 / purge 已验证，shutdown 后进程已退出",
             st.gid, st.status, st.completed_length, st.total_length
         );
     }

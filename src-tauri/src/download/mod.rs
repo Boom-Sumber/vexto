@@ -1,12 +1,14 @@
-//! 下载模块（S3a）：aria2c sidecar + JSON-RPC + 剪贴板入队。
+//! 下载模块（S3a 后端闭环 + S3b 轮询泵）。
 //!
-//! 本阶段只做「后端最小闭环」：能起进程、能加任务、能查进度、退出不留孤儿。
-//! 主窗口任务列表、暂停/删除、轮询 pump、空闲自动退出都在 S3b（见 stages/S3-下载引擎.md §S3.1）。
+//! S3b 本轮已做：`pump.rs` 的 multicall 快照 / 500 ms·2 s 轮询 / 队列空且空闲
+//! 60 秒退出，`rpc.rs` 的批量快照与四个操作。主窗口 UI、托盘入口、
+//! `06` §6.4.2 的 8 条手工验收留会话 14（按 `05` §5.6 拆分）。
 //!
 //! 这个模块**不依赖 tauri**：状态用静态量、路径从自身 exe 推导，这样
 //! `Tool::status_line()` / `Tool::set_enabled()` 没有 AppHandle 也能读。
 
 pub mod engine;
+pub mod pump;
 pub mod rpc;
 
 use crate::{config, dlog};
@@ -33,7 +35,11 @@ pub fn looks_like_url(s: &str) -> bool {
 /// 分区那一行就是用户能看到反馈的地方；主窗口通知留到 S3b。
 pub fn add_from_clipboard() -> Result<rpc::TaskStatus, String> {
     match add_from_clipboard_inner() {
-        Ok(st) => Ok(st),
+        Ok(st) => {
+            // 状态变了，立刻唤醒 pump 重取一次快照，不等下一个轮询周期。
+            pump::notify();
+            Ok(st)
+        }
         Err(e) => {
             dlog::dlog(&format!("download: {e}"));
             engine::set_message(e.clone());
