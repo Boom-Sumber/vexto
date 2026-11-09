@@ -101,6 +101,16 @@ pub struct Config {
     /// 下载完成 / 失败时弹系统通知。
     #[serde(default = "d_true")]
     pub notify_download: bool,
+    /// 代理模式：`direct` 直连 / `system` 跟随系统 / `manual` 手动。
+    ///
+    /// aria2 自己不读 Windows 的 WinINET 设置，所以「跟随系统」必须由我们读
+    /// 注册表再翻译成 `all-proxy`（见 `download/proxy.rs`）。
+    #[serde(default = "d_proxy_mode")]
+    pub proxy_mode: String,
+    /// `manual` 模式下用的地址，例如 `http://127.0.0.1:7890`、`socks5://127.0.0.1:1080`。
+    /// 允许带 `user:pass@`，写进 conf 时会拆成 aria2 的独立选项。
+    #[serde(default)]
+    pub proxy_url: String,
 
     // ---- 浏览器插件接管（兼容 Rayburst-Connect v3）----
     /// 是否在本机启动 HTTP 接口，让浏览器扩展把下载交过来。
@@ -164,6 +174,10 @@ fn d_popup_timeout() -> u64 {
 fn d_max_concurrent() -> u32 {
     5
 }
+/// 代理默认直连：没有代理时设成别的会让所有下载都连不上。
+fn d_proxy_mode() -> String {
+    "direct".to_string()
+}
 /// Rayburst-Connect 的默认端口；用户在扩展 Options 页改过的话这里也要改。
 fn d_bridge_port() -> u16 {
     29110
@@ -202,6 +216,8 @@ impl Default for Config {
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
             notify_download: true,
+            proxy_mode: d_proxy_mode(),
+            proxy_url: String::new(),
             extension_bridge_enabled: true,
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),

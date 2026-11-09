@@ -352,13 +352,14 @@ fn supported_url(url: &str) -> bool {
 }
 
 /// 扩展给的文件名可能是完整路径或带非法字符，这里只留一个安全的基名。
+/// 扩展交过来的文件名只取基名，清洗规则与下载引擎**共用一份**
+/// （`naming::sanitize`：非法字符、保留名、长度上限都在那里）。
+///
+/// 不能各写一套：这里松一点、那边严一点，会出现「预填显示 `CON`、真正入队
+/// 变成 `_CON`」这种对不上的现象。
 fn sanitize_filename(raw: &str) -> String {
     let base = raw.rsplit(['/', '\\']).next().unwrap_or(raw);
-    let cleaned: String = base
-        .chars()
-        .filter(|c| !c.is_control() && !matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
-        .collect();
-    cleaned.trim().chars().take(180).collect()
+    crate::download::naming::sanitize(base)
 }
 
 fn prefill_from_add(body: &[u8]) -> Result<crate::popup::NewTaskPrefill, String> {
@@ -588,7 +589,9 @@ mod tests {
     fn filename_is_reduced_to_a_safe_basename() {
         assert_eq!(sanitize_filename(r"C:\tmp\a.zip"), "a.zip");
         assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
-        assert_eq!(sanitize_filename("a:b?.zip"), "ab.zip");
+        // 与下载引擎共用 naming::sanitize：非法字符**替换成 `_`** 而不是删掉，
+        // 否则 `a:b` 会粘成 `ab`，用户认不出原文件名
+        assert_eq!(sanitize_filename("a:b?.zip"), "a_b_.zip");
         assert_eq!(sanitize_filename("   "), "");
     }
 

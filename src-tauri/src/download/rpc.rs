@@ -397,6 +397,14 @@ impl Rpc {
         self.call("aria2.purgeDownloadResult", vec![]).map(|_| ())
     }
 
+    /// 运行时改全局选项（目前只用来换代理）。
+    ///
+    /// `all-proxy` 是 aria2 明确支持热改的选项之一，所以改代理不必重启 sidecar，
+    /// 也就不会打断正在下的任务。传空串表示清空该选项。
+    pub fn change_global_option(&self, opt: Value) -> Result<(), String> {
+        self.call("aria2.changeGlobalOption", vec![opt]).map(|_| ())
+    }
+
     /// 优雅退出：让 aria2 把 session 写完。调用方仍需等进程退出并用句柄兜底 kill。
     pub fn shutdown(&self) -> Result<(), String> {
         self.call("aria2.shutdown", vec![]).map(|_| ())

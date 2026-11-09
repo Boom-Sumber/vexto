@@ -643,6 +643,12 @@ fn save_tool_config(
         extension_bridge::restart(app.clone());
     }
 
+    // 8) 代理变了：`all-proxy` 是 aria2 支持热改的选项，直接推给运行中的 engine。
+    //    不用重启 sidecar —— 重启会打断正在下载的任务（conf 里没有 input-file）。
+    if ["proxy_mode", "proxy_url"].iter().any(|k| patch.contains_key(*k)) {
+        crate::download::proxy::apply_runtime(&cfg);
+    }
+
     SaveOut {
         ok: true,
         message: "已保存".to_string(),
@@ -1125,27 +1131,14 @@ struct ProbeOut {
 ///
 /// 优先 `filename*=UTF-8''%E4%B8%AD.zip`（RFC 5987），其次 `filename="a.zip"`。
 fn content_disposition_name(headers: &reqwest::header::HeaderMap) -> Option<String> {
-    let raw = headers
-        .get(reqwest::header::CONTENT_DISPOSITION)?
-        .to_str()
-        .ok()?;
-    for part in raw.split(';') {
-        let part = part.trim();
-        if let Some(v) = part.strip_prefix("filename*=") {
-            let v = v.trim().trim_matches('"');
-            if let Some((_, enc)) = v.split_once("''") {
-                return Some(crate::download::naming::percent_decode(enc));
-            }
-            return Some(v.to_string());
-        }
-        if let Some(v) = part.strip_prefix("filename=") {
-            let v = v.trim().trim_matches('"');
-            if !v.is_empty() {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
+    let raw = headers.get(reqwest::header::CONTENT_DISPOSITION)?;
+    // 头里带未转义的非 ASCII 字节时 `to_str()` 会整条失败（少数老站点会这样），
+    // 宽松解码兜住，再交给 naming 统一解析 + 清洗。
+    let text = match raw.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => String::from_utf8_lossy(raw.as_bytes()).to_string(),
+    };
+    crate::download::naming::from_content_disposition(&text)
 }
 
 /// `bytes 0-0/12345` → `12345`（`*` 表示总长未知）。

@@ -257,6 +257,9 @@ fn spawn(
         .stderr(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
+    // 继承来的 http_proxy / no_proxy 会覆盖我们写进 conf 的 all-proxy（实测过），
+    // 所以子进程一律清掉这些变量，让设置页的选择真正说了算。
+    crate::download::proxy::clear_env(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 aria2c 失败：{e}"))?;
@@ -409,8 +412,14 @@ fn write_conf(cfg: &config::Config) -> Result<PathBuf, String> {
     // 算好、通过 `out` 传下去（aria2 自己只会生成 `a.1.zip`）。这里开 true 只是
     // 兜底：万一从链接里推断不出文件名（例如 `https://host/` 靠 Content-Disposition
     // 才知道名字），也不会像 false 那样直接报「文件已存在」而失败。
+    //
+    // 代理：aria2 不读 Windows 的系统代理，必须显式写进 conf。直连时这里为空。
+    let proxy: String = crate::download::proxy::conf_lines(cfg)
+        .into_iter()
+        .map(|l| format!("{l}\n"))
+        .collect();
     let content = format!(
-        "dir={dir}\ncontinue=true\nauto-file-renaming=true\nsave-session={}\nsave-session-interval=60\nmax-overall-download-limit={speed}\nmax-concurrent-downloads={concurrent}\n",
+        "dir={dir}\ncontinue=true\nauto-file-renaming=true\nsave-session={}\nsave-session-interval=60\nmax-overall-download-limit={speed}\nmax-concurrent-downloads={concurrent}\n{proxy}",
         session.display()
     );
     std::fs::write(&p, content).map_err(|e| format!("写 aria2 配置文件失败：{e}"))?;

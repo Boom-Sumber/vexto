@@ -52,6 +52,11 @@ windows = { version = "0.62", features = [
     "Win32_UI_Shell",
     # GetDiskFreeSpaceExW：新建任务页显示「可用 153.3 GB」。
     "Win32_Storage_FileSystem",
+    # RegGetValueW：读 WinINET 的系统代理设置（代理模式选「跟随系统」时用）。
+    "Win32_System_Registry",
+    # MultiByteToWideChar：文件名不是 UTF-8 时按系统 ANSI 代码页（简中为 936）
+    # 兜底解码，否则中文站点给的百分号文件名会变成一串 U+FFFD。
+    "Win32_Globalization",
 ] }
 
 # release profile 在 workspace 根 Cargo.toml —— 写在成员包里不生效。
