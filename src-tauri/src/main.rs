@@ -944,10 +944,13 @@ fn open_settings_cmd(app: AppHandle) {
 /// 没有 aria2c 时返回**空快照**而不是报错：「当前没任务」是正常状态。
 #[tauri::command]
 fn download_snapshot() -> Result<crate::download::rpc::Snapshot, String> {
-    match crate::download::engine::rpc_handle() {
-        Some(r) => r.snapshot(),
-        None => Ok(crate::download::rpc::Snapshot::default()),
-    }
+    let mut snap = match crate::download::engine::rpc_handle() {
+        Some(r) => r.snapshot()?,
+        None => crate::download::rpc::Snapshot::default(),
+    };
+    // 把本地历史补进来：引擎空闲退出后，刚打开的窗口也要能看到下过的任务。
+    crate::download::history::merge(&mut snap);
+    Ok(snap)
 }
 
 /// 写操作统一入口：拿只读句柄 → 执行 → 唤醒 pump 立刻刷新一次。
@@ -975,7 +978,9 @@ fn download_unpause(gid: String) -> Result<(), String> {
 /// aria2 对这类记录调 `remove` 会报 GID not found，必须分流。
 #[tauri::command]
 fn download_remove(gid: String) -> Result<(), String> {
-    with_download_rpc(|r| {
+    // 历史记录先删：它是本地数据，删了就不会再被 merge 补回来。
+    let from_history = crate::download::history::remove(&gid);
+    let live = with_download_rpc(|r| {
         let status = r
             .snapshot()?
             .tasks
@@ -987,12 +992,28 @@ fn download_remove(gid: String) -> Result<(), String> {
             "aria2.remove" => r.remove(&gid),
             _ => r.remove_result(&gid),
         }
-    })
+    });
+    match live {
+        Ok(()) => Ok(()),
+        // 只剩历史记录（引擎已退出或 gid 已不在 aria2）时，删历史就算成功。
+        Err(_) if from_history => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 #[tauri::command]
 fn download_clear_finished() -> Result<(), String> {
-    with_download_rpc(|r| r.purge())
+    // 历史先清：即使 aria2 已经退出，按钮也应该能把列表清空。
+    crate::download::history::clear_finished();
+    match with_download_rpc(|r| r.purge()) {
+        Ok(()) => Ok(()),
+        // 引擎没在跑（只剩历史）时，清历史就是全部工作。
+        Err(_) if crate::download::engine::rpc_handle().is_none() => {
+            crate::download::pump::notify();
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// `06` §6.4.2 第 8 条：打开所在目录**并选中文件**。
@@ -1003,6 +1024,8 @@ fn download_open_dir(gid: String) -> Result<(), String> {
     let task = crate::download::engine::rpc_handle()
         .and_then(|r| r.snapshot().ok())
         .and_then(|s| s.tasks.into_iter().find(|t| t.gid == gid))
+        // 历史记录也能「打开目录」：引擎退出后这是唯一能定位到文件的操作。
+        .or_else(|| crate::download::history::find(&gid))
         .ok_or_else(|| "找不到这个任务".to_string())?;
     // aria2 的 files[0].path 用正斜杠（C:/Users/...）。explorer.exe 的 /select,
     // 参数遇到正斜杠会把路径当开关解析，会话 15 本机 A/B 实测：正斜杠打开的是
@@ -1286,6 +1309,7 @@ fn window_action(window: tauri::WebviewWindow, action: String) -> Result<(), Str
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             // 设置页（schema 驱动，加工具不用动这里）
             list_tools,
@@ -1361,6 +1385,7 @@ fn main() {
             {
                 let for_emit = handle.clone();
                 let for_visible = handle.clone();
+                let for_rows = handle.clone();
                 download::pump::start(
                     move |snap| {
                         // 不能 `let _ =`：事件发不出去时主窗口会永远停在第一帧，
@@ -1374,6 +1399,12 @@ fn main() {
                             .get_webview_window(popup::MAIN_LABEL)
                             .and_then(|w| w.is_visible().ok())
                             .unwrap_or(false)
+                    },
+                    move |rows| {
+                        // 历史落盘 + 系统通知都只在「终态变化」时真正动作，
+                        // 500 ms 一轮不会变成 500 ms 一次磁盘写。
+                        download::history::observe(rows);
+                        download::notify::observe(&for_rows, rows);
                     },
                 );
             }

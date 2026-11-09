@@ -62,6 +62,7 @@ impl Tool for Download {
                 Field::dir("download_dir", "下载目录"),
                 Field::number_unit("max_speed_kb", "全局限速", 0, 102_400, "KB/s"),
                 Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
+                Field::switch("notify_download", "下载完成通知"),
                 Field::hotkey("hotkey_download", "打开新建下载任务"),
                 // 浏览器插件接管：端口 / 密钥必须与扩展 Options 页一致。
                 Field::switch("extension_bridge_enabled", "浏览器插件接管"),

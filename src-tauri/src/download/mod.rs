@@ -1,10 +1,13 @@
-//! 下载模块（S3a 后端闭环 + S3b 轮询泵 + S3c 新建任务与重名递增）。
+//! 下载模块（S3a 后端闭环 + S3b 轮询泵 + S3c 新建任务与重名递增 + S3.5 历史与通知）。
 //!
-//! 这个模块**不依赖 tauri**：状态用静态量、路径从自身 exe 推导，这样
+//! 除 `notify` 外**不依赖 tauri**：状态用静态量、路径从自身 exe 推导，这样
 //! `Tool::status_line()` / `Tool::set_enabled()` 没有 AppHandle 也能读。
+//! `notify` 必须拿 `AppHandle` 才能发系统通知，是唯一的例外。
 
 pub mod engine;
+pub mod history;
 pub mod naming;
+pub mod notify;
 pub mod pump;
 pub mod rpc;
 

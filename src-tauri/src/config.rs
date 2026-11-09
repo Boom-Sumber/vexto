@@ -98,6 +98,9 @@ pub struct Config {
     /// 同时下载数，界面限 1–16，后端再 clamp 一次防止手改配置越界。
     #[serde(default = "d_max_concurrent")]
     pub max_concurrent: u32,
+    /// 下载完成 / 失败时弹系统通知。
+    #[serde(default = "d_true")]
+    pub notify_download: bool,
 
     // ---- 浏览器插件接管（兼容 Rayburst-Connect v3）----
     /// 是否在本机启动 HTTP 接口，让浏览器扩展把下载交过来。
@@ -198,6 +201,7 @@ impl Default for Config {
             receive_dir: String::new(),
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
+            notify_download: true,
             extension_bridge_enabled: true,
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),

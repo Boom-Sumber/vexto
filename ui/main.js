@@ -158,7 +158,9 @@ function updateRow(row, t) {
   row.querySelector(".bar > i").style.width = p + "%";
 
   const meta = row.querySelector(".meta");
-  const parts = [deleted ? "文件已删除" : statusText(t.status)];
+  const parts = [];
+  if (t.historical) parts.push("历史记录");
+  parts.push(deleted ? "文件已删除" : statusText(t.status));
   if (t.status === "active") {
     parts.push(fmtSpeed(t.download_speed), "剩余 " + fmtEta(t.eta_seconds));
   }

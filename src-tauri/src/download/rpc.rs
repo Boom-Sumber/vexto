@@ -48,6 +48,10 @@ pub struct TaskRow {
     /// 只在 `status == "complete"` 时有意义，由 `mark_missing()` 填。
     /// 前端据此把整行变灰 + 文件名加删除线。
     pub file_missing: bool,
+    /// 原始下载地址（`files[0].uris[0].uri`）。历史记录落盘时要存它。
+    pub url: String,
+    /// 这一行来自本地历史，而不是 aria2 当前任务。前端据此在 meta 里标「历史记录」。
+    pub historical: bool,
     pub error_message: Option<String>,
 }
 
@@ -161,6 +165,12 @@ pub fn parse_task_row(v: &Value) -> Option<TaskRow> {
             .to_string(),
         // 解析阶段不碰文件系统（纯函数、单测不依赖磁盘），由 mark_missing 后填。
         file_missing: false,
+        url: v
+            .pointer("/files/0/uris/0/uri")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        historical: false,
         error_message: v
             .get("errorMessage")
             .and_then(Value::as_str)
@@ -555,6 +565,8 @@ mod tests {
             dir: "/dl".into(),
             file_path: path.into(),
             file_missing: false,
+            url: String::new(),
+            historical: false,
             error_message: None,
         };
         let mut snap = Snapshot {

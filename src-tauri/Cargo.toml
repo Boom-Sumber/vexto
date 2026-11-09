@@ -16,6 +16,10 @@ serde_json = "1"
 # 规格由 src/hotkey.rs 的 validate_hotkey() 守（见 ADR-018）。
 tauri-plugin-global-shortcut = "2"
 
+# 下载完成 / 失败的系统通知（S3.5）。用官方插件而不是手写 Win32 Toast：
+# 后者要处理 COM 激活、快捷方式与 AUMID，代码量远大于一个依赖。
+tauri-plugin-notification = "2"
+
 # 百度翻译（S1b 用）。必须 native-tls：rustls 会拉 aws-lc-sys，要 CMake/NASM，
 # 本机编不过（09-MVP-BASELINE §9.6 坑 1）。
 reqwest = { version = "0.13", default-features = false, features = [

@@ -9,7 +9,7 @@
 //! - 一次 `system.multicall` 拿全部，不要一个任务发一次请求。
 
 use crate::dlog;
-use crate::download::{engine, rpc};
+use crate::download::{engine, history, rpc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -83,16 +83,17 @@ pub fn idle_expired(since: Instant, now: Instant) -> bool {
 }
 
 /// 启动一次。重复调用不会重复起线程（设置页开关会反复触发重注册）。
-pub fn start<F, V>(emit: F, is_visible: V)
+pub fn start<F, V, O>(emit: F, is_visible: V, on_rows: O)
 where
     F: Fn(rpc::Snapshot) + Send + 'static,
     V: Fn() -> bool + Send + 'static,
+    O: Fn(&[rpc::TaskRow]) + Send + 'static,
 {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
     RUNNING.store(true, Ordering::SeqCst);
-    std::thread::spawn(move || run(emit, is_visible));
+    std::thread::spawn(move || run(emit, is_visible, on_rows));
 }
 
 /// 程序退出时停泵。不 join：退出路径上等一个正在做 HTTP 的线程没有意义，
@@ -103,10 +104,11 @@ pub fn stop() {
     notify();
 }
 
-fn run<F, V>(emit: F, is_visible: V)
+fn run<F, V, O>(emit: F, is_visible: V, on_rows: O)
 where
     F: Fn(rpc::Snapshot),
     V: Fn() -> bool,
+    O: Fn(&[rpc::TaskRow]),
 {
     let mut idle_since: Option<Instant> = None;
     while RUNNING.load(Ordering::SeqCst) {
@@ -122,11 +124,16 @@ where
         };
         match handle.snapshot() {
             Ok(snap) => {
+                // 先让历史与通知看到**实时**任务（不含历史条目），
+                // 再把历史补进快照推给前端。顺序反了会把历史当成新任务重复记录。
+                on_rows(&snap.tasks);
                 if let Ok(mut g) = LAST.lock() {
                     *g = Some(snap.clone());
                 }
                 let pending = has_pending(&snap.tasks);
-                emit(snap);
+                let mut ui = snap;
+                history::merge(&mut ui);
+                emit(ui);
                 if pending {
                     idle_since = None;
                 } else {
@@ -167,6 +174,8 @@ mod tests {
             dir: String::new(),
             file_path: String::new(),
             file_missing: false,
+            url: String::new(),
+            historical: false,
             error_message: None,
         }
     }
