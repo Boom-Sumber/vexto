@@ -63,7 +63,7 @@ impl Tool for Download {
                 Field::note("留空则用系统「下载」文件夹；工具的启用开关在本页顶部。"),
                 Field::note("限速与并发数是 aria2 的启动参数，改完要等下一次启动才生效。"),
                 Field::note("复制 http / https / ftp / magnet 链接或 .torrent 路径后按热键入队。"),
-                Field::note("BT 实网下载与防火墙弹窗在 S3a 未做实机验证。"),
+                Field::note("BT / magnet 任务会开启对外监听端口，首次运行 BT 时 Windows 可能询问网络权限；RPC 只监听 127.0.0.1。本机实测结论见 licenses/aria2-VERSION.txt。"),
             ],
         )]
     }

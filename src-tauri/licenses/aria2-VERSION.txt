@@ -9,7 +9,10 @@ aria2c.exe SHA-256: be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d
 本机实测（2026-11-09，S3a）:
 - aria2c --version 输出 "aria2 version 1.37.0"，mingw-w64 8.0.0 / gcc 10-win32，
   构建时间 2022-01-13，targeting x86_64-w64-mingw32。
-- --stop-with-process=<PID> 可用，但未列在 --help=all 中（隐藏参数）。
+- --stop-with-process=<PID> 可用，且是**正式参数**（见 --help=#all 的
+  "Stop application when process PID is not running"）。口径更正：--help=all 是
+  「打印名字含 all 的选项」的过滤语法，不是全量列表；全量要用 --help=#all。
+  S3a 曾据此误判为「隐藏参数」，「可用」的结论不变，错的只是推理口径。
   对照实验：不带该参数时进程常驻（timeout 5 秒杀掉，exit 124）；
   带该参数并指向不存在的 PID 时自行退出（exit 0），且无残留 aria2c 进程。
 - --no-conf 与 --conf-path 互斥：同时给出时 --no-conf 会让 conf 文件整体失效。
@@ -20,3 +23,33 @@ aria2c.exe SHA-256: be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d
       合规依据见 docs/07-LICENSING.md §7.3（mere aggregation）。
       src-tauri/binaries/*.exe 被 .gitignore 忽略，不进版本库；
       换机器时需手动放置同版本二进制，并用 SHA-256 核对。
+
+本机实测（2026-11-09，会话 12 / S3b 开工，防火墙弹窗根因）:
+- 方法: 用本文件记录的同一二进制，netstat -ano -p tcp / -p udp 按 PID 过滤；
+  所有 .torrent 与 HTTP 探针均为本地构造，tracker 指向 127.0.0.1:9，不连公网。
+- 纯启动（无任务，默认参数 / 关闭 DHT 两组结果相同）: 只有一条回环 RPC 监听
+  127.0.0.1:<port>，TCP 与 UDP 对外监听均为 0。
+  => 启动阶段不会因对外监听触发防火墙；会话 11 的弹窗是 Windows 对新 exe
+     首次运行的网络授权提示，不是启动时绑定 0.0.0.0 引起的。
+- 加入一个本地 .torrent 任务后:
+  * 默认参数: TCP 0.0.0.0:6972（BT 入站）+ UDP 0.0.0.0:6934（DHT）。
+  * --enable-dht=false --enable-dht6=false --enable-peer-exchange=false
+    --seed-time=0: UDP 对外监听消失，但 TCP 0.0.0.0:6999 仍在。
+    aria2 没有全局禁用 BT 的开关；--listen-port 取值范围 1024-65535，
+    不能设 0 来关闭监听。
+  * 再加 --interface=127.0.0.1: 对外 socket 全部归零，
+    BT 监听改绑 127.0.0.1:6939。
+- 但 --interface=127.0.0.1 会废掉 HTTP 下载: 目标是本机局域网 IP 上的
+  HTTP 探针（24 B），无该参数时下载成功 24 B，加该参数后产物 0 B。
+  => 该参数不可用，它是全局绑定，把出站请求也绑到了回环。
+- 防火墙现状: 本机已有两条针对本二进制的 Inbound / Block 规则
+  （会话 11 在安全中心弹窗点「取消」留下），对该路径的 exe 不会再弹窗；
+  代价是 BT 的入站连接被系统挡掉。
+- 决策（用户按门 3 选「保持 DHT、只写说明」）: 不修改 spawn / conf 参数。
+  理由: 关 DHT 消不掉 TCP 对外监听，却会削弱磁力链的 peer 发现能力；
+  --interface 能消监听但破坏 HTTP 下载。收益不完整，不付产品能力的代价。
+  遗留: 换机 / 新用户首次跑 BT 任务时仍可能出现一次防火墙询问。
+- 相关文档口径（均未擅自修改，按门 2 留待单独确认）:
+  docs/stages/S3-下载引擎.md §S3.4 注释「只监听回环，不弹防火墙」只对 RPC
+  成立（--rpc-listen-all=false 不管 BT / DHT）；§S3.10 坑 5 的
+  「不设 listen-port（走随机端口）」与本机 --help=#all 的默认值 6881-6999 不符。
