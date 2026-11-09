@@ -82,7 +82,9 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
 }
 
 /// 一个待注册的热键：给用户看的名字、组合键原文、按下时的回调。
-type Binding = (&'static str, String, Box<dyn Fn(&AppHandle) + Send + Sync>);
+/// `pub` 是给 `main.rs::register_hotkeys` 组装列表用的，省得两处各写一遍这个长类型
+/// （clippy::type_complexity 会报，且两份类型声明必然漂移）。
+pub type Binding = (&'static str, String, Box<dyn Fn(&AppHandle) + Send + Sync>);
 
 /// 一次性注册多个全局热键。返回给用户看的错误列表（空 = 全部成功）。
 ///

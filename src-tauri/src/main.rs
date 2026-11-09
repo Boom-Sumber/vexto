@@ -12,6 +12,7 @@
 mod capture;
 mod config;
 mod dlog;
+mod download;
 mod hotkey;
 mod lang;
 mod mem;
@@ -398,33 +399,48 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
     }
 }
 
-/// 哪些 key 是热键字段，需要格式校验 + （部分）重新注册。
-/// `hotkey_ocr` 与 `hotkey_download` 只存值不注册：功能分别在 S5 / S3。
+/// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
+/// `hotkey_ocr` 仍只存值不注册（功能在 S5）；`hotkey_download` 已在 S3a 注册。
 fn is_hotkey_key(k: &str) -> bool {
     matches!(k, "hotkey" | "hotkey_ocr" | "hotkey_download" | "hotkey_input")
 }
 
-/// 一次性注册所有全局热键（划词 / 输入翻译）。
+/// 一次性注册所有全局热键（划词 / 输入翻译 / 下载）。
 ///
 /// **必须走 `hotkey::register_all`**，不能连着调两次 `register_hotkey`——
 /// 后者开头会 `unregister_all()`，第二次调用会把第一次注册的划词热键注销掉。
+/// 下载热键只在工具启用时注册：停用后按了不该有反应（任务书 §S3.8b 验收 9.3.2）。
 fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
-    hotkey::register_all(
-        app,
-        vec![
-            (
-                "划词热键",
-                cfg.hotkey.clone(),
-                Box::new(|a: &AppHandle| translate_selection(a.clone()))
-                    as Box<dyn Fn(&AppHandle) + Send + Sync>,
-            ),
-            (
-                "输入翻译热键",
-                cfg.hotkey_input.clone(),
-                Box::new(|a: &AppHandle| open_input_translate(a.clone())),
-            ),
-        ],
-    )
+    let mut list: Vec<hotkey::Binding> = vec![
+        (
+            "划词热键",
+            cfg.hotkey.clone(),
+            Box::new(|a: &AppHandle| translate_selection(a.clone())),
+        ),
+        (
+            "输入翻译热键",
+            cfg.hotkey_input.clone(),
+            Box::new(|a: &AppHandle| open_input_translate(a.clone())),
+        ),
+    ];
+    if cfg.enable_download {
+        list.push((
+            "下载热键",
+            cfg.hotkey_download.clone(),
+            // 热键回调跑在事件循环线程：读剪贴板 / spawn / HTTP 一律挪到工作线程
+            // （03 §3.5.2）。这里不捕获 AppHandle，闭包天然是 'static。
+            Box::new(|_a: &AppHandle| {
+                std::thread::spawn(|| match download::add_from_clipboard() {
+                    Ok(st) => dlog::dlog(&format!(
+                        "download: 入队成功 gid={} status={} {}/{} B",
+                        st.gid, st.status, st.completed_length, st.total_length
+                    )),
+                    Err(e) => dlog::dlog(&format!("download: {e}")),
+                });
+            }),
+        ));
+    }
+    hotkey::register_all(app, list)
 }
 
 // ---------- 命令：设置页 ----------
@@ -551,7 +567,7 @@ fn save_tool_config(
     // 4) 副作用：热键重新注册。
     //    任一热键变了都要**整体重注册**：register_all 开头会 unregister_all，
     //    只重注册单个的话，另一个会被静默注销掉（S1 起就埋着的雷）。
-    let hotkey_changed = ["hotkey", "hotkey_input"]
+    let hotkey_changed = ["hotkey", "hotkey_input", "hotkey_download"]
         .iter()
         .any(|k| patch.contains_key(*k));
     if hotkey_changed {
@@ -602,8 +618,14 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
             warnings: vec![],
         };
     }
+    let mut warnings: Vec<String> = Vec::new();
     if tool_id == "translate" {
         tray::set_translate_enabled(&app, enabled);
+    }
+    if tool_id == "download" {
+        // 下载工具启停会改变「要不要注册下载热键」。必须整体重注册：
+        // register_all 开头 unregister_all，单独注册一个会把划词热键静默注销。
+        warnings.extend(register_hotkeys(&app, &config::load()));
     }
     SaveOut {
         ok: true,
@@ -612,7 +634,7 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
         } else {
             format!("已停用「{}」", tool.name())
         },
-        warnings: vec![],
+        warnings,
     }
 }
 
@@ -890,8 +912,13 @@ fn main() {
             // unregister_all，连着调两次会把前一个注销掉。
             let errs = register_hotkeys(&handle, &cfg);
             if errs.is_empty() {
+                let extra = if cfg.enable_download {
+                    format!(" / {}（下载）", cfg.hotkey_download)
+                } else {
+                    String::new()
+                };
                 dlog::dlog(&format!(
-                    "setup: 热键 {} / {} 注册成功",
+                    "setup: 热键 {} / {}{extra} 注册成功",
                     cfg.hotkey, cfg.hotkey_input
                 ));
             } else {
@@ -915,10 +942,14 @@ fn main() {
                 }
             }
             // 常驻程序要挡住「最后一个窗口关掉就退出」的默认行为。
-            tauri::RunEvent::ExitRequested { api, .. }
-                if !QUITTING.load(Ordering::SeqCst) =>
-            {
-                api.prevent_exit();
+            // 真正退出时主动关掉 sidecar：--stop-with-process 是兜底，但主动
+            // shutdown 才能让 aria2 把 session 写完，也不依赖父进程"死得干净"。
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                if !QUITTING.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                } else if let Err(e) = download::engine::shutdown_all() {
+                    dlog::dlog(&format!("exit: 关闭 aria2c 失败：{e}"));
+                }
             }
             _ => {}
         });

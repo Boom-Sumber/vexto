@@ -1,7 +1,7 @@
 //! 下载工具（HTTP / BT / magnet，aria2c sidecar）。
 //!
-//! **S2 只做设置分区，不做下载功能**——真正的下载引擎在 S3。这里定义的字段
-//! 是 S3 要读的配置项，提前定好避免 S3 再改一次 `Config`。
+//! S2 只放了设置分区骨架，S3a 接上了真正的引擎。字段仍然全部由 `Tool::sections()`
+//! 描述，设置页 HTML/JS 一行没改（ADR-015 / 任务书 §S3.8b 验收 9.3.1）。
 
 use super::{Field, Section, Tool};
 use crate::config;
@@ -25,22 +25,28 @@ impl Tool for Download {
         config::load().enable_download
     }
 
+    /// 关掉工具必须真的把 sidecar 停掉：不然「已停用」还挂着 5 MB 常驻进程。
+    /// 反注册热键由 `main.rs::set_tool_enabled` 统一重注册（台账坑 ⑪）。
     fn set_enabled(&self, on: bool) -> Result<(), String> {
         let mut cfg = config::load();
         cfg.enable_download = on;
-        config::save(&cfg)
+        config::save(&cfg)?;
+        if on {
+            crate::download::engine::set_message("已启用 · 空闲（aria2c 未启动）");
+        } else {
+            crate::download::engine::shutdown_all()?;
+            crate::download::engine::set_message("已停用（aria2c 已退出）");
+        }
+        Ok(())
     }
 
+    /// S3a 没有主窗口，设置页这一行就是用户能看到运行状态的唯一地方。
     fn status_line(&self) -> String {
         let cfg = config::load();
         if !cfg.enable_download {
-            return "已停用".to_string();
+            return "未启用".to_string();
         }
-        if cfg.download_dir.trim().is_empty() {
-            "未设置下载目录".to_string()
-        } else {
-            format!("保存到 {}", cfg.download_dir)
-        }
+        crate::download::engine::status_line()
     }
 
     fn sections(&self) -> Vec<Section> {
@@ -49,9 +55,15 @@ impl Tool for Download {
             "下载",
             vec![
                 Field::dir("download_dir", "下载目录"),
-                Field::note("留空则用系统「下载」文件夹。"),
-                Field::hotkey("hotkey_download", "唤起下载热键"),
-                Field::note("下载引擎在 S3 实现，这里先把配置存好。"),
+                Field::number_unit("max_speed_kb", "全局限速", 0, 102_400, "KB/s"),
+                Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
+                Field::hotkey("hotkey_download", "把剪贴板链接加入下载"),
+                // 启用开关由设置页顶部统一的「启用此工具」渲染（renderEnable），
+                // 这里再放一个 switch 会变成两个控件写同一个字段，故只写说明。
+                Field::note("留空则用系统「下载」文件夹；工具的启用开关在本页顶部。"),
+                Field::note("限速与并发数是 aria2 的启动参数，改完要等下一次启动才生效。"),
+                Field::note("复制 http / https / ftp / magnet 链接或 .torrent 路径后按热键入队。"),
+                Field::note("BT 实网下载与防火墙弹窗在 S3a 未做实机验证。"),
             ],
         )]
     }

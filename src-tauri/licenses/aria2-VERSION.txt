@@ -1,0 +1,22 @@
+版本: 1.37.0
+来源: https://github.com/aria2/aria2/releases/tag/release-1.37.0
+下载文件: aria2-1.37.0-win-64bit-build1.zip
+本地文件名: aria2c-x86_64-pc-windows-msvc.exe
+放置目录: src-tauri/binaries/（Tauri 2 sidecar 要求带目标三元组后缀）
+aria2c.exe SHA-256: be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2
+许可: GPLv2（全文见同目录 aria2-COPYING）
+
+本机实测（2026-11-09，S3a）:
+- aria2c --version 输出 "aria2 version 1.37.0"，mingw-w64 8.0.0 / gcc 10-win32，
+  构建时间 2022-01-13，targeting x86_64-w64-mingw32。
+- --stop-with-process=<PID> 可用，但未列在 --help=all 中（隐藏参数）。
+  对照实验：不带该参数时进程常驻（timeout 5 秒杀掉，exit 124）；
+  带该参数并指向不存在的 PID 时自行退出（exit 0），且无残留 aria2c 进程。
+- --no-conf 与 --conf-path 互斥：同时给出时 --no-conf 会让 conf 文件整体失效。
+  因此 LightBox 只传 --conf-path，不传 --no-conf。
+
+说明: 该二进制是未修改的官方 release 原版，作为独立进程随包分发，
+      通过 127.0.0.1 的 JSON-RPC 通信，不静态链接进 LightBox 主程序。
+      合规依据见 docs/07-LICENSING.md §7.3（mere aggregation）。
+      src-tauri/binaries/*.exe 被 .gitignore 忽略，不进版本库；
+      换机器时需手动放置同版本二进制，并用 SHA-256 核对。

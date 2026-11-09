@@ -90,6 +90,15 @@ pub struct Config {
     #[serde(default)]
     pub receive_dir: String,
 
+    // ---- 下载（S3a）----
+    /// 全局限速，单位 KB/s，0 = 不限。作为 aria2 的启动参数读取，
+    /// 改设置后要等 aria2c 下次启动才生效（运行时改限速属 S3b 的调度范围）。
+    #[serde(default)]
+    pub max_speed_kb: u32,
+    /// 同时下载数，界面限 1–16，后端再 clamp 一次防止手改配置越界。
+    #[serde(default = "d_max_concurrent")]
+    pub max_concurrent: u32,
+
     // ---- 版本 ----
     /// 配置格式版本，从 1 开始。老配置没有这个字段时按 1 处理
     #[serde(default = "d_version")]
@@ -136,6 +145,10 @@ fn d_true() -> bool {
 fn d_popup_timeout() -> u64 {
     15000
 }
+/// aria2 自己的默认值就是 5，跟它保持一致，别给用户一个"升级后突然变快"的惊喜。
+fn d_max_concurrent() -> u32 {
+    5
+}
 fn d_version() -> u32 {
     1
 }
@@ -167,6 +180,8 @@ impl Default for Config {
             cache_enabled: true,
             download_dir: String::new(),
             receive_dir: String::new(),
+            max_speed_kb: 0,
+            max_concurrent: d_max_concurrent(),
             version: d_version(),
         }
     }
@@ -285,5 +300,31 @@ mod tests {
         assert_eq!(cfg.to2, "en", "中文的默认去向");
         assert_eq!(cfg.lang_detect, "local", "默认本地检测，不偷偷打网络");
         assert_eq!(cfg.hotkey_input, "Ctrl+Alt+I");
+    }
+
+    /// S3a 新增的下载参数：老配置没有这两个字段时必须落到「不限速 / 5 并发」，
+    /// 不能因为缺字段就把程序读崩（ADR-013 只增字段）。
+    #[test]
+    fn download_params_default_for_old_config() {
+        let old = r#"{"appid":"a","download_dir":"D:\\Downloads"}"#;
+        let c: Config = serde_json::from_str(old).unwrap();
+        assert_eq!(c.download_dir, "D:\\Downloads");
+        assert_eq!(c.max_speed_kb, 0);
+        assert_eq!(c.max_concurrent, 5);
+    }
+
+    /// 新值要能原样存回去，且不影响其它字段。
+    #[test]
+    fn download_params_roundtrip() {
+        let c = Config {
+            max_speed_kb: 2048,
+            max_concurrent: 8,
+            ..Config::default()
+        };
+        let s = serde_json::to_string(&c).unwrap();
+        let d: Config = serde_json::from_str(&s).unwrap();
+        assert_eq!(d.max_speed_kb, 2048);
+        assert_eq!(d.max_concurrent, 8);
+        assert_eq!(d.engine, "baidu");
     }
 }
