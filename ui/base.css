@@ -18,8 +18,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 文本选中：用 42% 的主题色，不要用 --accent-soft（16%），深色下看不出来 */
 ::selection {
-  background: var(--accent-soft);
+  background: var(--selection-bg);
   color: var(--text-primary);
 }
 
