@@ -1,0 +1,68 @@
+/* 设计令牌：尺寸 / 字体 / 间距 / 圆角 / 层级 / 动效。
+ *
+ * **不含颜色** —— 颜色全部在 theme-dark.css，以后加 theme-light.css 即可切换。
+ * 页面 CSS 里禁止再写裸数值（见 docs/13-UI-DESIGN-SYSTEM.md §13.3）。
+ */
+
+:root {
+  /* ── 字体 ─────────────────────────────────────────────────────────── */
+  --font-ui: "Microsoft YaHei UI", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+
+  /* ── 字号阶：只有这五档 ───────────────────────────────────────────── */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+  --fs-xl: 20px;
+
+  /* ── 行高 ─────────────────────────────────────────────────────────── */
+  --lh-tight: 1.35;
+  --lh-normal: 1.6;
+  --lh-loose: 1.75;
+
+  /* ── 间距：4 的倍数 ───────────────────────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* ── 圆角阶 ───────────────────────────────────────────────────────── */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+  --r-pill: 999px;
+
+  /* ── 控件尺寸 ─────────────────────────────────────────────────────── */
+  --h-control: 32px;
+  --h-titlebar: 36px;
+  --w-titlebar-btn: 44px;
+  --w-icon-btn: 30px;
+  --w-scrollbar: 10px;
+  --w-sidebar: 168px;
+
+  /* ── 层级：只允许用这几档，避免越叠越高 ───────────────────────────── */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-float: 100;
+  --z-popup: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+
+  /* ── 动效 ─────────────────────────────────────────────────────────── */
+  --dur-fast: 120ms;
+  --dur-normal: 180ms;
+  --ease-out: cubic-bezier(.2, .7, .3, 1);
+}
+
+/* 系统要求减少动画时，过渡直接归零（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-normal: 0ms;
+  }
+}

@@ -546,8 +546,12 @@ pub fn open_settings(app: &AppHandle) {
 
     let r = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
         .title("LightBox 设置")
+        // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。设置页字段多、路径长，
+        // 仍然 resizable(true)，边缘缩放由前端 `titlebar.js` 的 8 向热区接管。
+        .decorations(false)
+        .shadow(true)
         // 760 = 原来的 560 + 200（用户 m02639 第 2 条要求）。
-        // 左侧栏 160 + 右侧字段区 600，长路径 / BaseURL 这类输入框才不至于挤成一条。
+        // 左侧栏 168 + 右侧字段区，长路径 / BaseURL 这类输入框才不至于挤成一条。
         .inner_size(760.0, 620.0)
         .min_inner_size(660.0, 480.0)
         .resizable(true)

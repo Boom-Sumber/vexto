@@ -1,0 +1,85 @@
+/* 深色主题：**只放颜色**。
+ *
+ * 两层结构：
+ *   1) 原始色板 `--c-*`：页面里禁止直接使用，只给下面的语义色引用；
+ *   2) 语义色 `--bg-* / --text-* / --border-* / --accent-* / --success-* …`：
+ *      所有组件的样式只用这一层。
+ *
+ * 以后加亮色主题：新建 theme-light.css，在 `[data-theme="light"]` 里
+ * 重定义同一批语义变量即可，其它文件一行不改。
+ */
+
+[data-theme="dark"] {
+  /* ── 原始色板（冷灰） ─────────────────────────────────────────────── */
+  --c-gray-1000: #0d0f13;
+  --c-gray-950: #121419;
+  --c-gray-900: #16181d;
+  --c-gray-850: #1a1d24;
+  --c-gray-800: #1f222a;
+  --c-gray-750: #252a33;
+  --c-gray-700: #2e333e;
+  --c-gray-600: #3b414e;
+  --c-gray-500: #4d5566;
+  --c-gray-400: #6f7789;
+  --c-gray-300: #8f97a8;
+  --c-gray-200: #b6bdcb;
+  --c-gray-100: #d8dde8;
+  --c-gray-50: #eef1f7;
+
+  --c-violet-400: #9d85ff;
+  --c-violet-500: #7c5cff;
+  --c-violet-600: #6a48f5;
+  --c-green-500: #3fb950;
+  --c-amber-500: #d29922;
+  --c-red-500: #f85149;
+  --c-red-700: #c42b1c;
+
+  /* ── 背景 ─────────────────────────────────────────────────────────── */
+  --bg-app: var(--c-gray-900);
+  --bg-bar: var(--c-gray-950);
+  --bg-panel: var(--c-gray-850);
+  --bg-input: var(--c-gray-800);
+  --bg-hover: var(--c-gray-750);
+  --bg-active: var(--c-gray-700);
+  --bg-selected: rgba(124, 92, 255, .14);
+  --bg-overlay: rgba(0, 0, 0, .45);
+
+  /* ── 文字 ─────────────────────────────────────────────────────────── */
+  --text-primary: var(--c-gray-50);
+  --text-secondary: var(--c-gray-200);
+  --text-muted: var(--c-gray-300);
+  --text-dim: var(--c-gray-400);
+  --text-disabled: var(--c-gray-500);
+  --text-inverse: #ffffff;
+
+  /* ── 边框 ─────────────────────────────────────────────────────────── */
+  --border-subtle: #23262e;
+  --border-default: var(--c-gray-700);
+  --border-strong: var(--c-gray-600);
+
+  /* ── 主题色：改这里就是换主色 ─────────────────────────────────────── */
+  --accent: var(--c-violet-500);
+  --accent-hover: var(--c-violet-400);
+  --accent-active: var(--c-violet-600);
+  --accent-soft: rgba(124, 92, 255, .16);
+  --accent-ring: rgba(124, 92, 255, .38);
+  --accent-text: #ffffff;
+
+  /* ── 状态色：与主题色分开，不要混用 ───────────────────────────────── */
+  --success: var(--c-green-500);
+  --success-bg: rgba(63, 185, 80, .12);
+  --success-border: rgba(63, 185, 80, .35);
+  --warning: var(--c-amber-500);
+  --warning-bg: rgba(210, 153, 34, .12);
+  --warning-border: rgba(210, 153, 34, .35);
+  --danger: var(--c-red-500);
+  --danger-hover: var(--c-red-700);
+  --danger-bg: rgba(248, 81, 73, .12);
+  --danger-border: rgba(248, 81, 73, .35);
+
+  /* ── 阴影与焦点环 ─────────────────────────────────────────────────── */
+  --shadow-float: 0 2px 8px rgba(0, 0, 0, .35);
+  --shadow-popup: 0 8px 28px rgba(0, 0, 0, .45);
+  --shadow-window: 0 12px 40px rgba(0, 0, 0, .5);
+  --ring: 0 0 0 3px var(--accent-ring);
+}

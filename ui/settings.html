@@ -3,43 +3,61 @@
 <head>
 <meta charset="utf-8" />
 <title>LightBox 设置</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="theme-dark.css" />
+<link rel="stylesheet" href="base.css" />
 <link rel="stylesheet" href="settings.css" />
 </head>
-<body>
-<div class="app">
-  <!-- 左侧：工具列表。内容全部由 list_tools 生成，这里不写死任何一个工具名（ADR-015） -->
-  <aside class="sidebar">
-    <div class="brand">LightBox</div>
-    <nav id="tools" class="tools"></nav>
-  </aside>
-
-  <!-- 右侧：当前工具的标题 / 说明 / 状态 / 标签栏 / 字段区 -->
-  <main class="pane">
-    <header class="pane-head">
-      <div class="pane-title">
-        <h1 id="tool-name">加载中…</h1>
-        <p id="tool-desc" class="hint"></p>
-        <p id="tool-status-line" class="status-line"></p>
-      </div>
-      <label class="enable" id="enable-wrap">
-        <input type="checkbox" id="tool-enabled" />
-        <span>启用</span>
-      </label>
-    </header>
-
-    <div id="tool-status" class="tool-status hidden"></div>
-
-    <div class="pane-body">
-      <div id="tabs" class="tabs hidden"></div>
-      <div id="fields" class="fields"></div>
+<body data-theme="dark">
+<div class="win">
+  <!-- 自绘标题栏：图标与按钮行为由 titlebar.js 注入（docs/13-UI-DESIGN-SYSTEM.md） -->
+  <header class="tb" data-tauri-drag-region>
+    <span class="tb-title" data-tauri-drag-region>设置</span>
+    <div class="tb-actions">
+      <button class="tb-btn" type="button" data-win="min"></button>
+      <button class="tb-btn" type="button" data-win="max"></button>
+      <button class="tb-btn close" type="button" data-win="close"></button>
     </div>
+  </header>
 
-    <footer class="pane-foot">
-      <span id="status"></span>
-    </footer>
-  </main>
+  <div class="app">
+    <!-- 左侧：工具列表。内容全部由 list_tools 生成，这里不写死任何一个工具名（ADR-015） -->
+    <aside class="sidebar">
+      <div class="brand">LightBox</div>
+      <nav id="tools" class="tools"></nav>
+    </aside>
+
+    <!-- 右侧：当前工具的标题 / 说明 / 状态 / 标签栏 / 字段区 -->
+    <main class="pane">
+      <header class="pane-head">
+        <div class="pane-title">
+          <h1 id="tool-name">加载中…</h1>
+          <p id="tool-desc" class="hint"></p>
+          <p id="tool-status-line" class="status-line"></p>
+        </div>
+        <label class="enable" id="enable-wrap">
+          <input type="checkbox" id="tool-enabled" />
+          <span>启用</span>
+        </label>
+      </header>
+
+      <div id="tool-status" class="tool-status hidden"></div>
+
+      <div class="pane-body">
+        <div id="tabs" class="tabs hidden"></div>
+        <div id="fields" class="fields"></div>
+      </div>
+
+      <footer class="pane-foot">
+        <span id="status"></span>
+      </footer>
+    </main>
+  </div>
 </div>
 
+<script src="icons.js"></script>
+<script src="titlebar.js"></script>
 <script src="settings.js"></script>
+<script>TitleBar.mount();</script>
 </body>
 </html>

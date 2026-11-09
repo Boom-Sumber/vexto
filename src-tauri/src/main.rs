@@ -908,7 +908,15 @@ fn open_settings_from_popup(app: AppHandle) {
 
 #[tauri::command]
 fn open_settings_cmd(app: AppHandle) {
-    open_settings(&app);
+    // 与 `new_task_done` 同一个坑：从某条 IPC 回调里**同步**创建第二个 WebView
+    // 窗口，controller 会卡在 0x0 —— 窗口标题有了、页面却是 `about:blank`
+    // （会话 16 / 18 各踩一次）。排到工作线程睡 300ms 跨过当前事件循环 tick，
+    // 再回主线程建窗。
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || open_settings(&a));
+    });
 }
 
 // ---------- 命令：下载主窗口（S3b 后端） ----------
@@ -1240,6 +1248,27 @@ fn open_new_task(app: AppHandle) {
     });
 }
 
+/// 自绘标题栏的统一窗口操作：min / max / close。
+///
+/// 用 `WebviewWindow` 参数拿「当前窗口」，前端不需要传 label，也不会误操作别的窗口。
+/// 关闭走 `destroy()`（ADR-007）：`hide()` 会留下 6 个 msedgewebview2 子进程。
+#[tauri::command]
+fn window_action(window: tauri::WebviewWindow, action: String) -> Result<(), String> {
+    match action.as_str() {
+        "min" => window.minimize().map_err(|e| format!("最小化失败：{e}")),
+        "max" => {
+            let maxed = window.is_maximized().unwrap_or(false);
+            if maxed {
+                window.unmaximize().map_err(|e| format!("还原失败：{e}"))
+            } else {
+                window.maximize().map_err(|e| format!("最大化失败：{e}"))
+            }
+        }
+        "close" => window.destroy().map_err(|e| format!("关闭窗口失败：{e}")),
+        other => Err(format!("未知窗口操作：{other}")),
+    }
+}
+
 // ---------- 入口 ----------
 
 fn main() {
@@ -1286,7 +1315,9 @@ fn main() {
             new_task_done,
             close_new_task,
             minimize_new_task,
-            open_new_task
+            open_new_task,
+            // 自绘标题栏通用操作（所有无边框窗口共用）
+            window_action
         ])
         .setup(|app| {
             let handle = app.handle().clone();
