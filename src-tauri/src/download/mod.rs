@@ -1,17 +1,50 @@
-//! 下载模块（S3a 后端闭环 + S3b 轮询泵）。
-//!
-//! S3b 本轮已做：`pump.rs` 的 multicall 快照 / 500 ms·2 s 轮询 / 队列空且空闲
-//! 60 秒退出，`rpc.rs` 的批量快照与四个操作。主窗口 UI、托盘入口、
-//! `06` §6.4.2 的 8 条手工验收留会话 14（按 `05` §5.6 拆分）。
+//! 下载模块（S3a 后端闭环 + S3b 轮询泵 + S3c 新建任务与重名递增）。
 //!
 //! 这个模块**不依赖 tauri**：状态用静态量、路径从自身 exe 推导，这样
 //! `Tool::status_line()` / `Tool::set_enabled()` 没有 AppHandle 也能读。
 
 pub mod engine;
+pub mod naming;
 pub mod pump;
 pub mod rpc;
 
-use crate::{config, dlog};
+use crate::config;
+
+/// 新建任务窗口提交的一条。`uri` 必填；其余留空表示跟随设置 / 系统默认。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct NewTask {
+    pub uri: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub dir: String,
+    #[serde(default)]
+    pub max_speed_kb: u32,
+    #[serde(default)]
+    pub connections: u32,
+    #[serde(default)]
+    pub user_agent: String,
+    #[serde(default)]
+    pub referer: String,
+}
+
+/// 新建任务窗口提交：目录、文件名、单任务限速与连接数都可以覆盖全局设置。
+///
+/// 与热键时代的 `add_from_clipboard` 的区别：这里不再读剪贴板，参数由用户
+/// 在新建页确认过；重名递增也在这里统一做（见 `naming::unique_file_name`）。
+pub fn add_task(cfg: &config::Config, t: &NewTask) -> Result<rpc::TaskStatus, String> {
+    if !cfg.enable_download {
+        return Err("下载工具还没启用：右键托盘 → 设置… → 下载 → 打开开关".into());
+    }
+    let uri = t.uri.trim();
+    if !looks_like_url(uri) {
+        return Err(format!("不是支持的下载链接（http / https / ftp / magnet / .torrent）：{uri}"));
+    }
+    let st = engine::add_task(cfg, t)?;
+    // 状态变了，立刻唤醒 pump 重取一次快照，不等下一个轮询周期。
+    pump::notify();
+    Ok(st)
+}
 
 /// 前缀比较（大小写不敏感）。用 `get` 而不是切片索引，非 ASCII 开头时返回 None 而不是 panic。
 fn starts_ci(s: &str, prefix: &str) -> bool {
@@ -29,41 +62,20 @@ pub fn looks_like_url(s: &str) -> bool {
         || t.to_ascii_lowercase().ends_with(".torrent")
 }
 
-/// 热键 / 托盘入口：读一次剪贴板，把链接交给 aria2c。
+/// 热键用：读一次剪贴板，是支持的链接就返回，否则 `None`。
 ///
-/// 失败时把中文原因写进 `engine` 的状态摘要：S3a 没有主窗口，设置页「下载」
-/// 分区那一行就是用户能看到反馈的地方；主窗口通知留到 S3b。
-pub fn add_from_clipboard() -> Result<rpc::TaskStatus, String> {
-    match add_from_clipboard_inner() {
-        Ok(st) => {
-            // 状态变了，立刻唤醒 pump 重取一次快照，不等下一个轮询周期。
-            pump::notify();
-            Ok(st)
-        }
-        Err(e) => {
-            dlog::dlog(&format!("download: {e}"));
-            engine::set_message(e.clone());
-            Err(e)
-        }
+/// **不报错**：热键的语义是「打开新建任务窗口」，剪贴板里是什么都不该拦住
+/// 窗口弹出。工具没启用、剪贴板没权限之类的检查放到用户点「新建」时
+/// （`add_task`）再做，那时才有明确的落点显示错误。
+pub fn clipboard_url() -> Option<String> {
+    let mut cb = arboard::Clipboard::new().ok()?;
+    let text = cb.get_text().ok()?;
+    let t = text.trim().to_string();
+    if looks_like_url(&t) {
+        Some(t)
+    } else {
+        None
     }
-}
-
-fn add_from_clipboard_inner() -> Result<rpc::TaskStatus, String> {
-    let cfg = config::load();
-    if !cfg.enable_download {
-        return Err("下载工具还没启用：右键托盘 → 设置… → 下载 → 打开开关".into());
-    }
-    let mut cb = arboard::Clipboard::new().map_err(|e| format!("打不开剪贴板：{e}"))?;
-    let text = cb
-        .get_text()
-        .map_err(|_| "剪贴板里没有文本内容".to_string())?;
-    let uri = text.trim().to_string();
-    if !looks_like_url(&uri) {
-        return Err(
-            "剪贴板内容不是下载链接（支持 http / https / ftp / magnet / .torrent）".into(),
-        );
-    }
-    engine::add_uri(&cfg, &uri)
 }
 
 #[cfg(test)]

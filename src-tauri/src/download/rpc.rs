@@ -44,6 +44,10 @@ pub struct TaskRow {
     /// `files[0].path`：`06` §6.4.2 第 8 条「打开目录并**选中文件**」要用。
     /// 只取第一个文件，BT 种子可能有上万个（§S3.5.5）。
     pub file_path: String,
+    /// 任务已完成、但文件已经不在磁盘上（用户删了或移走了）。
+    /// 只在 `status == "complete"` 时有意义，由 `mark_missing()` 填。
+    /// 前端据此把整行变灰 + 文件名加删除线。
+    pub file_missing: bool,
     pub error_message: Option<String>,
 }
 
@@ -155,6 +159,8 @@ pub fn parse_task_row(v: &Value) -> Option<TaskRow> {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string(),
+        // 解析阶段不碰文件系统（纯函数、单测不依赖磁盘），由 mark_missing 后填。
+        file_missing: false,
         error_message: v
             .get("errorMessage")
             .and_then(Value::as_str)
@@ -242,6 +248,20 @@ pub fn parse_snapshot(result: &Value) -> Snapshot {
     snap
 }
 
+/// 标记「已完成但文件不在了」的任务。
+///
+/// 只检查 `complete`：下载中的任务文件还没落盘是正常的，不能标成已删除。
+/// `exists` 用闭包注入，单测不碰文件系统；`true` 表示「已删除」。
+///
+/// **判据只能是「路径不存在」**：文件被移动、改名也会落进这一类。要区分
+/// 「删除」和「移动」就得挂文件系统日志，代价远大于收益。
+pub fn mark_missing(snap: &mut Snapshot, exists: impl Fn(&str) -> bool) {
+    for t in &mut snap.tasks {
+        t.file_missing =
+            t.status == "complete" && !t.file_path.is_empty() && !exists(&t.file_path);
+    }
+}
+
 /// 从 JSON-RPC 响应里取 result。错误响应转成中文，面向用户。
 pub fn extract_result(v: &Value) -> Result<&Value, String> {
     if let Some(err) = v.get("error") {
@@ -316,9 +336,11 @@ impl Rpc {
     }
 
     /// 加一个 URI（http/https/ftp/magnet），返回 gid。
-    /// 保存目录写在 conf 文件里，这里不传 options，避免长路径进命令行（03 §3.5.4）。
-    pub fn add_uri(&self, uri: &str) -> Result<String, String> {
-        let r = self.call("aria2.addUri", vec![json!([uri]), json!({})])?;
+    ///
+    /// `options` 是 aria2 的 per-task 选项（`out` / `dir` / 限速 / UA / Referer）：
+    /// 新建任务允许逐条覆盖目录与文件名，所以不能再只靠 conf 里的全局 `dir`。
+    pub fn add_uri(&self, uri: &str, options: Value) -> Result<String, String> {
+        let r = self.call("aria2.addUri", vec![json!([uri]), options])?;
         r.as_str()
             .map(str::to_string)
             .ok_or_else(|| "aria2.addUri 没返回 gid".to_string())
@@ -333,7 +355,11 @@ impl Rpc {
     /// 一次拿全量快照。轮询 pump 每 500ms / 2s 调一次，不要一任务一请求。
     pub fn snapshot(&self) -> Result<Snapshot, String> {
         let r = self.post(&multicall_body(&self.secret))?;
-        Ok(parse_snapshot(&r))
+        let mut snap = parse_snapshot(&r);
+        // 对已完成任务做一次 stat：几十个任务也是微秒级，换来「用户删了文件，
+        // 列表下一帧就能看出来」。只查 complete，下载中的不用查。
+        mark_missing(&mut snap, |p| std::path::Path::new(p).exists());
+        Ok(snap)
     }
 
     /// 暂停一个活动任务。已完成的 gid 会报错，由调用方转成中文提示。
@@ -512,5 +538,38 @@ mod tests {
         assert_eq!(eta_seconds(50, 0, 10), None);
         assert_eq!(eta_seconds(100, 100, 10), None);
         assert_eq!(eta_seconds(0, 100, 10), Some(10));
+    }
+
+    /// 删除态只标 `complete`：下载中 / 暂停的任务文件还没落盘是正常的。
+    #[test]
+    fn mark_missing_marks_only_complete() {
+        let mk = |gid: &str, status: &str, path: &str| TaskRow {
+            gid: gid.into(),
+            status: status.into(),
+            name: "x".into(),
+            total_length: 1,
+            completed_length: 1,
+            download_speed: 0,
+            upload_speed: 0,
+            eta_seconds: None,
+            dir: "/dl".into(),
+            file_path: path.into(),
+            file_missing: false,
+            error_message: None,
+        };
+        let mut snap = Snapshot {
+            global: GlobalStat::default(),
+            tasks: vec![
+                mk("g1", "complete", "/dl/gone.zip"),
+                mk("g2", "complete", "/dl/here.zip"),
+                mk("g3", "active", "/dl/gone2.zip"),
+                mk("g4", "complete", ""),
+            ],
+        };
+        mark_missing(&mut snap, |p| p == "/dl/here.zip");
+        assert!(snap.tasks[0].file_missing, "文件不在了要标记");
+        assert!(!snap.tasks[1].file_missing, "文件还在");
+        assert!(!snap.tasks[2].file_missing, "下载中不查文件");
+        assert!(!snap.tasks[3].file_missing, "没有路径不标记");
     }
 }

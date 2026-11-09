@@ -144,10 +144,70 @@ pub fn ensure_running(cfg: &config::Config) -> Result<crate::download::rpc::Rpc,
     Ok(rpc)
 }
 
-/// 入队一个链接并立刻查一次状态。这是 S3a 的最小闭环，也是端到端测试的入口。
-pub fn add_uri(cfg: &config::Config, uri: &str) -> Result<crate::download::rpc::TaskStatus, String> {
+/// 本进程已经分配出去的文件名（含还在排队、文件尚未落盘的）。
+///
+/// 只增不减：一个名字被分配过就永远跳过。代价只是编号可能跳号（用户删了
+/// 文件再下同名文件会得到 `a(2).zip` 而不是 `a(1).zip`），但能保证一批里
+/// 两条同名链接不会互相覆盖 —— aria2 建文件是异步的，光看磁盘会有窗口期。
+fn allocated() -> &'static Mutex<std::collections::HashSet<PathBuf>> {
+    static ALLOCATED: OnceLock<Mutex<std::collections::HashSet<PathBuf>>> = OnceLock::new();
+    ALLOCATED.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
+}
+
+/// 新建任务：目录、文件名、单任务限速 / 连接数 / UA / Referer 都能覆盖全局设置。
+///
+/// 文件名在这里算，不交给 aria2：
+/// - 重名时递增成 `a(1).zip`（aria2 只会生成 `a.1.zip`）；
+/// - 同名且 `.aria2` 控制文件也在时坚持原名，保住断点续传；
+/// - 分配结果记进 `allocated()`，防止同批同名链接抢同一个名字。
+pub fn add_task(
+    cfg: &config::Config,
+    t: &crate::download::NewTask,
+) -> Result<crate::download::rpc::TaskStatus, String> {
     let rpc = ensure_running(cfg)?;
-    let gid = rpc.add_uri(uri)?;
+    let dir = PathBuf::from(resolve_dir(cfg, &t.dir));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
+
+    let mut opts = serde_json::Map::new();
+    opts.insert("dir".into(), serde_json::json!(dir.display().to_string()));
+
+    let want = if !t.name.trim().is_empty() {
+        t.name.trim().to_string()
+    } else {
+        crate::download::naming::file_name_from_uri(&t.uri).unwrap_or_default()
+    };
+    if !want.is_empty() {
+        let name = {
+            let mut alloc = allocated().lock().unwrap_or_else(|e| e.into_inner());
+            let name = crate::download::naming::unique_file_name(&dir, &want, |p| {
+                p.exists() || alloc.contains(p)
+            });
+            alloc.insert(dir.join(&name));
+            name
+        };
+        opts.insert("out".into(), serde_json::json!(name));
+    }
+
+    // 高级选项：aria2 的限速单位是 e.g. "1024K"。
+    if t.max_speed_kb > 0 {
+        opts.insert(
+            "max-download-limit".into(),
+            serde_json::json!(format!("{}K", t.max_speed_kb)),
+        );
+    }
+    if t.connections > 0 {
+        let n = t.connections.clamp(1, 16).to_string();
+        opts.insert("split".into(), serde_json::json!(n));
+        opts.insert("max-connection-per-server".into(), serde_json::json!(n));
+    }
+    if !t.user_agent.trim().is_empty() {
+        opts.insert("user-agent".into(), serde_json::json!(t.user_agent.trim()));
+    }
+    if !t.referer.trim().is_empty() {
+        opts.insert("referer".into(), serde_json::json!(t.referer.trim()));
+    }
+
+    let gid = rpc.add_uri(&t.uri, serde_json::Value::Object(opts))?;
     let st = rpc.tell_status(&gid)?;
     // `totalLength` 为 0 时 progress_ratio 返回 0，绝不会在这里除零（任务书 §S3.10 坑 2）。
     let pct = crate::download::rpc::progress_ratio(st.completed_length, st.total_length) * 100.0;
@@ -282,7 +342,34 @@ fn make_secret() -> String {
     format!("lb-{}-{nanos:x}", std::process::id())
 }
 
-fn default_download_dir() -> String {
+/// 系统真实的「下载」文件夹。设置里留空时用它。
+///
+/// **不能直接拼 `%USERPROFILE%\Downloads`**：用户可能把下载文件夹重定向到
+/// D 盘（`HKCU\...\User Shell Folders`），拼出来的路径就是错的。
+/// `SHGetKnownFolderPath(FOLDERID_Downloads)` 读的是重定向后的真实路径。
+/// 目录不存在时不在这里建（用 `KF_FLAG_DEFAULT`，不是 `KF_FLAG_CREATE`），
+/// 统一由 `write_conf` / `add_task` 的 `create_dir_all` 负责。
+pub fn default_download_dir() -> String {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Com::CoTaskMemFree;
+        use windows::Win32::UI::Shell::{FOLDERID_Downloads, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
+
+        // windows 0.62 的签名是 3 个参数、直接返回 `Result<PWSTR>`（不是出参）。
+        let got = unsafe { SHGetKnownFolderPath(&FOLDERID_Downloads, KF_FLAG_DEFAULT, None) };
+        if let Ok(ptr) = got {
+            if !ptr.is_null() {
+                let s = unsafe { ptr.to_string() }.unwrap_or_default();
+                // SHGetKnownFolderPath 分配的内存必须由调用方释放，否则每次
+                // 打开设置页都漏一小块。
+                unsafe { CoTaskMemFree(Some(ptr.0 as *const core::ffi::c_void)) };
+                if !s.trim().is_empty() {
+                    return s;
+                }
+            }
+        }
+    }
+    // 老系统 / API 失败时的兜底：至少还是「用户目录下的 Downloads」。
     let base = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(base)
         .join("Downloads")
@@ -290,22 +377,36 @@ fn default_download_dir() -> String {
         .to_string()
 }
 
+/// 这次任务该落到哪个目录：任务指定 > 设置 > 系统默认。
+///
+/// 统一把换行剔掉、正斜杠换成反斜杠：conf 文件是 `key=value` 格式，
+/// 值里有换行会破坏它；explorer 与 aria2 对分隔符的接受度也不一致。
+fn resolve_dir(cfg: &config::Config, override_dir: &str) -> String {
+    let raw = if !override_dir.trim().is_empty() {
+        override_dir.trim()
+    } else if !cfg.download_dir.trim().is_empty() {
+        cfg.download_dir.trim()
+    } else {
+        return default_download_dir();
+    };
+    raw.replace(['\r', '\n'], "").replace('/', "\\")
+}
+
 /// 把长参数写进临时 conf，命令行只留一个短 `--conf-path`。
 /// 值里的换行会破坏 `key=value` 格式，先剔掉。
 fn write_conf(cfg: &config::Config) -> Result<PathBuf, String> {
     let p = std::env::temp_dir().join(format!("lightbox-aria2-{}.conf", std::process::id()));
-    let dir = if cfg.download_dir.trim().is_empty() {
-        default_download_dir()
-    } else {
-        cfg.download_dir.trim().to_string()
-    }
-    .replace(['\r', '\n'], "");
+    let dir = resolve_dir(cfg, "");
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
     let session = config::log_dir().join("aria2.session");
     let speed = (cfg.max_speed_kb as u64).saturating_mul(1024);
     let concurrent = cfg.max_concurrent.clamp(1, 16);
+    // auto-file-renaming：真正的 `a(1).zip` 由 `naming::unique_file_name` 在入队前
+    // 算好、通过 `out` 传下去（aria2 自己只会生成 `a.1.zip`）。这里开 true 只是
+    // 兜底：万一从链接里推断不出文件名（例如 `https://host/` 靠 Content-Disposition
+    // 才知道名字），也不会像 false 那样直接报「文件已存在」而失败。
     let content = format!(
-        "dir={dir}\ncontinue=true\nauto-file-renaming=false\nsave-session={}\nsave-session-interval=60\nmax-overall-download-limit={speed}\nmax-concurrent-downloads={concurrent}\n",
+        "dir={dir}\ncontinue=true\nauto-file-renaming=true\nsave-session={}\nsave-session-interval=60\nmax-overall-download-limit={speed}\nmax-concurrent-downloads={concurrent}\n",
         session.display()
     );
     std::fs::write(&p, content).map_err(|e| format!("写 aria2 配置文件失败：{e}"))?;
@@ -410,7 +511,7 @@ mod tests {
             let r = ensure_running(&cfg)?;
             let v = r.get_version()?;
             assert!(!v.is_empty(), "getVersion 不能返回空版本");
-            let gid = r.add_uri(&uri)?;
+            let gid = r.add_uri(&uri, serde_json::json!({}))?;
 
             // S3b：一次 system.multicall 拿全量快照，刚入队的 gid 必须在里面。
             let snap = r.snapshot()?;

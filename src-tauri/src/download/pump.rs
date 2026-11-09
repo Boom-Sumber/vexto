@@ -149,6 +149,7 @@ mod tests {
             eta_seconds: None,
             dir: String::new(),
             file_path: String::new(),
+            file_missing: false,
             error_message: None,
         }
     }

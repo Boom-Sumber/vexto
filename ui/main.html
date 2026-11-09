@@ -7,25 +7,38 @@
 </head>
 <body>
 <div class="app">
-  <header class="head">
-    <div class="title">
-      <h1>LightBox 下载</h1>
-      <p class="hint">复制 http / https / ftp / magnet 链接或 .torrent 路径后按下载热键即可入队</p>
+  <aside class="side">
+    <div class="side-title">任务列表</div>
+    <nav class="cats">
+      <button class="cat active" type="button" data-cat="all">全部 <span id="c-all">0</span></button>
+      <button class="cat" type="button" data-cat="running">进行中 <span id="c-running">0</span></button>
+      <button class="cat" type="button" data-cat="failed">失败 <span id="c-failed">0</span></button>
+      <button class="cat" type="button" data-cat="complete">已完成 <span id="c-complete">0</span></button>
+      <button class="cat" type="button" data-cat="deleted">已删除 <span id="c-deleted">0</span></button>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="head">
+      <h1 id="title">全部</h1>
+      <div class="tools">
+        <button id="newTask" class="btn primary" type="button">+ 新建</button>
+        <button id="clear" class="btn" type="button">清空已完成</button>
+      </div>
+    </header>
+
+    <div id="error" class="error hidden"></div>
+
+    <main id="list" class="list"></main>
+    <div id="empty" class="empty">
+      还没有下载任务。<br />按下载热键，或点右上角「+ 新建」开始。
     </div>
-    <button id="clear" class="btn" type="button">清空已完成</button>
-  </header>
 
-  <div id="error" class="error hidden"></div>
-
-  <main id="list" class="list"></main>
-  <div id="empty" class="empty">
-    还没有下载任务。<br />复制一个链接，按下载热键就会自动打开这个窗口。
+    <footer class="foot">
+      <span id="global">↓ 0 B/s　↑ 0 B/s</span>
+      <span id="counts">0 个任务 · 0 个活动</span>
+    </footer>
   </div>
-
-  <footer class="foot">
-    <span id="global">↓ 0 B/s　↑ 0 B/s</span>
-    <span id="counts">0 个任务 · 0 个活动</span>
-  </footer>
 </div>
 <script src="main.js"></script>
 </body>

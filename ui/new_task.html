@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>新建下载任务</title>
+<link rel="stylesheet" href="new_task.css" />
+</head>
+<body>
+<div class="app">
+  <header class="head">
+    <h1>新建下载任务</h1>
+    <p class="hint">支持 http / https / ftp / magnet，每行一个链接</p>
+  </header>
+
+  <div id="error" class="error hidden"></div>
+
+  <main class="form">
+    <label class="lbl" for="links">下载链接</label>
+    <textarea id="links" class="textarea" rows="6" spellcheck="false"
+              placeholder="每行一个下载链接（支持磁力链）"></textarea>
+
+    <div class="grid">
+      <label class="lbl" for="name">重命名</label>
+      <input id="name" class="input" type="text" spellcheck="false"
+             placeholder="选填：留空按链接里的文件名保存" />
+
+      <label class="lbl" for="dir">存储路径</label>
+      <div class="row">
+        <input id="dir" class="input" type="text" spellcheck="false" placeholder="" />
+        <button id="resetDir" class="btn" type="button">用默认</button>
+      </div>
+    </div>
+
+    <details class="adv">
+      <summary>高级选项</summary>
+      <div class="grid adv-grid">
+        <label class="lbl" for="speed">限速</label>
+        <div class="row">
+          <input id="speed" class="input num" type="number" min="0" max="102400" step="64" placeholder="0" />
+          <span class="unit">KB/s（0 = 用全局设置）</span>
+        </div>
+
+        <label class="lbl" for="conn">连接数</label>
+        <div class="row">
+          <input id="conn" class="input num" type="number" min="0" max="16" step="1" placeholder="0" />
+          <span class="unit">0 = 用全局设置</span>
+        </div>
+
+        <label class="lbl" for="ua">User-Agent</label>
+        <input id="ua" class="input" type="text" spellcheck="false" placeholder="选填" />
+
+        <label class="lbl" for="referer">Referer</label>
+        <input id="referer" class="input" type="text" spellcheck="false" placeholder="选填" />
+      </div>
+    </details>
+  </main>
+
+  <footer class="foot">
+    <span id="status" class="status"></span>
+    <div class="acts">
+      <button id="cancel" class="btn" type="button">取消</button>
+      <button id="submit" class="btn primary" type="button">新建</button>
+    </div>
+  </footer>
+</div>
+<script src="new_task.js"></script>
+</body>
+</html>

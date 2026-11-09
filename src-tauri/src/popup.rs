@@ -17,8 +17,16 @@ use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect, IsWin
 
 pub const POPUP_LABEL: &str = "popup";
 pub const SETTINGS_LABEL: &str = "settings";
-/// 下载主窗口。pump 用同一个 label 判断「窗口是否可见」。
+/// 下载主窗口（任务列表）。pump 用同一个 label 判断「窗口是否可见」。
 pub const MAIN_LABEL: &str = "main";
+/// 新建下载任务窗口。列表页点「+」时与主窗口**同时存在**。
+pub const NEW_TASK_LABEL: &str = "new-task";
+
+/// 新建窗口要预填的链接。热键读到的剪贴板内容先放这里，前端 ready 后取走。
+///
+/// 用「取走」而不是「读取」：预填只该发生一次，用户改完内容后窗口再被聚焦
+/// 不该把输入框覆盖回原链接。
+static NEW_TASK_PREFILL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// 卡片（可见部分）的左右内边距，即 CSS `#card` 的 `margin` 左右值。
 ///
@@ -598,5 +606,80 @@ pub fn open_main_window(app: &AppHandle) {
             });
         }
         Err(e) => crate::dlog::dlog(&format!("create main window failed: {e}")),
+    }
+}
+
+/// 打开「新建任务」窗口。已存在则聚焦，并把新链接补发过去。**必须在主线程调用。**
+///
+/// 与列表窗口是两个独立的 `WebviewWindow`（用户明确要求两窗同时存在）：
+/// 列表页点「+」→ 新建成窗；新建页点「新建」→ 关自己、开/聚焦列表。
+pub fn open_new_task(app: &AppHandle, prefill: Option<String>) {
+    let has_prefill = prefill.is_some();
+    if let Some(p) = prefill {
+        if let Ok(mut g) = NEW_TASK_PREFILL.lock() {
+            *g = Some(p);
+        }
+    }
+
+    if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        // 窗口已存在时页面不会重新加载，只能推事件把新链接填进去。
+        if has_prefill {
+            if let Some(p) = take_new_task_prefill() {
+                let _ = w.emit("new-task-prefill", p);
+            }
+        }
+        return;
+    }
+
+    let r = WebviewWindowBuilder::new(app, NEW_TASK_LABEL, WebviewUrl::App("new_task.html".into()))
+        .title("新建下载任务")
+        .inner_size(620.0, 560.0)
+        .min_inner_size(520.0, 440.0)
+        .resizable(true)
+        .center()
+        .additional_browser_args(WEBVIEW_ARGS)
+        .build();
+
+    match r {
+        Ok(win) => {
+            let _ = win.set_focus();
+            win.on_window_event(|ev| {
+                if matches!(ev, tauri::WindowEvent::Destroyed) {
+                    crate::dlog::dlog("popup: 新建任务窗口已销毁，1.2s 后收缩工作集");
+                    crate::mem::trim_soon(1200);
+                }
+            });
+        }
+        Err(e) => crate::dlog::dlog(&format!("create new task window failed: {e}")),
+    }
+}
+
+/// 前端取走待预填的链接（可能为 `None`）。
+pub fn take_new_task_prefill() -> Option<String> {
+    NEW_TASK_PREFILL.lock().ok().and_then(|mut g| g.take())
+}
+
+/// 只关新建窗口（「取消」按钮）。**必须在主线程调用。**
+///
+/// 取消不该打开列表窗口 —— 用户可能只是一时误按热键。
+pub fn close_new_task(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
+        let _ = w.destroy();
+    }
+}
+
+/// 新建任务完成：打开（或聚焦）列表窗口，再关掉新建窗口。**必须在主线程调用。**
+///
+/// **顺序是「先开后关」**：两个窗口共用同一个 WebView2 环境，先 `destroy()`
+/// 再建新窗口会让新窗口的 WebView 停在 `about:blank`（本机实测：窗口标题是
+/// 「LightBox 下载」，页面 body 为空）。先建新窗口、再销毁旧窗口，环境始终
+/// 有一个活着的宿主，导航正常。代价是任务栏里有两三帧两个窗口同时存在。
+pub fn close_new_task_and_show_list(app: &AppHandle) {
+    open_main_window(app);
+    if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
+        let _ = w.destroy();
     }
 }

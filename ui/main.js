@@ -3,6 +3,9 @@
 // §S3.7.2 的硬要求：**增量更新**。已存在的任务行按 data-gid 复用节点，
 // 只改文本与进度条宽度；只有「新出现」和「已消失」的任务才增删节点。
 // 每 500ms 重建一遍 DOM 会让按钮点不中、滚动位置也丢。
+//
+// 分类是纯前端过滤：后端快照始终是全部任务，切换分类只给行加 `.hidden-row`，
+// 不重新请求、也不重建节点。
 
 const T = window.__TAURI__;
 const invoke = T.core.invoke;
@@ -12,6 +15,24 @@ const el = (id) => document.getElementById(id);
 // gid -> 行节点。重建窗口时为空，由 download_snapshot() 一次性填满。
 const rows = new Map();
 let lastError = "";
+let filter = "all";
+let lastSnap = { tasks: [], global: {} };
+
+const TITLES = {
+  all: "全部",
+  running: "进行中",
+  failed: "失败",
+  complete: "已完成",
+  deleted: "已删除",
+};
+
+const EMPTY = {
+  all: "还没有下载任务。<br />按下载热键，或点右上角「+ 新建」开始。",
+  running: "没有正在进行的任务。",
+  failed: "没有失败的任务。",
+  complete: "还没有完成的任务。",
+  deleted: "没有已删除文件的任务。",
+};
 
 // ── 格式化 ──────────────────────────────────────────────────────────────
 
@@ -59,6 +80,31 @@ function showError(msg) {
   box.classList.toggle("hidden", !lastError);
 }
 
+// ── 分类 ────────────────────────────────────────────────────────────────
+
+/// 一条任务属于哪个分类。「已删除」是从「已完成」里拆出来的：
+/// 状态仍是 complete，只是文件已经不在磁盘上。
+function catOf(t) {
+  if (t.status === "complete") return t.file_missing ? "deleted" : "complete";
+  if (t.status === "error" || t.status === "removed") return "failed";
+  return "running";
+}
+
+function countByCat(tasks) {
+  const n = { all: tasks.length, running: 0, failed: 0, complete: 0, deleted: 0 };
+  for (const t of tasks) n[catOf(t)] += 1;
+  return n;
+}
+
+function setFilter(cat) {
+  filter = cat;
+  for (const b of document.querySelectorAll("button.cat")) {
+    b.classList.toggle("active", b.dataset.cat === cat);
+  }
+  el("title").textContent = TITLES[cat] || "全部";
+  render(lastSnap);
+}
+
 // ── 行节点：只在任务首次出现时创建一次 ──────────────────────────────────
 
 function createRow(t) {
@@ -99,12 +145,20 @@ function createRow(t) {
 /// 每次快照只改文本 / 宽度 / 按钮状态，不重建节点。
 function updateRow(row, t) {
   const p = pct(t);
-  row.querySelector(".name").textContent = t.name || "未知文件";
+  const deleted = t.status === "complete" && t.file_missing;
+
+  // 文件已被删除：整行变灰 + 文件名加删除线（CSS .row.deleted）
+  row.classList.toggle("deleted", !!deleted);
+
+  const nameEl = row.querySelector(".name");
+  nameEl.textContent = t.name || "未知文件";
+  nameEl.title = t.file_path || t.name || "";
+
   row.querySelector(".pct").textContent = t.total_length ? p + "%" : "—";
   row.querySelector(".bar > i").style.width = p + "%";
 
   const meta = row.querySelector(".meta");
-  const parts = [statusText(t.status)];
+  const parts = [deleted ? "文件已删除" : statusText(t.status)];
   if (t.status === "active") {
     parts.push(fmtSpeed(t.download_speed), "剩余 " + fmtEta(t.eta_seconds));
   }
@@ -127,7 +181,10 @@ function updateRow(row, t) {
 
 function render(snap) {
   if (!snap || !Array.isArray(snap.tasks)) return;
+  lastSnap = snap;
+
   const seen = new Set();
+  let visible = 0;
   for (const t of snap.tasks) {
     seen.add(t.gid);
     let row = rows.get(t.gid);
@@ -137,12 +194,22 @@ function render(snap) {
       el("list").appendChild(row);
     }
     updateRow(row, t);
+    const show = filter === "all" || catOf(t) === filter;
+    row.classList.toggle("hidden-row", !show);
+    if (show) visible += 1;
   }
   for (const [gid, row] of rows) {
     if (!seen.has(gid)) { row.remove(); rows.delete(gid); }
   }
 
-  el("empty").classList.toggle("hidden", snap.tasks.length > 0);
+  const n = countByCat(snap.tasks);
+  for (const k of ["all", "running", "failed", "complete", "deleted"]) {
+    el("c-" + k).textContent = n[k];
+  }
+
+  el("empty").classList.toggle("hidden", visible > 0);
+  if (visible === 0) el("empty").innerHTML = EMPTY[filter] || EMPTY.all;
+
   const g = snap.global || {};
   el("global").textContent = "↓ " + fmtSpeed(g.download_speed) + "　↑ " + fmtSpeed(g.upload_speed);
   el("counts").textContent = snap.tasks.length + " 个任务 · " + (g.num_active || 0) + " 个活动";
@@ -181,7 +248,17 @@ el("list").addEventListener("click", (ev) => {
 
 el("clear").addEventListener("click", () => call("download_clear_finished"));
 
+// 打开新建任务窗口时**不关这个窗口**（两窗并存），新建完成由后端负责关新建窗。
+el("newTask").addEventListener("click", () => {
+  invoke("open_new_task").catch((e) => showError(errText(e)));
+});
+
+for (const b of document.querySelectorAll("button.cat")) {
+  b.addEventListener("click", () => setFilter(b.dataset.cat));
+}
+
 (async function init() {
+  el("title").textContent = TITLES[filter] || "全部";
   await refresh();
   // 订阅/渲染都不许静默失败：事件收不到或载荷形状变了，用户必须能在窗口里
   // 看到原因，而不是对着一个永远不动的进度条猜。
@@ -199,5 +276,6 @@ el("clear").addEventListener("click", () => call("download_clear_finished"));
   }
   // 刷新只靠 pump 的 tasks:snapshot 推送 + 初始化时的 download_snapshot 一次拉取，
   // 不再加定时器：实测（PrintWindow 连续两帧 7%→18%）事件通道工作正常。
-  // 早先「进度卡住」是全屏 GDI 截图抓不到 WebView2 后续合成帧造成的取证误判。
+  // 「文件已删除」的判定在后端 snapshot 里做（对 complete 任务 stat 一次），
+  // 所以不需要前端额外轮询文件系统。
 })();

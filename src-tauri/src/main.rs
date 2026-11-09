@@ -436,18 +436,22 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
             cfg.hotkey_download.clone(),
             // 热键回调跑在事件循环线程：读剪贴板 / spawn / HTTP 一律挪到工作线程
             // （03 §3.5.2）。这里不捕获 AppHandle，闭包天然是 'static。
+            //
+            // 会话 16 起热键**不再直接入队**：它只负责打开「新建任务」窗口，
+            // 剪贴板里是链接就预填进去。直接入队的话用户没有任何改目录 / 改名的
+            // 机会，「已经有 a.zip 时再下 a.zip」就只能靠自动改名兜。
             Box::new(|a: &AppHandle| {
                 let app = a.clone();
-                std::thread::spawn(move || match download::add_from_clipboard() {
-                    Ok(st) => {
-                        dlog::dlog(&format!(
-                            "download: 入队成功 gid={} status={} {}/{} B",
-                            st.gid, st.status, st.completed_length, st.total_length
-                        ));
-                        // 06 §6.4.2 第 1 条：入队后主窗口自动打开。
-                        open_download_window(&app);
-                    }
-                    Err(e) => dlog::dlog(&format!("download: {e}")),
+                std::thread::spawn(move || {
+                    let prefill = download::clipboard_url();
+                    dlog::dlog(&format!(
+                        "download: 热键打开新建任务窗口 prefill={}",
+                        prefill.as_deref().unwrap_or("(无链接)")
+                    ));
+                    let a2 = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        crate::popup::open_new_task(&a2, prefill);
+                    });
                 });
             }),
         ));
@@ -967,6 +971,88 @@ fn download_open_dir(gid: String) -> Result<(), String> {
         .map_err(|e| format!("打开目录失败：{e}"))
 }
 
+// ---------- 命令：新建下载任务（会话 16） ----------
+
+#[derive(serde::Serialize)]
+struct DownloadAddFail {
+    uri: String,
+    error: String,
+}
+
+#[derive(serde::Serialize)]
+struct DownloadAddOut {
+    ok: usize,
+    failed: Vec<DownloadAddFail>,
+}
+
+/// 新建页提交：逐条入队，失败的带原因返回，成功的只计数。
+///
+/// 不用 `?` 提前返回：用户一次贴了 5 个链接，第 2 个坏掉不该让另外 4 个也不下。
+#[tauri::command]
+fn download_add(tasks: Vec<crate::download::NewTask>) -> DownloadAddOut {
+    let cfg = config::load();
+    let mut ok = 0usize;
+    let mut failed = Vec::new();
+    for t in &tasks {
+        match crate::download::add_task(&cfg, t) {
+            Ok(_) => ok += 1,
+            Err(error) => failed.push(DownloadAddFail {
+                uri: t.uri.clone(),
+                error,
+            }),
+        }
+    }
+    crate::download::pump::notify();
+    DownloadAddOut { ok, failed }
+}
+
+/// 新建页拿默认下载目录（显示成输入框的灰色占位符）。
+#[tauri::command]
+fn download_default_dir() -> String {
+    crate::download::engine::default_download_dir()
+}
+
+/// 新建页取热键预填的链接（取走后清空）。
+#[tauri::command]
+fn take_new_task_prefill() -> Option<String> {
+    crate::popup::take_new_task_prefill()
+}
+
+/// 新建页点「新建」成功后：关掉自己，打开 / 聚焦列表窗口。
+///
+/// **不能在本条 IPC 的回调栈里同步建第二个窗口**：实测 new_task 的 WebView2
+/// controller 还没完全初始化时，main 的 controller 会卡在 `0x0`——窗口标题
+/// 有了、页面全白（`about:blank`，body 为空）。排到工作线程睡 300ms、跨过
+/// 当前事件循环 tick 再回主线程建窗，就能正常加载。
+#[tauri::command]
+fn new_task_done(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || crate::popup::close_new_task_and_show_list(&a));
+    });
+}
+
+/// 新建页「取消」：只关自己，不打开列表。
+#[tauri::command]
+fn close_new_task(app: AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || crate::popup::close_new_task(&a));
+}
+
+/// 列表页「+」：打开新建任务窗口，**不关列表**（两窗并存，用户明确要求）。
+///
+/// 与 `new_task_done` 同理：第二个 WebviewWindow 要在当前 IPC tick 之后建，
+/// 否则新窗口的 WebView2 controller 卡在 `0x0`。
+#[tauri::command]
+fn open_new_task(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || crate::popup::open_new_task(&a, None));
+    });
+}
+
 // ---------- 入口 ----------
 
 fn main() {
@@ -1002,7 +1088,14 @@ fn main() {
             download_unpause,
             download_remove,
             download_clear_finished,
-            download_open_dir
+            download_open_dir,
+            // 新建下载任务（会话 16）
+            download_add,
+            download_default_dir,
+            take_new_task_prefill,
+            new_task_done,
+            close_new_task,
+            open_new_task
         ])
         .setup(|app| {
             let handle = app.handle().clone();
