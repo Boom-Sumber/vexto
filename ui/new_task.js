@@ -215,13 +215,17 @@ function fillPrefill(text) {
   el("tabLink").addEventListener("click", () => setTab("link"));
   el("tabTorrent").addEventListener("click", () => setTab("torrent"));
 
-  // 自绘标题栏的按钮（无系统边框后，最小化 / 关闭都得自己接）
-  el("winMin").addEventListener("click", () => {
-    invoke("minimize_new_task").catch(() => {});
-  });
-  el("winClose").addEventListener("click", () => {
-    invoke("close_new_task").catch(() => {});
-  });
+  // 标题栏的最小化 / 关闭由 titlebar.js 统一接管（window_action），
+  // 页面里不再绑窗口事件，也不写 SVG（docs/13-UI-DESIGN-SYSTEM.md §13.5）。
+
+  // 自绘图标：data-icon → Icons
+  for (const b of document.querySelectorAll("[data-icon]")) {
+    window.Icons.fill(b, b.dataset.icon, 16);
+  }
+
+  // 数字输入：系统 spinner 在深色下是白的，换成自绘步进
+  window.NumField.enhance(el("speed"));
+  window.NumField.enhance(el("conn"));
 
   el("links").addEventListener("input", () => {
     el("name").dataset.userEdited = "";

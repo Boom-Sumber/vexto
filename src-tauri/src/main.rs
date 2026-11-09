@@ -1072,13 +1072,6 @@ fn close_new_task(app: AppHandle) {
     let _ = app.run_on_main_thread(move || crate::popup::close_new_task(&a));
 }
 
-/// 自绘标题栏的「最小化」。
-#[tauri::command]
-fn minimize_new_task(app: AppHandle) {
-    let a = app.clone();
-    let _ = app.run_on_main_thread(move || crate::popup::minimize_new_task(&a));
-}
-
 /// 新建页「重新获取」用的探测结果。
 #[derive(serde::Serialize)]
 struct ProbeOut {
@@ -1314,7 +1307,6 @@ fn main() {
             take_new_task_prefill,
             new_task_done,
             close_new_task,
-            minimize_new_task,
             open_new_task,
             // 自绘标题栏通用操作（所有无边框窗口共用）
             window_action

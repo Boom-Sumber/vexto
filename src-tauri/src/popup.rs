@@ -589,6 +589,10 @@ pub fn open_main_window(app: &AppHandle) {
 
     let r = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("main.html".into()))
         .title("LightBox 下载")
+        // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。任务列表可按
+        // 文件名长短拉宽，所以保留 resizable，边缘缩放由 titlebar.js 接管。
+        .decorations(false)
+        .shadow(true)
         .inner_size(760.0, 520.0)
         .min_inner_size(560.0, 360.0)
         .resizable(true)
@@ -677,13 +681,6 @@ pub fn take_new_task_prefill() -> Option<String> {
 pub fn close_new_task(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
         let _ = w.destroy();
-    }
-}
-
-/// 最小化新建窗口（自绘标题栏用）。**必须在主线程调用。**
-pub fn minimize_new_task(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
-        let _ = w.minimize();
     }
 }
 

@@ -3,43 +3,63 @@
 <head>
 <meta charset="utf-8" />
 <title>LightBox 下载</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="theme-dark.css" />
+<link rel="stylesheet" href="base.css" />
 <link rel="stylesheet" href="main.css" />
 </head>
-<body>
-<div class="app">
-  <aside class="side">
-    <div class="side-title">任务列表</div>
-    <nav class="cats">
-      <button class="cat active" type="button" data-cat="all">全部 <span id="c-all">0</span></button>
-      <button class="cat" type="button" data-cat="running">进行中 <span id="c-running">0</span></button>
-      <button class="cat" type="button" data-cat="failed">失败 <span id="c-failed">0</span></button>
-      <button class="cat" type="button" data-cat="complete">已完成 <span id="c-complete">0</span></button>
-      <button class="cat" type="button" data-cat="deleted">已删除 <span id="c-deleted">0</span></button>
-    </nav>
-  </aside>
-
-  <div class="main">
-    <header class="head">
-      <h1 id="title">全部</h1>
-      <div class="tools">
-        <button id="newTask" class="btn primary" type="button">+ 新建</button>
-        <button id="clear" class="btn" type="button">清空已完成</button>
-      </div>
-    </header>
-
-    <div id="error" class="error hidden"></div>
-
-    <main id="list" class="list"></main>
-    <div id="empty" class="empty">
-      还没有下载任务。<br />按下载热键，或点右上角「+ 新建」开始。
+<body data-theme="dark">
+<div class="win">
+  <!-- 自绘标题栏：图标与按钮行为由 titlebar.js 注入 -->
+  <header class="tb" data-tauri-drag-region>
+    <span class="tb-title" data-tauri-drag-region>任务列表</span>
+    <div class="tb-actions">
+      <button class="tb-btn" type="button" data-win="min"></button>
+      <button class="tb-btn" type="button" data-win="max"></button>
+      <button class="tb-btn close" type="button" data-win="close"></button>
     </div>
+  </header>
 
-    <footer class="foot">
-      <span id="global">↓ 0 B/s　↑ 0 B/s</span>
-      <span id="counts">0 个任务 · 0 个活动</span>
-    </footer>
+  <div class="app">
+    <aside class="side">
+      <div class="side-title">分类</div>
+      <nav class="cats">
+        <button class="cat active" type="button" data-cat="all">全部 <span id="c-all">0</span></button>
+        <button class="cat" type="button" data-cat="running">进行中 <span id="c-running">0</span></button>
+        <button class="cat" type="button" data-cat="failed">失败 <span id="c-failed">0</span></button>
+        <button class="cat" type="button" data-cat="complete">已完成 <span id="c-complete">0</span></button>
+        <button class="cat" type="button" data-cat="deleted">已删除 <span id="c-deleted">0</span></button>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <header class="head">
+        <h1 id="title">全部</h1>
+        <div class="tools">
+          <button id="newTask" class="btn btn-primary" type="button">新建</button>
+          <button id="clear" class="btn" type="button">清空已完成</button>
+        </div>
+      </header>
+
+      <div id="error" class="notice notice-danger error hidden"></div>
+
+      <main id="list" class="list"></main>
+      <div id="empty" class="empty">
+        还没有下载任务。<br />按下载热键，或点右上角「新建」开始。
+      </div>
+
+      <footer class="foot">
+        <span id="global" class="num">↓ 0 B/s　↑ 0 B/s</span>
+        <span id="counts" class="num">0 个任务 · 0 个活动</span>
+      </footer>
+    </div>
   </div>
 </div>
+
+<script src="icons.js"></script>
+<script src="controls.js"></script>
+<script src="titlebar.js"></script>
 <script src="main.js"></script>
+<script>TitleBar.mount();</script>
 </body>
 </html>

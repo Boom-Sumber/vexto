@@ -18,6 +18,17 @@ const PAD_BOTTOM = 16;
 
 const el = (id) => document.getElementById(id);
 
+// 图标全部来自 icons.js（24 viewBox / stroke 1.6 / currentColor）。
+// 「复制译文」按钮里的文字要保持，所以图标插在文字前面而不是整体替换。
+(function mountIcons() {
+  const I = window.Icons;
+  I.fill(el("pin"), "pin", 14);
+  I.fill(el("close"), "close", 14);
+  I.fill(el("copy-src"), "copy", 14);
+  I.fill(el("open-settings"), "gear", 16);
+  el("copy-dst").insertAdjacentHTML("afterbegin", I.svg("copy", 14));
+})();
+
 let lastPayload = null;
 let hideTimer = null;
 let hovering = false;
@@ -273,20 +284,31 @@ function doTranslate() {
     });
 }
 
-async function copyText(text, btn, doneLabel, idleLabel) {
-  if (!text) return;
+async function writeClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
   } catch (e) {
     // 不可聚焦的窗口里 clipboard API 可能被拒，交给 Rust 侧兜底
     invoke("copy_text", { text }).catch(() => {});
   }
-  btn.textContent = doneLabel;
-  setTimeout(() => (btn.textContent = idleLabel), 1200);
 }
 
-el("copy-src").addEventListener("click", () => {
-  copyText(el("src").value, el("copy-src"), "已复制", "复制原文");
+/// 只改传进来的文字节点，不动按钮里的图标。
+async function copyText(text, labelEl, doneLabel, idleLabel) {
+  if (!text) return;
+  await writeClipboard(text);
+  labelEl.textContent = doneLabel;
+  setTimeout(() => (labelEl.textContent = idleLabel), 1200);
+}
+
+// 复制原文是纯图标按钮：复制成功后把图标换成勾，1.2 秒后换回来
+el("copy-src").addEventListener("click", async () => {
+  const text = el("src").value;
+  if (!text) return;
+  await writeClipboard(text);
+  const btn = el("copy-src");
+  window.Icons.fill(btn, "check", 14);
+  setTimeout(() => window.Icons.fill(btn, "copy", 14), 1200);
 });
 
 el("copy-dst").addEventListener("click", () => {

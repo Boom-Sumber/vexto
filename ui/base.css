@@ -18,6 +18,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+::selection {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
 /* ── 滚动条：透明轨道、无两端箭头、细滑块 ───────────────────────────────
  * 用户要求「无背景色、无箭头」：track 透明、button 尺寸归零；
  * 滑块用 border + background-clip 做出内缩感，hover 变亮。
@@ -122,13 +127,15 @@ textarea {
   font-family: inherit;
   font-size: var(--fs-md);
   color: var(--text-primary);
-  background: var(--bg-input);
+  /* 用 background-color 而不是简写：number / select 还要靠 background-image
+     画自绘箭头，简写会把图一起重置掉。 */
+  background-color: var(--bg-input);
   border: 1px solid var(--border-default);
   border-radius: var(--r-md);
   outline: none;
   transition: border-color var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-fast) var(--ease-out),
-              background var(--dur-fast) var(--ease-out);
+              background-color var(--dur-fast) var(--ease-out);
 }
 textarea {
   padding: var(--sp-2) var(--sp-3);
@@ -150,7 +157,7 @@ select:focus,
 textarea:focus {
   border-color: var(--accent);
   box-shadow: var(--ring);
-  background: var(--bg-panel);
+  background-color: var(--bg-panel);
 }
 
 ::placeholder { color: var(--text-disabled); }
@@ -159,6 +166,94 @@ input:disabled, select:disabled, textarea:disabled {
   opacity: .5;
   cursor: default;
 }
+
+/* ── 原生控件统一：不许出现系统自带的白色部件 ───────────────────────────
+ * 用户明确反馈「数字框后面的上下箭头是白色的，特别不协调」。系统部件
+ * （spinner / 勾选框 / 下拉箭头 / 日期按钮）无法改色，只能 appearance:none
+ * 之后自己画。这里是唯一允许写原生控件伪元素的地方。
+ */
+
+/* 数字输入：去掉系统 spinner，换成下面的 .num-steps 自绘步进 */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+/* 下拉框：去系统箭头，用主题色 chevron（图形定义在 theme-dark.css） */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: calc(var(--sp-2) * 2 + 12px);
+  background-image: var(--icon-select);
+  background-repeat: no-repeat;
+  background-position: right var(--sp-2) center;
+  background-size: 12px 12px;
+}
+
+/* 搜索框的清除按钮也归零，避免出现系统白叉 */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ── 数字步进区 ───────────────────────────────────────────────────────── */
+
+.has-stepper { position: relative; }
+
+.num-steps {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: var(--w-stepper);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border-default);
+  border-radius: 0 calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0;
+}
+
+.num-step {
+  flex: 1 1 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.num-step:hover { background: var(--bg-hover); color: var(--text-primary); }
+.num-step:active { background: var(--bg-active); }
+.num-step:disabled { opacity: .35; cursor: default; background: transparent; }
+
+/* 三角用 border 画：不依赖字体，任何缩放下都清晰 */
+.num-step::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+.num-step.up::before { border-bottom: 5px solid currentColor; }
+.num-step.down::before { border-top: 5px solid currentColor; }
+
+/* 有步进区时给输入框留空间（带单位 / 后缀的再往里让一档） */
+.has-stepper > input { padding-right: calc(var(--w-stepper) + var(--sp-2)); }
+.has-stepper > input.has-suffix { padding-right: calc(var(--w-stepper) + 52px); }
+.num-row.has-unit.has-stepper > input { padding-right: calc(var(--w-stepper) + 40px); }
+.num-row.has-unit .num-unit { right: calc(var(--w-stepper) + var(--sp-2)); }
+.input-wrap.has-stepper .suffix { right: calc(var(--w-stepper) + var(--sp-2)); }
 
 /* ── 按钮 ─────────────────────────────────────────────────────────────── */
 
@@ -215,14 +310,66 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* ── 复选框 ───────────────────────────────────────────────────────────── */
 
+/* 勾选框 / 单选框：系统控件在深色主题下是白底，统一自绘。
+ * 方框与输入框同色系，选中用主题色填充 + 自绘勾；不使用 accent-color
+ * （它只改选中色，空态的白底改不掉）。 */
 input[type="checkbox"],
 input[type="radio"] {
-  width: 15px;
-  height: 15px;
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-content: center;
+  width: var(--sz-check);
+  height: var(--sz-check);
   margin: 0;
-  accent-color: var(--accent);
+  padding: 0;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
   cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
 }
+input[type="checkbox"]:hover,
+input[type="radio"]:hover { border-color: var(--text-dim); }
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  transform: scale(0);
+  background: var(--accent-text);
+  clip-path: polygon(14% 44%, 0 65%, 40% 100%, 100% 16%, 84% 0, 39% 61%);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+input[type="checkbox"]:checked::before { transform: scale(1); }
+
+input[type="radio"] { border-radius: 50%; }
+input[type="radio"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: scale(0);
+  background: var(--accent-text);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+input[type="radio"]:checked::before { transform: scale(1); }
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled { opacity: .45; cursor: default; }
 
 /* ── 图标按钮 ─────────────────────────────────────────────────────────── */
 

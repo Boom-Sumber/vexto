@@ -283,7 +283,7 @@ function fieldNumber(f) {
   if (typeof f.min === "number") inp.min = String(f.min);
   if (typeof f.max === "number") inp.max = String(f.max);
 
-  inp.addEventListener("blur", () => {
+  function saveNumber() {
     let n = Number(inp.value);
     if (!Number.isFinite(n)) {
       // 清空或乱填：回退到当前值，不保存非法数
@@ -295,7 +295,9 @@ function fieldNumber(f) {
     if (typeof f.max === "number" && n > f.max) n = f.max;
     inp.value = String(n);
     commit(f.key, n);
-  });
+  }
+
+  inp.addEventListener("blur", saveNumber);
 
   row.append(inp);
   if (f.unit) {
@@ -304,6 +306,14 @@ function fieldNumber(f) {
     u.textContent = f.unit;
     row.append(u);
   }
+
+  // 系统 spinner 是白色的（用户反馈），改成 base.css 里的自绘步进。
+  // 点箭头等于改值 + 立刻保存，和手动输入后失焦同一条路径。
+  window.NumField.enhance(inp, (n) => {
+    inp.value = String(n);
+    commit(f.key, n);
+  });
+
   w.append(l, row);
   return w;
 }

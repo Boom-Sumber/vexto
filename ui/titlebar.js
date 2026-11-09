@@ -74,12 +74,15 @@ window.TitleBar = (function () {
     sync(document.hasFocus());
   }
 
-  function mount() {
+  /// `opts.resize === false`：固定尺寸窗口（如新建任务），不装 8 向缩放热区；
+  /// `opts.maximize === false`：不可最大化，双击标题栏也不该触发。
+  function mount(opts) {
+    const o = opts || {};
     mountIcons();
-    mountResize();
+    if (o.resize !== false) mountResize();
     mountFocus();
     const tb = document.querySelector(".tb");
-    if (tb) {
+    if (tb && o.maximize !== false) {
       // 双击标题栏最大化 / 还原（Windows 习惯）
       tb.addEventListener("dblclick", (ev) => {
         if (ev.target.closest(".tb-actions")) return;

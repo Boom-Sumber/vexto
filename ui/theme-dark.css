@@ -10,6 +10,10 @@
  */
 
 [data-theme="dark"] {
+  /* 告诉浏览器「这个页面是深色」：下拉列表、日期面板、原生菜单等
+     由系统绘制的部件会跟着变暗，而不是弹出一块白。 */
+  color-scheme: dark;
+
   /* ── 原始色板（冷灰） ─────────────────────────────────────────────── */
   --c-gray-1000: #0d0f13;
   --c-gray-950: #121419;
@@ -62,9 +66,10 @@
   --accent-hover: var(--c-violet-400);
   --accent-active: var(--c-violet-600);
   --accent-soft: rgba(124, 92, 255, .16);
-  /* 焦点环：第一层是 20% 的淡环（保证键盘焦点可见），第二层是 14px 模糊的柔光。
-     只用 `0 0 0 3px` 实心环会很生硬（blur=0，像贴了一圈塑料边），必须有第二层。 */
-  --accent-ring: rgba(124, 92, 255, .20);
+  /* 焦点环：主题色边框本身已经足够标示焦点，外圈只做「一点点晕」。
+     第一层 1px / 12% 只用来补一层色温，第二层 8px 柔光负责过渡；
+     环再宽就会和 1px 边框叠成一条粗边（用户反馈「边框很宽」）。 */
+  --accent-ring: rgba(124, 92, 255, .12);
   --accent-text: #ffffff;
 
   /* ── 状态色：与主题色分开，不要混用 ───────────────────────────────── */
@@ -83,5 +88,9 @@
   --shadow-float: 0 2px 8px rgba(0, 0, 0, .35);
   --shadow-popup: 0 8px 28px rgba(0, 0, 0, .45);
   --shadow-window: 0 12px 40px rgba(0, 0, 0, .5);
-  --ring: 0 0 0 3px var(--accent-ring), 0 0 14px rgba(124, 92, 255, .28);
+  --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(124, 92, 255, .22);
+
+  /* ── 原生控件用的图标（data URI 不能引用 CSS 变量，颜色只能在这里写死） ──
+   * select 的箭头改成自绘后不再受系统白色箭头影响；换主题时改这一行即可。 */
+  --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%236f7789' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
