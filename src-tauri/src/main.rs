@@ -949,10 +949,13 @@ fn download_open_dir(gid: String) -> Result<(), String> {
         .and_then(|r| r.snapshot().ok())
         .and_then(|s| s.tasks.into_iter().find(|t| t.gid == gid))
         .ok_or_else(|| "找不到这个任务".to_string())?;
+    // aria2 的 files[0].path 用正斜杠（C:/Users/...）。explorer.exe 的 /select,
+    // 参数遇到正斜杠会把路径当开关解析，会话 15 本机 A/B 实测：正斜杠打开的是
+    // 「桌面」并选中 Documents，反斜杠才打开目标目录。这里统一转成 Windows 分隔符。
     let arg = if !task.file_path.is_empty() && std::path::Path::new(&task.file_path).is_file() {
-        format!("/select,{}", task.file_path)
+        format!("/select,{}", task.file_path.replace('/', "\\"))
     } else {
-        task.dir
+        task.dir.replace('/', "\\")
     };
     if arg.trim().is_empty() {
         return Err("这个任务没有下载目录".to_string());

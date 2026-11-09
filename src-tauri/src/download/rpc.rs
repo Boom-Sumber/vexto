@@ -278,6 +278,10 @@ impl Rpc {
     /// 端口固定 127.0.0.1：RPC 只对回环监听；BT / DHT 的对外监听与此参数无关。
     pub fn new(port: u16, secret: &str) -> Result<Self, String> {
         let client = reqwest::blocking::Client::builder()
+            // RPC 只对 127.0.0.1 监听，绝不能走系统代理。
+            // reqwest 默认读 HTTP_PROXY/HTTPS_PROXY，用户装了代理软件且没配 NO_PROXY 时，
+            // 回环请求会被发到代理、拿到非 JSON 响应，表现为「aria2 返回的不是 JSON」。
+            .no_proxy()
             .timeout(TIMEOUT)
             .build()
             .map_err(|e| format!("创建 HTTP 客户端失败：{e}"))?;

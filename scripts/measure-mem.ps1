@@ -7,7 +7,10 @@
 # 判据见 docs/06-TESTING.md §6.6.2：
 #   冷启动空闲     WS <= 15 MB，WebView2 = 0
 #   用过一次关闭后 WS <= 10 MB，WebView2 = 0
-#   主窗口打开     总计 <= 250 MB（硬上限 300）
+#   弹窗打开       总计 <= 350 MB（硬上限 400）
+#   主窗口打开     总计 <= 400 MB（硬上限 450）
+#   主窗口口径在会话 15 按用户决定「调阈值」校正（原 300/350 是 S1b 拍的、无主窗口实测），
+#   依据见 docs/06-TESTING.md §6.6.2 与 docs/11-DEV-PROGRESS.md 会话 11 / 14 的实测。
 
 param([string]$ExeName = "lightbox")
 
