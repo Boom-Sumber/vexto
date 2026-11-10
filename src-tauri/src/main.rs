@@ -132,8 +132,8 @@ fn with_engine(mut payload: Value, cfg: &config::Config) -> Value {
         m.insert(
             "engineName".to_string(),
             json!(translate::engine_by_id(&engine_id)
-                .map(|e| e.name())
-                .unwrap_or("未配置引擎")),
+                .map(|e| e.display_name(cfg))
+                .unwrap_or_else(|| "未配置引擎".to_string())),
         );
         let list: Vec<Value> = translate::ENGINE_CHOICES
             .iter()
@@ -397,23 +397,34 @@ fn apply_values(cfg: &mut config::Config, values: &Map<String, Value>) -> Result
 
 /// 一个工具声明的所有「要存进 Config 的 key」。
 fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
-    match tools::registry::by_id(tool_id) {
-        Some(t) => t
-            .sections()
-            .iter()
-            .flat_map(|s| s.fields.iter())
-            .filter(|f| {
-                !matches!(
-                    f.kind,
-                    tools::FieldKind::Note { .. }
-                        | tools::FieldKind::Button
-                        | tools::FieldKind::Group { .. }
-                )
-            })
-            .map(|f| f.key)
-            .collect(),
-        None => Vec::new(),
+    let Some(t) = tools::registry::by_id(tool_id) else {
+        return Vec::new();
+    };
+    let mut keys: Vec<&'static str> = Vec::new();
+    for s in t.sections() {
+        for f in &s.fields {
+            if matches!(
+                f.kind,
+                tools::FieldKind::Note { .. }
+                    | tools::FieldKind::Button
+                    | tools::FieldKind::Group { .. }
+            ) {
+                continue;
+            }
+            keys.push(f.key);
+            // `list` 字段还会写一个「使用中」的目标键（例如 `openai_active`）。
+            // 它不是独立字段（界面上看不出来），但同样是配置键：读要读出来，
+            // 存也要放行 —— 会话 30 第一版就是漏在这里，点了「使用中」保存不进去。
+            if let tools::FieldKind::List {
+                active_key: Some(a),
+                ..
+            } = &f.kind
+            {
+                keys.push(*a);
+            }
+        }
     }
+    keys
 }
 
 /// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
@@ -1698,6 +1709,10 @@ mod tests {
         assert!(keys.contains(&"engine_mode"));
         assert!(keys.contains(&"vendor"));
         assert!(keys.contains(&"to"));
+        // list 字段的「使用中」目标键不是独立字段，但必须能读能存。
+        // 会话 30 第一版漏了它，表现为「点了使用中，保存后还是原来那套」。
+        assert!(keys.contains(&"openai_profiles"));
+        assert!(keys.contains(&"openai_active"));
         // 通用工具的字段不该出现在翻译里
         assert!(!keys.contains(&"popup_timeout_ms"));
     }
@@ -1737,6 +1752,19 @@ mod tests {
                         tool.id(),
                         f.key
                     );
+                    // list 的「使用中」目标键同样要能在 Config 里找到
+                    if let crate::tools::FieldKind::List {
+                        active_key: Some(a),
+                        ..
+                    } = &f.kind
+                    {
+                        assert!(
+                            map.contains_key(*a),
+                            "工具 {} 的 list 联动键 {} 在 Config 里不存在",
+                            tool.id(),
+                            a
+                        );
+                    }
                 }
             }
         }

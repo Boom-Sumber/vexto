@@ -257,6 +257,93 @@ input.capturing {
 /* 按钮不要被 grid 拉满整列（stretch 会让「发送测试通知」变成一条长条） */
 .field.action > .btn { justify-self: start; }
 
+/* ── 可重复的一组配置（list）─────────────────────────────────────────── */
+/*
+ * 卡片列表要占满整行：两栏布局里「标签列 + 一组卡片」会把卡片挤成一条。
+ * 所以这一种字段退化成单列——标签在上、卡片在下。
+ *
+ * 注意 `.field > :not(.field-label) { grid-column: 2 }` 那条通用规则：
+ * 它会把卡片区推到**隐式第二列**，template 只写一列也没用（第一列被
+ * label 撑开、第二列被卡片撑开，看上去还是两栏）。必须显式放回第 1 列。
+ */
+
+.field.list {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.field.list > .list-body {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.list-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.list-empty {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.list-item {
+  padding: var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+}
+
+/* 「使用中」那套描边高亮，一眼看出当前用的是哪个 */
+.list-item.on { border-color: var(--accent); }
+
+.li-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* 自绘单选：和设置页其他控件同一套口径（appearance:none 之后自己画） */
+.li-pick {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.li-pick:hover { border-color: var(--accent); }
+.li-pick.on {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
+}
+
+.li-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.li-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.li-label {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.list-add { align-self: flex-start; }
+.li-del { flex: 0 0 auto; }
+
+
 /* ── 分组标题 ─────────────────────────────────────────────────────────── */
 
 .group-title {

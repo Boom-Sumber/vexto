@@ -17,6 +17,33 @@ pub const MODE_OPENAI: &str = "openai";
 pub const VENDOR_BAIDU: &str = "baidu";
 pub const VENDOR_YOUDAO: &str = "youdao";
 
+/// 一套 OpenAI 兼容接口的配置。用户可以在设置里建多套、各起名字，
+/// 用哪套由 `openai_active` 指向它的 `id`。
+///
+/// 为什么不做成「一个 BaseURL + 一个模型名」：同一个人经常要在
+/// DeepSeek / 硅基流动 / 本地 Ollama 之间切，各家的 BaseURL、模型名、Key
+/// 都不一样，只留一套就得每次改三个字段。起个名字存下来，切的时候点一下就行。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ModelProfile {
+    /// 稳定标识（前端生成 uuid）。**用户改不了**，改名不影响它，
+    /// 这样「使用中」的指向不会因为改名而失效。
+    #[serde(default)]
+    pub id: String,
+    /// 用户自定义的名字，显示在设置页和翻译弹窗里
+    #[serde(default)]
+    pub name: String,
+    /// 接口根地址，不含 `/v1/chat/completions`
+    #[serde(default)]
+    pub base: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub key: String,
+    /// 自定义 system prompt，空则用内置的翻译指令
+    #[serde(default)]
+    pub prompt: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     // ---- 翻译引擎 ----
@@ -58,16 +85,26 @@ pub struct Config {
     pub lang_detect: String,
 
     // ---- OpenAI 兼容（DeepSeek / 硅基流动 / Ollama）----
-    /// 接口根地址，不含 `/v1/chat/completions`
-    #[serde(default = "d_openai_base")]
+    /// **老字段，只用于读旧配置**（会话 30 起不再由界面写入）。
+    ///
+    /// 以前只能存一套 OpenAI 兼容配置，现在改成 `openai_profiles` 列表。
+    /// `migrate_openai()` 会把有内容的那套搬进列表并清空这四个字段；
+    /// 清空后不序列化，配置文件里不会留一份永远不更新的副本。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub openai_base: String,
-    #[serde(default = "d_openai_model")]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub openai_model: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub openai_key: String,
-    /// 自定义 system prompt，空则用内置的翻译指令
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub openai_prompt: String,
+    /// OpenAI 兼容的多套模型配置。空列表 = 还没添加过。
+    #[serde(default)]
+    pub openai_profiles: Vec<ModelProfile>,
+    /// 当前用哪一套：存 `ModelProfile.id`。为空或指向不存在的 id 时
+    /// 退回列表第一条（`Config::openai_profile()`），不让配置坏掉就用不了。
+    #[serde(default)]
+    pub openai_active: String,
 
     // ---- 有道智云（会话 29）----
     /// 有道智云应用 ID。文本翻译与「大模型翻译」共用这一套凭据。
@@ -250,12 +287,6 @@ fn d_to2() -> String {
 fn d_lang_detect() -> String {
     "local".to_string()
 }
-fn d_openai_base() -> String {
-    "https://api.deepseek.com".to_string()
-}
-fn d_openai_model() -> String {
-    "deepseek-chat".to_string()
-}
 fn d_hotkey() -> String {
     "Ctrl+Alt+T".to_string()
 }
@@ -326,10 +357,12 @@ impl Default for Config {
             to: d_to(),
             to2: d_to2(),
             lang_detect: d_lang_detect(),
-            openai_base: d_openai_base(),
-            openai_model: d_openai_model(),
+            openai_base: String::new(),
+            openai_model: String::new(),
             openai_key: String::new(),
             openai_prompt: String::new(),
+            openai_profiles: Vec::new(),
+            openai_active: String::new(),
             youdao_app_key: String::new(),
             youdao_app_secret: String::new(),
             hotkey: d_hotkey(),
@@ -423,12 +456,75 @@ pub fn migrate_engine(cfg: &mut Config) {
     cfg.engine.clear();
 }
 
+/// 把老的「单套 OpenAI 配置」搬进 `openai_profiles`。
+///
+/// 判断依据是 `openai_key` 非空：`openai_base` / `openai_model` 以前有默认值，
+/// 光看它们分不出「用户填过」还是「出厂默认」，而没填 Key 的 OpenAI 配置本来也用不了。
+pub fn migrate_openai(cfg: &mut Config) {
+    if cfg.openai_profiles.is_empty() && !cfg.openai_key.trim().is_empty() {
+        cfg.openai_profiles.push(ModelProfile {
+            id: "default".to_string(),
+            name: "默认模型".to_string(),
+            base: if cfg.openai_base.trim().is_empty() {
+                "https://api.deepseek.com".to_string()
+            } else {
+                cfg.openai_base.clone()
+            },
+            model: if cfg.openai_model.trim().is_empty() {
+                "deepseek-chat".to_string()
+            } else {
+                cfg.openai_model.clone()
+            },
+            key: cfg.openai_key.clone(),
+            prompt: cfg.openai_prompt.clone(),
+        });
+    }
+    // 手改配置时可能漏字段（对象少一个键也能反序列化成功）：补上 id 与名字，
+    // 否则「使用中」指不到它、列表卡片也没标题。
+    for (i, p) in cfg.openai_profiles.iter_mut().enumerate() {
+        if p.id.trim().is_empty() {
+            p.id = format!("profile-{}", i + 1);
+        }
+        if p.name.trim().is_empty() {
+            p.name = format!("模型 {}", i + 1);
+        }
+    }
+    // active 指向不存在的 id → 退回第一条（删掉「使用中」那一项时会走到这）
+    if !cfg.openai_profiles.iter().any(|p| p.id == cfg.openai_active) {
+        cfg.openai_active = cfg
+            .openai_profiles
+            .first()
+            .map(|p| p.id.clone())
+            .unwrap_or_default();
+    }
+    // 旧字段清空，之后不再序列化
+    cfg.openai_base.clear();
+    cfg.openai_model.clear();
+    cfg.openai_key.clear();
+    cfg.openai_prompt.clear();
+}
+
+impl Config {
+    /// 当前使用的 OpenAI 兼容配置。
+    ///
+    /// `openai_active` 为空或指向不存在的 id 时退回第一条——配置被手改坏也不该
+    /// 让翻译直接不可用。列表为空才返回 `None`（这时引擎报「还没添加模型」）。
+    pub fn openai_profile(&self) -> Option<&ModelProfile> {
+        let id = self.openai_active.trim();
+        self.openai_profiles
+            .iter()
+            .find(|p| p.id == id)
+            .or_else(|| self.openai_profiles.first())
+    }
+}
+
 pub fn load() -> Config {
     let mut cfg = match std::fs::read_to_string(config_path()) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
         Err(_) => Config::default(),
     };
     migrate_engine(&mut cfg);
+    migrate_openai(&mut cfg);
     cfg
 }
 
@@ -444,8 +540,8 @@ pub fn save(cfg: &Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        migrate_engine, Config, MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU,
-        VENDOR_YOUDAO,
+        migrate_engine, migrate_openai, Config, ModelProfile, MODE_OPENAI, MODE_VENDOR_LLM,
+        MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
     };
 
     /// 老版本只有 appid，新版本加了字段也必须能读出来（ADR-013）。
@@ -479,7 +575,9 @@ mod tests {
         assert!(!c.enable_download);
         assert!(c.cache_enabled);
         assert_eq!(c.version, 1);
-        assert_eq!(c.openai_model, "deepseek-chat");
+        // 会话 30 起 OpenAI 配置改成列表，旧的四个字段只在迁移时读
+        assert_eq!(c.openai_model, "");
+        assert!(c.openai_profiles.is_empty());
     }
 
     #[test]
@@ -595,6 +693,117 @@ mod tests {
         assert_eq!(d.max_speed_kb, 2048);
         assert_eq!(d.max_concurrent, 8);
         assert_eq!(d.engine_mode, MODE_VENDOR_MT);
+    }
+
+    // ── 会话 30：OpenAI 多模型列表 ────────────────────────────
+
+    /// 老配置（只有单套 base/model/key）要搬进列表，并且旧字段清空不再落盘。
+    #[test]
+    fn migrate_openai_moves_legacy_into_list() {
+        let mut c: Config = serde_json::from_str(
+            r#"{"openai_base":"https://api.deepseek.com","openai_model":"deepseek-chat","openai_key":"sk-1","openai_prompt":"只输出译文"}"#,
+        )
+        .unwrap();
+        migrate_openai(&mut c);
+        assert_eq!(c.openai_profiles.len(), 1);
+        let p = &c.openai_profiles[0];
+        assert_eq!(p.base, "https://api.deepseek.com");
+        assert_eq!(p.model, "deepseek-chat");
+        assert_eq!(p.key, "sk-1");
+        assert_eq!(p.prompt, "只输出译文");
+        assert_eq!(p.name, "默认模型", "迁移出来的那条要有名字，否则列表卡片没标题");
+        assert_eq!(c.openai_active, p.id, "迁移后它就是当前使用的那套");
+        // 旧字段清空 + 不序列化
+        assert!(c.openai_key.is_empty());
+        let s = serde_json::to_string(&c).unwrap();
+        assert!(!s.contains("openai_key"), "旧字段不该再写进配置文件：{s}");
+        assert!(s.contains("openai_profiles"));
+    }
+
+    /// 没填过 Key 的老配置不该凭空长出一条空模型。
+    #[test]
+    fn migrate_openai_does_not_invent_profile_without_key() {
+        let mut c: Config = serde_json::from_str(
+            r#"{"openai_base":"https://api.deepseek.com","openai_model":"deepseek-chat"}"#,
+        )
+        .unwrap();
+        migrate_openai(&mut c);
+        assert!(c.openai_profiles.is_empty());
+        assert!(c.openai_active.is_empty());
+    }
+
+    /// 手改配置漏了 id / name 时要补上：缺 id 会让「使用中」指不到它。
+    #[test]
+    fn migrate_openai_fills_missing_id_and_name() {
+        let mut c: Config = serde_json::from_str(
+            r#"{"openai_profiles":[{"base":"https://a"},{"base":"https://b"}]}"#,
+        )
+        .unwrap();
+        migrate_openai(&mut c);
+        assert_eq!(c.openai_profiles[0].id, "profile-1");
+        assert_eq!(c.openai_profiles[1].id, "profile-2");
+        assert_eq!(c.openai_profiles[0].name, "模型 1");
+        assert_eq!(c.openai_profiles[1].name, "模型 2");
+        assert_eq!(c.openai_active, "profile-1", "没有 active 时默认第一条");
+    }
+
+    /// 删掉「使用中」那一项后，active 指向不存在的 id —— 要退回第一条，
+    /// 否则引擎会报「还没添加模型」但其实还有两套。
+    #[test]
+    fn migrate_openai_resets_dangling_active() {
+        let mut c: Config = serde_json::from_str(
+            r#"{"openai_profiles":[{"id":"a","name":"A","key":"k"},{"id":"b","name":"B","key":"k"}],"openai_active":"gone"}"#,
+        )
+        .unwrap();
+        migrate_openai(&mut c);
+        assert_eq!(c.openai_active, "a");
+    }
+
+    #[test]
+    fn openai_profile_prefers_active_then_falls_back() {
+        let mk = |id: &str, name: &str| ModelProfile {
+            id: id.into(),
+            name: name.into(),
+            base: format!("https://{id}"),
+            model: "m".into(),
+            key: "k".into(),
+            prompt: String::new(),
+        };
+        let mut c = Config {
+            openai_profiles: vec![mk("a", "A"), mk("b", "B")],
+            ..Config::default()
+        };
+        c.openai_active = "b".into();
+        assert_eq!(c.openai_profile().unwrap().name, "B");
+        // 指向不存在的 id / 空 → 第一条
+        c.openai_active = "nope".into();
+        assert_eq!(c.openai_profile().unwrap().name, "A");
+        c.openai_active.clear();
+        assert_eq!(c.openai_profile().unwrap().name, "A");
+        // 空列表 → None（引擎据此报「还没添加模型」）
+        c.openai_profiles.clear();
+        assert!(c.openai_profile().is_none());
+    }
+
+    /// 列表要能原样存回去（含中文名与空指令）。
+    #[test]
+    fn openai_profiles_roundtrip() {
+        let c = Config {
+            openai_profiles: vec![ModelProfile {
+                id: "x1".into(),
+                name: "硅基流动".into(),
+                base: "https://api.siliconflow.cn/v1".into(),
+                model: "Qwen/Qwen2.5-72B".into(),
+                key: "sk-2".into(),
+                prompt: String::new(),
+            }],
+            openai_active: "x1".into(),
+            ..Config::default()
+        };
+        let s = serde_json::to_string(&c).unwrap();
+        let d: Config = serde_json::from_str(&s).unwrap();
+        assert_eq!(d.openai_profiles, c.openai_profiles);
+        assert_eq!(d.openai_active, "x1");
     }
 
     // ── 会话 29：三模式 + 厂商的迁移 ────────────────────────────

@@ -104,9 +104,9 @@ impl Tool for Translate {
         match engine_by_id(&id) {
             Some(e) => {
                 if e.is_ready(&cfg) {
-                    format!("{} · 已就绪", e.name())
+                    format!("{} · 已就绪", e.display_name(&cfg))
                 } else {
-                    format!("{} · 未配置", e.name())
+                    format!("{} · 未配置", e.display_name(&cfg))
                 }
             }
             None => format!("未知引擎「{id}」"),
@@ -153,19 +153,30 @@ impl Tool for Translate {
                         .and_if_any("engine_mode", vendor_modes),
                     Field::note(
                         "有道在 ai.youdao.com 的「应用管理」里取应用 ID / 应用密钥；\n\
-                         文本翻译与大模型翻译共用这一套，不必建两个应用。",
+                         文本翻译与大模型翻译共用这一套，不必建两个应用。\n\
+                         注意：有道只有这两项，没有 API Key 这种鉴权方式。",
                     )
                     .show_if("vendor", VENDOR_YOUDAO)
                     .and_if_any("engine_mode", vendor_modes),
-                    // ── OpenAI 兼容 ──
-                    Field::text_hint("openai_base", "BaseURL", "https://api.deepseek.com")
-                        .show_if("engine_mode", MODE_OPENAI),
-                    Field::text_hint("openai_model", "模型", "deepseek-chat")
-                        .show_if("engine_mode", MODE_OPENAI),
-                    Field::password("openai_key", "API Key")
-                        .show_if("engine_mode", MODE_OPENAI),
-                    Field::text_hint("openai_prompt", "自定义指令", "留空用内置翻译指令")
-                        .show_if("engine_mode", MODE_OPENAI),
+                    // ── OpenAI 兼容（可以存多套，各起名字）──
+                    Field::list(
+                        "openai_profiles",
+                        "模型列表",
+                        vec![
+                            Field::text_hint("name", "名称", "例如 DeepSeek"),
+                            Field::text_hint("base", "BaseURL", "https://api.deepseek.com"),
+                            Field::text_hint("model", "模型", "deepseek-chat"),
+                            Field::password("key", "API Key"),
+                            Field::text_hint("prompt", "自定义指令", "留空用内置翻译指令"),
+                        ],
+                    )
+                    .active_key("openai_active")
+                    .show_if("engine_mode", MODE_OPENAI),
+                    Field::note(
+                        "每套模型都可以改个名字，点左边的圆点选「当前用这套」。\n\
+                         BaseURL 填 https://api.deepseek.com 或 https://xxx/v1 都行，会自动补全路径。",
+                    )
+                    .show_if("engine_mode", MODE_OPENAI),
                     Field::button("test_translate", "测试一下"),
                 ],
             ),
@@ -291,7 +302,7 @@ mod tests {
             "secret",
             "youdao_app_key",
             "youdao_app_secret",
-            "openai_key",
+            "openai_profiles",
         ] {
             assert!(keys.contains(&k), "引擎页缺字段 {k}，实际：{keys:?}");
         }
@@ -323,6 +334,35 @@ mod tests {
             assert!(also.equals.contains(&MODE_VENDOR_MT));
             assert!(also.equals.contains(&MODE_VENDOR_LLM));
         }
+    }
+
+    /// OpenAI 兼容的模型列表：卡片里要能填名称 / BaseURL / 模型 / Key / 指令，
+    /// 并且有「使用中」单选（写到 `openai_active`）。
+    #[test]
+    fn openai_profile_list_has_all_item_fields_and_active_key() {
+        let s = Translate.sections();
+        let f = s[0]
+            .fields
+            .iter()
+            .find(|f| f.key == "openai_profiles")
+            .expect("找不到模型列表字段");
+        match &f.kind {
+            crate::tools::FieldKind::List {
+                item_fields,
+                active_key,
+            } => {
+                let keys: Vec<&str> = item_fields.iter().map(|x| x.key).collect();
+                for k in ["name", "base", "model", "key", "prompt"] {
+                    assert!(keys.contains(&k), "卡片里缺输入框 {k}，实际：{keys:?}");
+                }
+                assert_eq!(*active_key, Some("openai_active"));
+            }
+            other => panic!("应该是个 list 字段，实际：{other:?}"),
+        }
+        // 只在 OpenAI 模式下显示
+        let cond = f.show_if.as_ref().expect("模型列表要有联动条件");
+        assert_eq!(cond.key, "engine_mode");
+        assert_eq!(cond.equals, vec![MODE_OPENAI]);
     }
 
     /// 厂商下拉只在两种厂商模式下出现，OpenAI 兼容模式下藏起来。

@@ -234,6 +234,8 @@ function renderField(f) {
       return fieldNote(f);
     case "group":
       return fieldGroup(f);
+    case "list":
+      return fieldList(f);
     default:
       // 后端加了新类型而前端还没跟上：明确报出来，不要静默吞掉
       return noteNode("未知字段类型「" + f.type + "」，请更新设置页");
@@ -280,6 +282,149 @@ function fieldGroup(f) {
   d.className = "group-title";
   d.textContent = f.title || "";
   return d;
+}
+
+// ── 可重复的一组配置（list）────────────────────────────────────────────
+//
+// 第一个用户是「OpenAI 兼容的多套模型」：每套有名称 / BaseURL / 模型名 / Key。
+// 整组的值是一个对象数组，任何改动都整体 commit 回去——数组的增删本来就要
+// 整体替换，再叠一套逐字段 diff 只会更难懂。
+//
+// 输入时不重画（否则光标会跳），只有增删和切换「使用中」才 draw()。
+// 每项的身份靠 `id`，改名不影响「使用中」的指向。
+
+function newItemId() {
+  return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function fieldList(f) {
+  const w = wrapField(f, "list");
+  w.append(labelNode(f.label || ""));
+
+  const body = document.createElement("div");
+  body.className = "list-body";
+  w.append(body);
+
+  const activeKey = f.active_key || "";
+  const itemFields = f.item_fields || [];
+
+  // 名称永远放头行，剩下的按声明顺序排；没声明 name 就把第一个当名称。
+  const nameField = itemFields.find((x) => x.key === "name") || itemFields[0] || null;
+  const restFields = itemFields.filter((x) => x !== nameField);
+
+  function readItems() {
+    const v = val(f.key);
+    return Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : [];
+  }
+
+  function patch(id, fieldKey, value) {
+    const next = readItems();
+    const it = next.find((x) => x.id === id);
+    if (!it) return;
+    it[fieldKey] = value;
+    commit(f.key, next);
+  }
+
+  function card(it, activeId) {
+    const c = document.createElement("div");
+    c.className = "list-item" + (activeId === it.id ? " on" : "");
+
+    const head = document.createElement("div");
+    head.className = "li-head";
+
+    if (activeKey) {
+      const pick = document.createElement("button");
+      pick.type = "button";
+      pick.className = "li-pick" + (activeId === it.id ? " on" : "");
+      pick.title = activeId === it.id ? "当前使用这套" : "点一下改用这套";
+      pick.setAttribute("aria-label", "使用这套");
+      pick.addEventListener("click", () => {
+        if (activeId === it.id) return;
+        commit(activeKey, it.id);
+        draw();
+      });
+      head.append(pick);
+    }
+
+    if (nameField) {
+      const name = document.createElement("input");
+      name.className = "input li-name";
+      name.type = "text";
+      name.spellcheck = false;
+      name.value = it[nameField.key] == null ? "" : String(it[nameField.key]);
+      name.placeholder = nameField.placeholder || nameField.label || "名称";
+      name.addEventListener("input", () => patch(it.id, nameField.key, name.value));
+      head.append(name);
+    }
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn li-del";
+    del.textContent = "删除";
+    del.title = "只删这套配置，不动任何账号";
+    del.addEventListener("click", () => {
+      const next = readItems().filter((x) => x.id !== it.id);
+      commit(f.key, next);
+      // 删掉的正好是「使用中」→ 顺位给第一条，没剩下就清空
+      if (activeKey && String(val(activeKey) || "") === it.id) {
+        commit(activeKey, next[0] ? next[0].id : "");
+      }
+      draw();
+    });
+    head.append(del);
+    c.append(head);
+
+    for (const fld of restFields) {
+      const row = document.createElement("label");
+      row.className = "li-row";
+      const lab = document.createElement("span");
+      lab.className = "li-label";
+      lab.textContent = fld.label || fld.key;
+      const inp = document.createElement("input");
+      inp.className = "input";
+      inp.type = fld.type === "password" ? "password" : "text";
+      inp.spellcheck = false;
+      inp.value = it[fld.key] == null ? "" : String(it[fld.key]);
+      if (fld.placeholder) inp.placeholder = fld.placeholder;
+      inp.addEventListener("input", () => patch(it.id, fld.key, inp.value));
+      row.append(lab, inp);
+      c.append(row);
+    }
+    return c;
+  }
+
+  function draw() {
+    body.textContent = "";
+    const items = readItems();
+    const activeId = activeKey ? String(val(activeKey) || "") : "";
+
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "list-empty";
+      empty.textContent = "还没有添加。点下面的「添加」建一套。";
+      body.append(empty);
+    }
+    for (const it of items) body.append(card(it, activeId));
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn list-add";
+    add.textContent = "添加";
+    add.addEventListener("click", () => {
+      const next = readItems();
+      const item = { id: newItemId() };
+      for (const fld of itemFields) item[fld.key] = "";
+      next.push(item);
+      commit(f.key, next);
+      // 之前一个都没有 → 新加的这条直接设为使用中，否则用户会以为没生效
+      if (activeKey && !String(val(activeKey) || "")) commit(activeKey, item.id);
+      draw();
+    });
+    body.append(add);
+  }
+
+  draw();
+  return w;
 }
 
 function fieldInput(f, inputType) {

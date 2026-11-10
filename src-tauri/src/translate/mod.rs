@@ -69,6 +69,11 @@ impl TranslateError {
 pub trait Engine: Send + Sync {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
+    /// 界面上显示的名字。默认就是 `name()`；OpenAI 兼容会带上用户起的模型名，
+    /// 否则配了五套也看不出现在用的是哪套。
+    fn display_name(&self, _cfg: &Config) -> String {
+        self.name().to_string()
+    }
     /// 单次请求的字符上限
     fn max_chars(&self) -> usize;
     /// 每秒允许的请求数，用来算块间间隔

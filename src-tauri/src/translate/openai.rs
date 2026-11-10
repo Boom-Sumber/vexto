@@ -37,8 +37,8 @@ fn endpoint(base: &str) -> String {
 ///
 /// **语言名必须用中文名**（`中文`/`英语`/`日语`），不能把 `zh`/`jp`/`kor` 这类代码
 /// 塞给模型：这是一套「百度代码」，模型看不懂，会照字母照做翻译。
-fn system_prompt(cfg: &Config) -> String {
-    let custom = cfg.openai_prompt.trim();
+fn system_prompt(profile: &crate::config::ModelProfile, cfg: &Config) -> String {
+    let custom = profile.prompt.trim();
     if !custom.is_empty() {
         return custom.to_string();
     }
@@ -81,23 +81,39 @@ impl Engine for OpenAiCompat {
     }
 
     fn is_ready(&self, cfg: &Config) -> bool {
-        !cfg.openai_key.trim().is_empty()
-            && !cfg.openai_base.trim().is_empty()
-            && !cfg.openai_model.trim().is_empty()
+        cfg.openai_profile().is_some_and(|p| {
+            !p.key.trim().is_empty() && !p.base.trim().is_empty() && !p.model.trim().is_empty()
+        })
     }
 
     fn ready_hint(&self) -> &'static str {
-        "OpenAI 兼容引擎还差点配置：BaseURL、模型名、API Key 三个都要填。\n\
-         右键托盘图标 → 设置… → 翻译 → 引擎。\n\
+        "OpenAI 兼容引擎还差点配置：先添加一个模型，BaseURL / 模型名 / API Key 三个都要填。\n\
+         右键托盘图标 → 设置… → 翻译 → 引擎 → 添加模型。\n\
          用 DeepSeek 就填 https://api.deepseek.com + deepseek-chat。"
     }
 
+    /// 带上用户起的模型名（「OpenAI 兼容 · DeepSeek」），否则弹窗和状态行
+    /// 只显示「OpenAI 兼容」，配了五套也看不出当前用的是哪套。
+    fn display_name(&self, cfg: &Config) -> String {
+        match cfg.openai_profile() {
+            Some(p) if !p.name.trim().is_empty() => format!("{} · {}", self.name(), p.name.trim()),
+            _ => self.name().to_string(),
+        }
+    }
+
     fn translate_one(&self, cfg: &Config, text: &str) -> Result<Translated, TranslateError> {
-        let url = endpoint(&cfg.openai_base);
+        let profile = cfg.openai_profile().ok_or_else(|| {
+            TranslateError::NotReady(
+                "还没有添加 OpenAI 兼容的模型。\n右键托盘图标 → 设置… → 翻译 → 引擎 → 添加模型"
+                    .to_string(),
+            )
+        })?;
+        let url = endpoint(&profile.base);
         if url.is_empty() {
-            return Err(TranslateError::NotReady(
-                "OpenAI 兼容引擎的 BaseURL 是空的".to_string(),
-            ));
+            return Err(TranslateError::NotReady(format!(
+                "模型「{}」的 BaseURL 是空的",
+                profile.name
+            )));
         }
 
         let client = reqwest::blocking::Client::builder()
@@ -106,9 +122,9 @@ impl Engine for OpenAiCompat {
             .map_err(|e| TranslateError::Network(format!("创建 HTTP 客户端失败：{e}")))?;
 
         let body = json!({
-            "model": cfg.openai_model.trim(),
+            "model": profile.model.trim(),
             "messages": [
-                {"role": "system", "content": system_prompt(cfg)},
+                {"role": "system", "content": system_prompt(profile, cfg)},
                 {"role": "user", "content": user_prompt(cfg, text)},
             ],
             "temperature": 0.2,
@@ -117,7 +133,7 @@ impl Engine for OpenAiCompat {
 
         let resp = client
             .post(&url)
-            .bearer_auth(cfg.openai_key.trim())
+            .bearer_auth(profile.key.trim())
             .json(&body)
             .send()
             .map_err(|e| TranslateError::Network(format!("{url}：{e}")))?;
@@ -214,7 +230,10 @@ fn strip_wrapper(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{endpoint, strip_wrapper};
+    use super::{endpoint, strip_wrapper, OpenAiCompat};
+    use crate::config::{Config, ModelProfile};
+    // trait 方法（is_ready / display_name）要在作用域里才能直接调
+    use crate::translate::Engine;
 
     #[test]
     fn endpoint_accepts_all_three_shapes() {
@@ -248,6 +267,69 @@ mod tests {
     fn strip_wrapper_removes_matching_quotes() {
         assert_eq!(strip_wrapper("\"译文\""), "译文");
         assert_eq!(strip_wrapper("「译文」"), "译文");
+    }
+
+    // ── 多套模型（会话 30）────────────────────────────────────
+
+    fn profile(id: &str, name: &str) -> ModelProfile {
+        ModelProfile {
+            id: id.into(),
+            name: name.into(),
+            base: "https://api.deepseek.com".into(),
+            model: "deepseek-chat".into(),
+            key: "sk-x".into(),
+            prompt: String::new(),
+        }
+    }
+
+    /// 弹窗和状态行要显示「OpenAI 兼容 · 用户起的名字」，否则配了五套
+    /// 也看不出现在用的是哪套。
+    #[test]
+    fn display_name_appends_profile_name() {
+        let mut cfg = Config::default();
+        assert_eq!(
+            OpenAiCompat.display_name(&cfg),
+            "OpenAI 兼容",
+            "还没添加模型时只显示引擎名"
+        );
+        cfg.openai_profiles = vec![profile("a", "DeepSeek")];
+        cfg.openai_active = "a".into();
+        assert_eq!(OpenAiCompat.display_name(&cfg), "OpenAI 兼容 · DeepSeek");
+        // active 指向不存在的 id → 退回第一条，名字取第一条的
+        cfg.openai_active = "gone".into();
+        assert_eq!(OpenAiCompat.display_name(&cfg), "OpenAI 兼容 · DeepSeek");
+    }
+
+    /// 就绪判断改成看「当前那一套」，不是看历史遗留的单字段。
+    #[test]
+    fn is_ready_follows_active_profile() {
+        let mut cfg = Config::default();
+        assert!(!OpenAiCompat.is_ready(&cfg), "列表为空时必须判未就绪");
+        cfg.openai_profiles = vec![profile("a", "A")];
+        cfg.openai_active = "a".into();
+        assert!(OpenAiCompat.is_ready(&cfg));
+        cfg.openai_profiles[0].key.clear();
+        assert!(!OpenAiCompat.is_ready(&cfg), "Key 空 → 未就绪");
+        cfg.openai_profiles[0].key = "k".into();
+        cfg.openai_profiles[0].base.clear();
+        assert!(!OpenAiCompat.is_ready(&cfg), "BaseURL 空 → 未就绪");
+        cfg.openai_profiles[0].base = "https://x".into();
+        cfg.openai_profiles[0].model.clear();
+        assert!(!OpenAiCompat.is_ready(&cfg), "模型名空 → 未就绪");
+    }
+
+    /// 自定义指令取的是**当前那套**的 prompt，不是全局那个。
+    #[test]
+    fn system_prompt_uses_active_profile_prompt() {
+        let mut cfg = Config::default();
+        cfg.to = "en".into();
+        let mut p = profile("a", "A");
+        p.prompt = "只输出译文，不要解释".into();
+        assert_eq!(super::system_prompt(&p, &cfg), "只输出译文，不要解释");
+        // 留空 → 内置指令里要带上目标语言的中文名
+        p.prompt.clear();
+        let builtin = super::system_prompt(&p, &cfg);
+        assert!(builtin.contains("英语"), "内置指令要写目标语言：{builtin}");
     }
 
     #[test]
