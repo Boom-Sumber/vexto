@@ -9,6 +9,7 @@
 //! - 工作线程做完取词和翻译 → `app.run_on_main_thread()` 回主线程再碰窗口。
 //! - `setup()` 里不能建窗（实测 os error 5），要等 `RunEvent::Ready`。
 
+mod autostart;
 mod capture;
 mod config;
 mod dlog;
@@ -54,6 +55,8 @@ struct ToolOut {
     name: &'static str,
     desc: &'static str,
     enabled: bool,
+    /// 设置页右上角要不要画「启用」开关（通用 / 关于是 false）
+    switchable: bool,
     status_line: String,
     sections: Vec<tools::Section>,
 }
@@ -398,7 +401,9 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
             .filter(|f| {
                 !matches!(
                     f.kind,
-                    tools::FieldKind::Note { .. } | tools::FieldKind::Button
+                    tools::FieldKind::Note { .. }
+                        | tools::FieldKind::Button
+                        | tools::FieldKind::Group { .. }
                 )
             })
             .map(|f| f.key)
@@ -475,6 +480,7 @@ fn list_tools() -> Vec<ToolOut> {
             name: t.name(),
             desc: t.desc(),
             enabled: t.enabled(),
+            switchable: t.switchable(),
             status_line: t.status_line(),
             sections: t.sections(),
         })
@@ -647,6 +653,28 @@ fn save_tool_config(
     //    不用重启 sidecar —— 重启会打断正在下载的任务（conf 里没有 input-file）。
     if ["proxy_mode", "proxy_url"].iter().any(|k| patch.contains_key(*k)) {
         crate::download::proxy::apply_runtime(&cfg);
+    }
+
+    // 9) 开机自启：写 / 删注册表 Run 键。
+    //    写失败（组策略锁了注册表、或 exe 在受保护目录）必须告诉用户，
+    //    否则他下次开机发现没起来，只会以为功能坏了。
+    if patch.contains_key("autostart") {
+        if let Err(e) = autostart::apply(cfg.autostart) {
+            warnings.push(format!("开机自启没设置成功：{e}"));
+        }
+    }
+
+    // 10) DNS / 证书校验 / RPC 端口都是 aria2 的**启动参数**：运行中的 sidecar
+    //     读不到新值。提示一句，用户才知道要不要手动重启引擎。
+    if ["dns_servers", "check_certificate", "rpc_port"]
+        .iter()
+        .any(|k| patch.contains_key(*k))
+        && crate::download::engine::rpc_handle().is_some()
+    {
+        warnings.push(
+            "DNS / 证书校验 / RPC 端口要等下载引擎下次启动才生效（可以先停用再启用下载）"
+                .to_string(),
+        );
     }
 
     SaveOut {
@@ -1293,6 +1321,28 @@ fn open_path(path: String) {
     let _ = std::process::Command::new("explorer.exe").arg(p).spawn();
 }
 
+/// 「发送测试通知」按钮。设置页的 Button 字段都是**无参命令**，所以单独包一层。
+///
+/// 不看「启用系统通知」开关：用户点测试就是要当场确认通道通不通，
+/// 总开关关着也该发——否则点了没反应，看起来像坏了。
+#[tauri::command]
+fn notify_test(app: AppHandle) -> Result<(), String> {
+    crate::download::notify::test(&app)
+}
+
+/// 「打开下载目录」按钮。目录不存在就先建，否则资源管理器会弹「找不到」。
+#[tauri::command]
+fn open_download_dir() -> Result<(), String> {
+    let cfg = config::load();
+    let dir = crate::download::engine::configured_download_dir(&cfg);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
+    std::process::Command::new("explorer.exe")
+        .arg(&dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("打开下载目录失败：{e}"))
+}
+
 /// 列表页「+」：打开新建任务窗口，**不关列表**（两窗并存，用户明确要求）。
 ///
 /// 与 `new_task_done` 同理：第二个 WebviewWindow 要在当前 IPC tick 之后建，
@@ -1368,6 +1418,8 @@ fn main() {
             download_add,
             download_add_torrent,
             download_task_defaults,
+            notify_test,
+            open_download_dir,
             download_probe,
             disk_free,
             open_path,
@@ -1381,6 +1433,11 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let cfg = config::load();
+
+            // 开机自启自愈：配置是唯一真相，注册表只是它的投影。
+            // 换过安装目录、被安全软件清掉、或用户手工删过，都在这里补齐 / 抹掉。
+            // 失败只记日志——自启坏掉不该让程序起不来。
+            crate::autostart::sync(cfg.autostart);
 
             tray::build(&handle, &cfg.hotkey)?;
 
@@ -1561,7 +1618,9 @@ mod tests {
                 for f in &s.fields {
                     if matches!(
                         f.kind,
-                        crate::tools::FieldKind::Note { .. } | crate::tools::FieldKind::Button
+                        crate::tools::FieldKind::Note { .. }
+                            | crate::tools::FieldKind::Button
+                            | crate::tools::FieldKind::Group { .. }
                     ) {
                         continue;
                     }

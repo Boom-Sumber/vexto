@@ -118,10 +118,13 @@ function renderStatusLine(tool) {
 
 function renderEnable(tool) {
   const cb = el("tool-enabled");
+  // 「通用」是配置容器、「关于」是只读信息，后端 switchable=false 时整块不画。
+  // 以前是画出来、点了回滚再弹原因；用户明确指出这两个页面不该有启用选项。
+  const canSwitch = tool.switchable !== false;
+  el("enable-wrap").classList.toggle("hidden", !canSwitch);
+  cb.onchange = null;
+  if (!canSwitch) return;
   cb.checked = !!tool.enabled;
-  // 不在这里隐藏：后端可能拒绝（「通用」是配置分组不能停用），
-  // 拒绝时勾选状态回滚并显示原因，比"看不见这个开关"更诚实。
-  el("enable-wrap").classList.remove("hidden");
   cb.onchange = async () => {
     const want = cb.checked;
     cb.disabled = true;
@@ -210,6 +213,8 @@ function renderField(f) {
       return fieldButton(f);
     case "note":
       return fieldNote(f);
+    case "group":
+      return fieldGroup(f);
     default:
       // 后端加了新类型而前端还没跟上：明确报出来，不要静默吞掉
       return noteNode("未知字段类型「" + f.type + "」，请更新设置页");
@@ -247,6 +252,17 @@ function fieldNote(f) {
   return d;
 }
 
+/// 分组标题：页签内部再分层（下载路径 / 速度与并发 / 通知…）。
+///
+/// 它没有 key、没有值，也不参与 show_if —— 一个纯版式元素。
+/// 放在 `sections()` 里而不是前端写死，是为了让「这页长什么样」仍然由工具自己描述。
+function fieldGroup(f) {
+  const d = document.createElement("div");
+  d.className = "group-title";
+  d.textContent = f.title || "";
+  return d;
+}
+
 function fieldInput(f, inputType) {
   const w = wrapField(f);
   const l = labelNode(f.label || "");
@@ -267,6 +283,26 @@ function fieldInput(f, inputType) {
   });
 
   w.append(l, inp);
+
+  // 预设按钮（目前只有「默认 User-Agent」用）：点一下把值填进同一个输入框并保存。
+  // 走和手填完全一样的 commit 路径，所以后端校验、回读、状态行刷新都一致。
+  if (Array.isArray(f.presets) && f.presets.length) {
+    const row = document.createElement("div");
+    row.className = "presets";
+    for (const [name, value] of f.presets) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "preset-btn";
+      b.textContent = name;
+      b.title = value;
+      b.addEventListener("click", () => {
+        inp.value = value;
+        commit(f.key, value);
+      });
+      row.append(b);
+    }
+    w.append(row);
+  }
   return w;
 }
 

@@ -179,29 +179,54 @@ h1 {
 .tab:hover { color: var(--text-secondary); }
 .tab.on { color: var(--text-primary); border-bottom-color: var(--accent); }
 
-/* ── 字段 ─────────────────────────────────────────────────────────────── */
+/* ── 字段：两栏（标签在左、控件在右）────────────────────────────────────
+ * 会话 25 按参考界面改成两栏。用 grid 而不是 flex，是为了让「一个字段占多行」
+ * （输入框 + 预设按钮、按钮 + 结果框）自动叠在控件列里，不用为每种组合再包一层。
+ * 标签固定在 row 1，所以多行字段的标签仍然和第一行控件对齐。
+ */
 
-.field { margin: 0 0 var(--sp-3); }
-
-.field-label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
+.field {
+  display: grid;
+  grid-template-columns: var(--w-field-label) minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  row-gap: 6px;
+  align-items: center;
+  margin: 0 0 var(--sp-3);
 }
 
-/* 带单位的数字：输入框 + 后缀 */
-.num-row { position: relative; }
+.field-label {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  line-height: var(--lh-normal);
+  /* 标签太长时在标签列里换行，绝不把控件列挤窄 */
+  overflow-wrap: anywhere;
+}
+
+/* 控件列：除标签外的所有子元素都落在第 2 列 */
+.field > *:not(.field-label) {
+  grid-column: 2;
+}
+
+/* 带单位的数字：输入框 + 后缀。宽度收窄——参考图里的步进框就是窄的，
+ * 拉满整列会让人以为要填一大段文字。
+ * 单位必须让开右侧 22px 的自绘步进区，否则「KB/s」会压在箭头上。 */
+.num-row {
+  position: relative;
+  max-width: 150px;
+}
+.num-row.has-unit { max-width: 170px; }
 .num-unit {
   position: absolute;
-  right: 11px;
+  right: calc(var(--w-stepper) + var(--sp-2));
   top: 50%;
   transform: translateY(-50%);
   font-size: var(--fs-xs);
   color: var(--text-dim);
   pointer-events: none;
 }
-.num-row.has-unit input { padding-right: 48px; }
+.num-row.has-unit input { padding-right: calc(var(--w-stepper) + 52px); }
 
 /* 热键框：只读 + 捕获模式，不允许手打（ADR-018） */
 input.capture { cursor: pointer; user-select: none; }
@@ -213,24 +238,15 @@ input.capturing {
   cursor: default;
 }
 
-/* 开关：一行 label + checkbox */
-.field.switch {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-.field.switch .field-label {
-  order: 2;
-  flex: 1;
-  margin: 0;
-  cursor: pointer;
-}
-.field.switch input[type="checkbox"] { order: 1; }
+/* 开关：标签在左列，勾选框在右列靠左（与参考界面一致） */
+.field.switch .field-label { cursor: pointer; }
+.field.switch input[type="checkbox"] { justify-self: start; }
 
-/* 说明文字 */
+/* 说明文字：没有标签，按标签列宽度缩进，读起来仍属于上面那一项 */
 .field.note {
+  display: block;
   margin: 0 0 var(--sp-3);
+  padding-left: calc(var(--w-field-label) + var(--sp-3));
   color: var(--text-dim);
   font-size: var(--fs-xs);
   line-height: var(--lh-loose);
@@ -238,6 +254,47 @@ input.capturing {
 }
 
 .field.action { margin: 0 0 var(--sp-3); }
+/* 按钮不要被 grid 拉满整列（stretch 会让「发送测试通知」变成一条长条） */
+.field.action > .btn { justify-self: start; }
+
+/* ── 分组标题 ─────────────────────────────────────────────────────────── */
+
+.group-title {
+  margin: var(--sp-5) 0 var(--sp-3);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+/* 页签里的第一个分组不要多出一截顶部留白 */
+#fields > .group-title:first-child { margin-top: 0; }
+
+/* ── 预设按钮（默认 User-Agent 的 Chrome / Edge / Safari / Firefox）────── */
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.preset-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
 
 /* 「测试一下」的结果框 */
 .result {

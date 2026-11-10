@@ -54,6 +54,9 @@ windows = { version = "0.62", features = [
     "Win32_Storage_FileSystem",
     # RegGetValueW：读 WinINET 的系统代理设置（代理模式选「跟随系统」时用）。
     "Win32_System_Registry",
+    # RegCreateKeyExW 被 gate 在 Win32_Security 下（开机自启要创建 Run 键）。
+    # 只放开绑定，不引入新 crate。
+    "Win32_Security",
     # MultiByteToWideChar：文件名不是 UTF-8 时按系统 ANSI 代码页（简中为 936）
     # 兜底解码，否则中文站点给的百分号文件名会变成一串 U+FFFD。
     "Win32_Globalization",

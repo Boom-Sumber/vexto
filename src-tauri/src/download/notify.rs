@@ -20,7 +20,7 @@ fn is_final(status: &str) -> bool {
 
 /// 观察一轮快照；`app` 用来发通知。
 pub fn observe(app: &tauri::AppHandle, tasks: &[TaskRow]) {
-    let enabled = crate::config::load().notify_download;
+    let cfg = crate::config::load();
     let mut guard = match SEEN.lock() {
         Ok(g) => g,
         Err(e) => e.into_inner(),
@@ -38,12 +38,17 @@ pub fn observe(app: &tauri::AppHandle, tasks: &[TaskRow]) {
         }
         // 状态照常记录，只是关掉开关时不发：否则「关掉再打开」会把当前
         // 所有已完成任务当成刚完成，一次性刷一堆通知。
-        if !enabled {
+        if !cfg.notify_download {
             continue;
         }
         match t.status.as_str() {
-            "complete" => send(app, "下载完成", &t.name),
-            "error" => {
+            // 「开始」只认第一次见到就已是 active 的任务：paused → active
+            // 是用户点继续，不该再弹一条。
+            "active" if prev.is_none() && cfg.notify_on_start => {
+                send(app, "开始下载", &t.name);
+            }
+            "complete" if cfg.notify_on_done => send(app, "下载完成", &t.name),
+            "error" if cfg.notify_on_done => {
                 let reason = t
                     .error_message
                     .as_deref()
@@ -54,6 +59,19 @@ pub fn observe(app: &tauri::AppHandle, tasks: &[TaskRow]) {
             _ => {}
         }
     }
+}
+
+/// 「发送测试通知」按钮。
+///
+/// **不看 `notify_download`**：用户点测试就是想当场确认通道通不通，
+/// 总开关关着也该发一条——否则点了没反应，看起来像坏了。
+pub fn test(app: &tauri::AppHandle) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title("LightBox")
+        .body("看到这条说明系统通知是通的。")
+        .show()
+        .map_err(|e| format!("发送测试通知失败：{e}"))
 }
 
 fn send(app: &tauri::AppHandle, title: &str, body: &str) {

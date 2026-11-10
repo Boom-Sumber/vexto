@@ -1,14 +1,14 @@
 //! 工具注册表的数据类型：`Field`（一个设置项）+ `Section`（一组设置项）+ `Tool`（一个工具）。
 //!
 //! **这里是 ADR-015 的落点**：设置页不允许为具体工具写分支。前端只认识
-//! `Field` 的 9 种类型，具体有哪些工具、每个工具长什么样，全部从 `Tool::sections()`
+//! `Field` 的 10 种类型，具体有哪些工具、每个工具长什么样，全部从 `Tool::sections()`
 //! 读出来。加一个工具时改的是「这个工具自己的文件 + registry 一行」，前端零改动。
 //!
 //! S2 相比 S0 的两个变化：
 //! 1. `Tool::settings_schema() -> Vec<Field>` → `Tool::sections() -> Vec<Section>`，
 //!    这样「翻译」这种一个工具内部有多个子功能（引擎 / 划词 / 截图）的能画标签页。
 //! 2. `Field` 从 enum 本体变成 `{ key, label, kind, show_if }` 的结构，
-//!    `kind` 才是那 9 种类型。**`Field` 的 JSON 形状保持兼容**：`kind` 仍然用
+//!    `kind` 才是那 10 种类型。**`Field` 的 JSON 形状保持兼容**：`kind` 仍然用
 //!    `#[serde(tag = "type", rename_all = "snake_case")]` 平铺进去，前端 `f.type` 不变。
 //!    新增的 `show_if` 是可选的联动条件（架构文档 §2.3.3 说「这是唯一需要的联动能力」）。
 
@@ -24,7 +24,7 @@ use serde::Serialize;
 /// 字段的联动条件：只有 `其它字段 == 某值` 时才显示。
 ///
 /// 一行判断，刻意不做表达式（`and`/`or`/`not`）——S2 任务书与架构文档都明确
-/// 「不要做更复杂的表达式」，因为 9 种字段里真正需要联动的只有「引擎=百度才显示
+/// 「不要做更复杂的表达式」，因为 10 种字段里真正需要联动的只有「引擎=百度才显示
 /// APPID」这一类，加到 and/or 就是给自己挖坑。
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ShowIf {
@@ -32,7 +32,11 @@ pub struct ShowIf {
     pub equals: &'static str,
 }
 
-/// 9 种字段类型。JSON 里以 `"type": "text" | "password" | ...` 区分。
+/// 10 种字段类型。JSON 里以 `"type": "text" | "password" | ...` 区分。
+///
+/// 第 10 种 `Group` 是会话 25 加的：下载设置要在**一个页签里**再分组
+/// （下载路径 / 速度与并发 / 通知…）。它不是「值」，只是一个分组标题，
+/// 所以没有 key、也不参与 `show_if`。
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FieldKind {
@@ -40,6 +44,10 @@ pub enum FieldKind {
     Text {
         #[serde(skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
+        /// 输入框下方的一排预设按钮 `(显示名, 值)`。点一下把值填进同一个字段。
+        /// 目前只有「默认 User-Agent」用（Chrome / Edge / Safari / Firefox）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        presets: Option<&'static [(&'static str, &'static str)]>,
     },
     /// 密码/密钥，前端用 `type=password` 并给个「显示」眼睛
     Password,
@@ -68,6 +76,10 @@ pub enum FieldKind {
     /// 纯说明文字，没有值。文案在 `text` 里
     Note {
         text: &'static str,
+    },
+    /// 分组标题 + 一条分隔线。只在一个页签内部再分层时用（会话 25）
+    Group {
+        title: &'static str,
     },
 }
 
@@ -99,6 +111,24 @@ impl Field {
             label,
             FieldKind::Text {
                 placeholder: Some(placeholder.to_string()),
+                presets: None,
+            },
+        )
+    }
+
+    /// 带一排预设按钮的文本框。点按钮把对应值填进同一个字段并保存。
+    pub fn text_presets(
+        key: &'static str,
+        label: &'static str,
+        placeholder: &'static str,
+        presets: &'static [(&'static str, &'static str)],
+    ) -> Self {
+        Self::new(
+            key,
+            label,
+            FieldKind::Text {
+                placeholder: Some(placeholder.to_string()),
+                presets: Some(presets),
             },
         )
     }
@@ -154,6 +184,11 @@ impl Field {
         Self::new(text, "", FieldKind::Note { text })
     }
 
+    /// 分组标题。没有 key（用标题当 DOM id），也不带 label。
+    pub fn group(title: &'static str) -> Self {
+        Self::new(title, "", FieldKind::Group { title })
+    }
+
     /// 只在 `key == equals` 时显示。
     pub fn show_if(mut self, key: &'static str, equals: &'static str) -> Self {
         self.show_if = Some(ShowIf { key, equals });
@@ -193,6 +228,14 @@ pub trait Tool: Send + Sync {
     /// 设置页左侧是否可用（`false` 时灰掉但仍能点开看）
     fn enabled(&self) -> bool;
     fn set_enabled(&self, on: bool) -> Result<(), String>;
+    /// 设置页右上角是否显示「启用」开关。
+    ///
+    /// 「通用」是配置容器、「关于」是只读信息，两者都**没有可停用的东西**。
+    /// 以前是显示开关、点了再回滚 + 弹原因（讲道理但绕）；会话 25 用户要求
+    /// 直接不显示——没有意义的选择不该出现在界面上。
+    fn switchable(&self) -> bool {
+        true
+    }
     /// 状态摘要，显示在工具名下方与分区顶部。例如「百度翻译 · 已就绪」/「未配置」
     fn status_line(&self) -> String;
     /// 设置项分组。多数工具返回一个 Section，翻译返回三个。
@@ -204,7 +247,7 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    /// 9 种类型都必须序列化成前端认识的形状：`{"type":"xxx", ...}`。
+    /// 10 种类型都必须序列化成前端认识的形状：`{"type":"xxx", ...}`。
     #[test]
     fn every_field_kind_serializes_with_type_tag() {
         let cases: Vec<(Field, &str)> = vec![
@@ -217,12 +260,39 @@ mod tests {
             (Field::dir("g", "G"), "dir"),
             (Field::button("h", "H"), "button"),
             (Field::note("说明"), "note"),
+            (Field::group("分组"), "group"),
         ];
         for (f, ty) in cases {
             let v: Value = serde_json::to_value(&f).unwrap();
             assert_eq!(v["type"], ty, "字段 {ty} 的 type 不对：{v}");
             assert_eq!(v["label"], f.label);
         }
+    }
+
+    /// 预设按钮是可选属性：没有 presets 的文本字段不该在 JSON 里带这个键
+    /// （前端要判空，多余的空数组会让它画一排空白按钮）。
+    #[test]
+    fn presets_only_appear_when_declared() {
+        let v: Value = serde_json::to_value(Field::text_hint("a", "A", "提示")).unwrap();
+        assert!(v.get("presets").is_none(), "不该出现 presets：{v}");
+        let v: Value = serde_json::to_value(Field::text_presets(
+            "ua",
+            "UA",
+            "选填",
+            &[("Chrome", "Mozilla/5.0")],
+        ))
+        .unwrap();
+        assert_eq!(v["presets"][0][0], "Chrome");
+        assert_eq!(v["presets"][0][1], "Mozilla/5.0");
+    }
+
+    /// 分组标题没有任何值，前端只读 `title`。
+    #[test]
+    fn group_carries_its_title() {
+        let v: Value = serde_json::to_value(Field::group("下载路径")).unwrap();
+        assert_eq!(v["type"], "group");
+        assert_eq!(v["title"], "下载路径");
+        assert_eq!(v["label"], "");
     }
 
     /// `show_if` 只在设置过时才出现，避免前端拿到 `null` 还要判空。

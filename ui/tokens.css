@@ -44,6 +44,8 @@
   --w-icon-btn: 30px;
   --w-scrollbar: 10px;
   --w-sidebar: 168px;
+  /* 设置页两栏布局的标签列宽；新建任务页是 104px，两边不共用 */
+  --w-field-label: 150px;
   /* 数字输入的上下步进区宽度；勾选框边长 */
   --w-stepper: 22px;
   --sz-check: 15px;

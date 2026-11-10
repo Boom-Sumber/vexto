@@ -112,6 +112,24 @@ pub struct Config {
     /// 下载完成 / 失败时弹系统通知。
     #[serde(default = "d_true")]
     pub notify_download: bool,
+    /// 开始下载时也发一条。**默认关**：批量下载会刷屏。
+    #[serde(default)]
+    pub notify_on_start: bool,
+    /// 下载完成 / 失败时通知。`notify_download` 是总开关，这一项是它的细分。
+    /// 拆成两个是为了对齐参考界面（「下载开始时 / 下载完成时」两个勾选）。
+    #[serde(default = "d_true")]
+    pub notify_on_done: bool,
+    /// 自定义 DNS 服务器，逗号分隔，落成 aria2 的 `--dns-server`。
+    ///
+    /// **这不是 DoH**：aria2 只支持明文 DNS，要做 DoH 得自建 DNS 代理（见 ADR-024）。
+    #[serde(default)]
+    pub dns_servers: String,
+    /// 是否校验 HTTPS 证书（aria2 `--check-certificate`）。默认开。
+    #[serde(default = "d_true")]
+    pub check_certificate: bool,
+    /// aria2 RPC 端口。只绑 127.0.0.1；被占用时引擎自动换一个可用端口。
+    #[serde(default = "d_rpc_port")]
+    pub rpc_port: u16,
     /// 代理模式：`direct` 直连 / `system` 跟随系统 / `manual` 手动。
     ///
     /// aria2 自己不读 Windows 的 WinINET 设置，所以「跟随系统」必须由我们读
@@ -134,6 +152,12 @@ pub struct Config {
     /// 扩展 Options 页里的密钥。空串 = 不校验（与 Rayburst 语义一致）。
     #[serde(default)]
     pub extension_bridge_secret: String,
+
+    // ---- 系统集成 ----
+    /// 开机自启（写 `HKCU\...\CurrentVersion\Run`）。
+    /// 默认关：没经用户同意不往系统里加东西。
+    #[serde(default)]
+    pub autostart: bool,
 
     // ---- 版本 ----
     /// 配置格式版本，从 1 开始。老配置没有这个字段时按 1 处理
@@ -197,6 +221,10 @@ fn d_proxy_mode() -> String {
 fn d_bridge_port() -> u16 {
     29110
 }
+/// aria2 RPC 端口。避开 6800（aria2 默认值，本机可能已有别的 aria2 占着）。
+fn d_rpc_port() -> u16 {
+    16800
+}
 fn d_version() -> u32 {
     1
 }
@@ -233,11 +261,17 @@ impl Default for Config {
             max_connection_per_server: d_connections(),
             default_user_agent: String::new(),
             notify_download: true,
+            notify_on_start: false,
+            notify_on_done: true,
+            dns_servers: String::new(),
+            check_certificate: true,
+            rpc_port: d_rpc_port(),
             proxy_mode: d_proxy_mode(),
             proxy_url: String::new(),
             extension_bridge_enabled: true,
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),
+            autostart: false,
             version: d_version(),
         }
     }
@@ -377,6 +411,19 @@ mod tests {
         let c: Config = serde_json::from_str("{}").unwrap();
         assert_eq!(c.max_connection_per_server, 16);
         assert_eq!(c.default_user_agent, "");
+    }
+
+    /// 会话 25 第二轮新增的系统集成 / 网络字段：老配置缺它们时的默认值必须是
+    /// 「不擅自替用户做主」——不自启、不指定 DNS、校验证书、通知细分为开。
+    #[test]
+    fn integration_defaults_for_old_config() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert!(!c.autostart, "没经同意不该写注册表");
+        assert_eq!(c.dns_servers, "", "默认用系统 DNS");
+        assert!(c.check_certificate, "默认必须校验证书");
+        assert!(c.notify_on_done);
+        assert!(!c.notify_on_start, "批量下载时开始通知会刷屏");
+        assert_eq!(c.rpc_port, 16800);
     }
 
     /// 新值要能原样存回去，且不影响其它字段。

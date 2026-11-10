@@ -26,6 +26,11 @@ impl Tool for About {
         Err("「关于」不能停用".to_string())
     }
 
+    /// 只读信息页，没有「启用」这件事。
+    fn switchable(&self) -> bool {
+        false
+    }
+
     fn status_line(&self) -> String {
         format!("LightBox {}", env!("CARGO_PKG_VERSION"))
     }

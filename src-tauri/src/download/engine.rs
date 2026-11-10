@@ -35,7 +35,8 @@ const TRIPLE: &str = "x86_64-pc-windows-msvc";
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// 避开 aria2 默认的 6800——用户机器上可能另有一个 aria2 占着它。
+/// 未启动时的占位端口。**真实端口来自 `config.rpc_port`**（默认值同为 16800），
+/// 这个常量只给 `EngineState` 一个初值，spawn 之后会被实际端口覆盖。
 const PREFERRED_PORT: u16 = 16800;
 const READY_TIMEOUT: Duration = Duration::from_secs(5);
 const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -294,7 +295,10 @@ fn spawn(
     String,
 > {
     let bin = sidecar_path()?;
-    let port = choose_port(PREFERRED_PORT);
+    // 端口来自设置（默认 16800）。被占用时 choose_port 会换一个能 bind 的，
+    // 所以用户填了一个冲突端口也不会起不来——只是实际端口和设置值不同，
+    // 设置页的状态行显示的是真实值。
+    let port = choose_port(cfg.rpc_port);
     let secret = make_secret();
     let conf = write_conf(cfg)?;
     let rpc = crate::download::rpc::Rpc::new(port, &secret)?;
@@ -456,6 +460,14 @@ fn resolve_dir(cfg: &config::Config, override_dir: &str) -> String {
     raw.replace(['\r', '\n'], "").replace('/', "\\")
 }
 
+/// 设置里「打开下载目录」按钮用的路径：配置里的目录优先，没配才用系统「下载」夹。
+///
+/// 与 `default_download_dir()` 的区别是那个**只看系统**，不看配置——
+/// 新建任务页要的是「默认值」，设置页按钮要的是「用户实际在用的那个」。
+pub fn configured_download_dir(cfg: &config::Config) -> String {
+    resolve_dir(cfg, "")
+}
+
 /// 把长参数写进临时 conf，命令行只留一个短 `--conf-path`。
 /// 值里的换行会破坏 `key=value` 格式，先剔掉。
 fn write_conf(cfg: &config::Config) -> Result<PathBuf, String> {
@@ -475,12 +487,47 @@ fn write_conf(cfg: &config::Config) -> Result<PathBuf, String> {
         .into_iter()
         .map(|l| format!("{l}\n"))
         .collect();
+    // DNS 与证书校验：两项都是 aria2 的启动参数，改完要等下次启动 sidecar 才生效
+    // （设置页的说明里写清了）。DNS 为空时**不写这一行**，让系统解析器说了算。
+    let dns = dns_line(&cfg.dns_servers);
+    let dns_opt = if dns.is_empty() {
+        String::new()
+    } else {
+        format!("dns-server={dns}\n")
+    };
+    let cert = format!("check-certificate={}\n", cfg.check_certificate);
     let content = format!(
-        "dir={dir}\ncontinue=true\nauto-file-renaming=true\nsave-session={}\nsave-session-interval=60\nmax-overall-download-limit={speed}\nmax-concurrent-downloads={concurrent}\n{proxy}",
+        "dir={dir}\ncontinue=true\nauto-file-renaming=true\nsave-session={}\nsave-session-interval=60\nmax-overall-download-limit={speed}\nmax-concurrent-downloads={concurrent}\n{cert}{dns_opt}{proxy}",
         session.display()
     );
     std::fs::write(&p, content).map_err(|e| format!("写 aria2 配置文件失败：{e}"))?;
     Ok(p)
+}
+
+/// `--dns-server` 只接受 IP 列表（`PRI,SEC`，最多两个）。
+///
+/// 用户可能从网页上粘一串带空格、换行、分号的东西进来；非法字符写进 conf 会让
+/// aria2 直接起不来（错误只在 `--console-log-level=warn` 里一闪而过）。所以先把手写
+/// 分隔符统一成逗号，再**按 `IpAddr` 逐个校验**——只过滤字符是不够的，
+/// `223.5.5.5\n1.1.1.1` 去掉换行后会粘成 `223.5.5.51.1.1.1`，看着仍像 IP。
+fn dns_line(raw: &str) -> String {
+    let normalized: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_whitespace() || matches!(c, ';' | '/' | '|') {
+                ','
+            } else {
+                c
+            }
+        })
+        .collect();
+    normalized
+        .split(',')
+        .map(str::trim)
+        .filter(|s| s.parse::<std::net::IpAddr>().is_ok())
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn wait_exit(child: &mut Child, timeout: Duration) -> Result<bool, String> {
@@ -580,6 +627,23 @@ mod tests {
         assert!(request_headers("", "").unwrap().is_empty());
         // 非法令牌必须在这里就失败，不能等 aria2 回一串英文
         assert!(request_headers("", &"a".repeat(5000)).is_err());
+    }
+
+    /// DNS 只留两个、且必须能解析成 IP。分号 / 空格 / 换行都当分隔符。
+    #[test]
+    fn dns_line_keeps_two_valid_ips() {
+        assert_eq!(dns_line(""), "");
+        assert_eq!(dns_line("   "), "");
+        assert_eq!(dns_line("223.5.5.5"), "223.5.5.5");
+        assert_eq!(dns_line("223.5.5.5, 119.29.29.29"), "223.5.5.5,119.29.29.29");
+        assert_eq!(dns_line("223.5.5.5;119.29.29.29"), "223.5.5.5,119.29.29.29");
+        // 换行不能把两条粘成一条假 IP
+        assert_eq!(dns_line("223.5.5.5\n1.1.1.1"), "223.5.5.5,1.1.1.1");
+        // 非 IP 一律丢掉；超过两个只取前两个
+        assert_eq!(dns_line("随便写点什么"), "");
+        assert_eq!(dns_line("1.1.1.1,8.8.8.8,9.9.9.9"), "1.1.1.1,8.8.8.8");
+        // IPv6 也要能过（aria2 支持）
+        assert_eq!(dns_line("2606:4700:4700::1111"), "2606:4700:4700::1111");
     }
     use std::sync::Arc;
 

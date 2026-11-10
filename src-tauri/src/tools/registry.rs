@@ -93,10 +93,11 @@ mod tests {
             let mut seen = HashSet::new();
             for s in t.sections() {
                 for f in s.fields {
-                    // Note 用文案当 key，Button 用动作名，都可能重复（两个 note 内容一样时），跳过
+                    // Note 用文案当 key，Button 用动作名，Group 用标题，
+                    // 三者都可能重复（两个同名分组 / 两条一样的说明），跳过
                     let is_value_field = !matches!(
                         f.kind,
-                        FieldKind::Note { .. } | FieldKind::Button
+                        FieldKind::Note { .. } | FieldKind::Button | FieldKind::Group { .. }
                     );
                     if !is_value_field {
                         continue;
@@ -120,20 +121,41 @@ mod tests {
         assert_eq!(ids, vec!["engine", "selection", "ocr"]);
     }
 
-    /// 只有翻译是多标签；其余四个工具都必须只有一个 Section，
+    /// 翻译三个标签、下载三个标签（会话 25 起），其余三个工具都只有一个 Section，
     /// 这样前端不会给它们画一层没意义的标签栏。
     #[test]
-    fn only_translate_has_multiple_sections() {
+    fn only_translate_and_download_have_multiple_sections() {
         for t in all() {
-            if t.id() == "translate" {
-                continue;
+            let id = t.id();
+            let n = t.sections().len();
+            match id {
+                "translate" | "download" => {
+                    assert_eq!(n, 3, "工具 {id} 应该是三个标签")
+                }
+                _ => assert_eq!(n, 1, "工具 {id} 不该有多个 Section"),
             }
-            assert_eq!(
-                t.sections().len(),
-                1,
-                "工具 {} 不该有多个 Section",
-                t.id()
-            );
+        }
+    }
+
+    /// 下载的三个页签下标必须与设置页里记的「上次停在哪」对得上。
+    #[test]
+    fn download_tabs_are_general_network_advanced() {
+        let t = super::by_id("download").expect("必须有 download 工具");
+        let ids: Vec<&str> = t.sections().iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec!["general", "network", "advanced"]);
+    }
+
+    /// 「通用」「关于」是配置容器与只读信息，不该有启用开关（会话 25 用户要求）。
+    #[test]
+    fn general_and_about_are_not_switchable() {
+        for id in ["general", "about"] {
+            let t = super::by_id(id).expect(id);
+            assert!(!t.switchable(), "{id} 不该显示启用开关");
+        }
+        // 其余可停用的工具仍要有开关，不能一刀切全关掉
+        for id in ["translate", "download", "transfer"] {
+            let t = super::by_id(id).expect(id);
+            assert!(t.switchable(), "{id} 应该有启用开关");
         }
     }
 }

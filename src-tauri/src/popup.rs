@@ -580,10 +580,11 @@ pub fn open_settings(app: &AppHandle) {
         // 仍然 resizable(true)，边缘缩放由前端 `titlebar.js` 的 8 向热区接管。
         .decorations(false)
         .shadow(true)
-        // 760 = 原来的 560 + 200（用户 m02639 第 2 条要求）。
-        // 左侧栏 168 + 右侧字段区，长路径 / BaseURL 这类输入框才不至于挤成一条。
-        .inner_size(760.0, 620.0)
-        .min_inner_size(660.0, 480.0)
+        // 820：会话 25 起设置页改成「标签在左、控件在右」两栏，
+        // 标签列 150 + 控件列要放长路径 / BaseURL / UA，760 不够。
+        // 最小 700 保证两栏都还站得住（再窄标签列就会挤成两行）。
+        .inner_size(820.0, 620.0)
+        .min_inner_size(700.0, 480.0)
         .resizable(true)
         .center()
         .additional_browser_args(WEBVIEW_ARGS)
