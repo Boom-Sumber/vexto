@@ -4,10 +4,14 @@
 // 每个工具几个标签页、每个标签页里有哪些字段、字段之间怎么联动（show_if），
 // 全部从 Rust 侧的 `Tool::sections()` 读出来。加一个新工具时这里零改动。
 //
-// 保存模型（S2 任务书 §2.6.4 第 ① 条：切分区不许丢改动）：
-//   switch / select / hotkey  —— 改动即存
-//   text / password / number / dir —— 失焦即存（也支持回车）
-// 所以页面上没有「保存」按钮。
+// 保存模型（会话 28 起改成**手动保存**）：
+//   改任何字段只是进 `state.pending`，底栏出现「保存 / 放弃」；
+//   点保存才发一次 `save_tool_config`（多个 key 一起交），点放弃就丢掉重读。
+//   有未保存改动时，切工具 / 关窗口都会先弹确认框——那是用户自己改的东西，
+//   不能因为点错一下就没了。
+//
+// 为什么改：之前「改一下就存」在改到一半时（比如刚改了限速还没填连接数）
+// 也会立刻落盘，用户没有一个「这批改动我想反悔」的出口。
 
 const T = window.__TAURI__;
 const invoke = T.core.invoke;
@@ -19,15 +23,16 @@ const state = {
   toolId: null,    // 当前选中的工具
   sections: [],    // 当前工具的 sections
   tabId: null,     // 当前标签（只有一个 section 时为 null，不画标签栏）
-  values: {},      // 当前工具的字段值快照（切标签页时不丢未保存的输入）
+  values: {},      // 后端读回来的值
+  pending: {},     // 还没保存的改动（key → value），优先于 values
 };
 
 // ── 小工具 ────────────────────────────────────────────────────────────────
 
-function setStatus(msg, bad) {
+function setStatus(msg, kind) {
   const s = el("status");
   s.textContent = msg || "";
-  s.className = bad ? "bad" : "";
+  s.className = kind === true ? "bad" : (typeof kind === "string" ? kind : "");
 }
 
 // 顶部横幅：热键被占用、保存警告都走这里，不弹窗也不写控制台（用户看不见）
@@ -76,6 +81,11 @@ function renderSidebar() {
 
 async function selectTool(id, opts = {}) {
   if (!id) return;
+  // 有未保存改动又切到别的工具：先问。点同一个工具不算切换，pending 留着。
+  if (!opts.skipGuard && pendingCount() > 0 && id !== state.toolId) {
+    showDirtyModal({ kind: "switch", toolId: id });
+    return;
+  }
   state.toolId = id;
   const tool = state.tools.find((t) => t.id === id);
   if (!tool) return;
@@ -188,8 +198,17 @@ function renderFields() {
   applyShowIf();
 }
 
+/// 字段当前该显示什么：**未保存的改动优先**。
+/// 切页签、切工具回来时靠它保住用户刚填的值（不回退成后端旧值）。
 function val(key) {
+  if (Object.prototype.hasOwnProperty.call(state.pending, key)) {
+    return state.pending[key];
+  }
   return state.values[key];
+}
+
+function pendingCount() {
+  return Object.keys(state.pending).length;
 }
 
 function renderField(f) {
@@ -532,38 +551,66 @@ function applyShowIf() {
   }
 }
 
-// ── 保存 ─────────────────────────────────────────────────────────────────
+// ── 保存 / 放弃 ─────────────────────────────────────────────────────────
+//
+// 改动只进 `state.pending`，不再「改一下就存」。这样用户有一整个「这批改动」
+// 的概念，可以反悔；代价是状态摘要要等保存后才刷新。
 
-// 只发改动的那一个 key：后端是「读现有配置 → 覆盖给定键 → 写盘」，
-// 发全量反而容易把别处的值覆盖掉（S2a 阶段踩过这个坑）。
-async function commit(key, value) {
-  state.values[key] = value;
-  applyShowIf();          // 立刻重算联动，不等保存结果
+function renderDirty() {
+  const n = pendingCount();
+  el("dirty-acts").classList.toggle("hidden", n === 0);
+  if (n > 0) {
+    setStatus(`有 ${n} 项未保存`, "dirty");
+  } else if (el("status").classList.contains("dirty")) {
+    setStatus("");
+  }
+}
+
+/// 一个字段被改动：只记待保存，**不打请求**。
+function commit(key, value) {
+  state.pending[key] = value;
+  applyShowIf();          // 立刻重算联动，不等保存
+  renderDirty();
+}
+
+/// 把 pending 里的所有改动一次交出去。返回是否成功。
+async function saveAll() {
+  if (pendingCount() === 0) return true;
   setStatus("保存中…");
   try {
     const res = await invoke("save_tool_config", {
       toolId: state.toolId,
-      values: { [key]: value },
+      values: state.pending,
     });
-    if (res && res.ok) {
-      setStatus(res.message || "已保存");
-      // 警告照旧显示，但有 warning 时不要被"已保存"盖掉
-      if (Array.isArray(res.warnings) && res.warnings.length) {
-        showBanner(res.warnings.join("\n"));
-      }
-      // 后端会把热键归一化、状态摘要也会变，所以回读一次
-      await refreshAfterSave();
-    } else {
+    if (!res || !res.ok) {
       setStatus((res && res.message) || "保存失败", true);
       showBanner((res && res.message) || "保存失败");
-      // 保存失败时把值退回后端真实值，避免界面骗人
-      await reloadValues();
+      return false;
     }
+    state.pending = {};
+    // 后端会改写部分值（清空目录回写默认路径），所以保存后重读一次。
+    await reloadValues();
+    renderDirty();
+    setStatus(res.message || "已保存");
+    if (Array.isArray(res.warnings) && res.warnings.length) {
+      showBanner(res.warnings.join("\n"));
+    }
+    // 热键归一化、状态摘要都变了，回读一次
+    await refreshAfterSave();
+    return true;
   } catch (e) {
     setStatus("保存失败：" + errText(e), true);
     showBanner("保存失败：" + errText(e));
-    await reloadValues();
+    return false;
   }
+}
+
+/// 丢掉所有未保存改动，回到后端真实值。
+async function discardAll() {
+  state.pending = {};
+  await reloadValues();
+  renderDirty();
+  setStatus("已放弃修改");
 }
 
 async function reloadValues() {
@@ -609,23 +656,91 @@ async function refreshHotkeyError() {
   }
 }
 
+// ── 未保存改动的确认框 ──────────────────────────────────────────────────
+//
+// 只在「有 pending 又要离开」时出现：切工具、关窗口。三种出口都给了：
+// 保存 / 放弃 / 取消，用户不需要猜「点了会怎样」。
+
+/// 离开动作：`{kind:"close"}` 或 `{kind:"switch", toolId}`。
+let dirtyIntent = null;
+
+function showDirtyModal(intent) {
+  dirtyIntent = intent;
+  const n = pendingCount();
+  const what = el("tool-name").textContent || "当前工具";
+  el("modal-title").textContent = "有未保存的修改";
+  el("modal-text").textContent = intent.kind === "close"
+    ? `「${what}」有 ${n} 项改动还没保存，直接关闭会丢掉它们。`
+    : `「${what}」有 ${n} 项改动还没保存，切换工具会丢掉它们。`;
+  el("dirty-modal").classList.remove("hidden");
+  el("mSave").focus();
+}
+
+function hideDirtyModal() {
+  el("dirty-modal").classList.add("hidden");
+  dirtyIntent = null;
+}
+
+/// 保存/放弃之后再执行真正的离开动作。
+function runIntent(intent) {
+  if (!intent) return;
+  if (intent.kind === "close") {
+    invoke("window_action", { action: "close" }).catch(() => {});
+  } else if (intent.kind === "switch") {
+    selectTool(intent.toolId, { skipGuard: true });
+  }
+}
+
 // ── 启动 ─────────────────────────────────────────────────────────────────
 
 async function boot() {
   await reloadTools();
 
   // 托盘点了某个工具、或从别处跳过来：定位到它
-  let pending = null;
+  let wanted = null;
   try {
-    pending = await invoke("take_pending_tool");
+    wanted = await invoke("take_pending_tool");
   } catch {
     /* 没有就算了 */
   }
 
-  const first = pending && state.tools.some((t) => t.id === pending)
-    ? pending
+  const first = wanted && state.tools.some((t) => t.id === wanted)
+    ? wanted
     : (state.tools[0] && state.tools[0].id);
   await selectTool(first);
+
+  // ── 手动保存的两个按钮 ────────────────────────────────────────────
+  el("btnSave").addEventListener("click", () => saveAll());
+  el("btnDiscard").addEventListener("click", () => discardAll());
+
+  // ── 未保存改动的确认框 ────────────────────────────────────────────
+  el("mCancel").addEventListener("click", hideDirtyModal);
+  el("mDiscard").addEventListener("click", async () => {
+    const intent = dirtyIntent;
+    hideDirtyModal();
+    state.pending = {};
+    if (intent) runIntent(intent);
+    else await discardAll();
+  });
+  el("mSave").addEventListener("click", async () => {
+    const intent = dirtyIntent;
+    const btn = el("mSave");
+    btn.disabled = true;
+    const ok = await saveAll();
+    btn.disabled = false;
+    if (!ok) return;          // 保存失败就停在弹窗里，让用户看到原因
+    hideDirtyModal();
+    runIntent(intent);
+  });
+
+  // 关窗口前问一句。`titlebar.js` 的关闭按钮会先调它，返回 false 就不关。
+  window.__beforeClose = async () => {
+    if (pendingCount() === 0) return true;
+    showDirtyModal({ kind: "close" });
+    return false;
+  };
+
+  renderDirty();
 
   // 设置窗口已经开着时再跳转：走事件而不是重载页面
   await listen("settings-goto", async (ev) => {

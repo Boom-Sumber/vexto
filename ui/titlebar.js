@@ -45,7 +45,18 @@ window.TitleBar = (function () {
         "aria-label",
         act === "min" ? "最小化" : act === "max" ? "最大化 / 还原" : "关闭"
       );
-      b.addEventListener("click", () => action(act));
+      // 页面可以挂一个 `window.__beforeClose`：返回 false 就表示「先别关」，
+      // 典型场景是设置页有未保存的修改（要弹确认框）。没挂就是直接关。
+      b.addEventListener("click", async () => {
+        if (act === "close" && typeof window.__beforeClose === "function") {
+          try {
+            if ((await window.__beforeClose()) === false) return;
+          } catch (e) {
+            console.error("beforeClose", e);
+          }
+        }
+        action(act);
+      });
     }
   }
 

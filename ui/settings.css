@@ -315,6 +315,10 @@ input.capturing {
 /* ── 底栏 ─────────────────────────────────────────────────────────────── */
 
 .pane-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
   min-height: var(--h-titlebar);
   padding: var(--sp-2) var(--sp-6);
   border-top: 1px solid var(--border-subtle);
@@ -322,3 +326,50 @@ input.capturing {
 }
 #status { font-size: var(--fs-sm); color: var(--success); }
 #status.bad { color: var(--danger); }
+#status.dirty { color: var(--warning); }
+
+.dirty-acts { display: flex; gap: var(--sp-2); }
+.dirty-acts .btn { height: 28px; }
+
+/* ── 未保存改动的确认框 ───────────────────────────────────────────────── */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 遮罩压暗但不纯黑：保持窗口内的层次感 */
+  background: rgba(0, 0, 0, .45);
+}
+
+.modal-card {
+  width: 360px;
+  padding: var(--sp-5);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+}
+
+.modal-card h2 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-text {
+  margin: 0 0 var(--sp-5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-loose);
+  color: var(--text-secondary);
+}
+
+.modal-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.modal-acts .btn { height: 30px; }

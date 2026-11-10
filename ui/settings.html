@@ -50,8 +50,27 @@
 
       <footer class="pane-foot">
         <span id="status"></span>
+        <!-- 只有存在未保存改动时才出现（会话 28 起改成手动保存） -->
+        <div id="dirty-acts" class="dirty-acts hidden">
+          <button id="btnDiscard" class="btn" type="button">放弃</button>
+          <button id="btnSave" class="btn btn-primary" type="button">保存</button>
+        </div>
       </footer>
     </main>
+  </div>
+
+  <!-- 未保存改动时的确认框。**不用 confirm()**：系统弹窗白底，和深色主题冲突
+       （docs/13-UI-DESIGN-SYSTEM.md）。纯文档流 + 遮罩，自绘。 -->
+  <div id="dirty-modal" class="modal hidden">
+    <div class="modal-card">
+      <h2 id="modal-title">有未保存的修改</h2>
+      <p id="modal-text" class="modal-text"></p>
+      <div class="modal-acts">
+        <button id="mCancel" class="btn" type="button">取消</button>
+        <button id="mDiscard" class="btn" type="button">放弃修改</button>
+        <button id="mSave" class="btn btn-primary" type="button">保存</button>
+      </div>
+    </div>
   </div>
 </div>
 
