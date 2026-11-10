@@ -124,29 +124,19 @@ impl Tool for Translate {
                     // ── 翻译：选一个已配置的实例 ──
                     Field::group("翻译"),
                     Field::select_dynamic("active_engine", "翻译模式", "engines"),
-                    Field::note(
-                        "这里列出下面「厂商管理」与「大模型管理」里的全部实例。\n\
-                         先添加，再回来在下拉里选中要用的那个。",
-                    ),
+                    Field::note("从下面两个列表里选一个已配置的实例。"),
                     // ── 厂商：卡片列表 + 弹窗新建 ──
                     Field::group("厂商管理"),
                     Field::list("vendor_profiles", "已配置的厂商", vendor_item_fields())
                         .summary(&["name", "vendor", "use_llm"])
-                        .add_dialog(),
-                    Field::note(
-                        "点卡片右边的箭头展开，可以直接改配置；点「添加」新建一套。\n\
-                         同一家可以建多套（比如两个百度应用），各起名字，用哪个在「翻译模式」里选。",
-                    ),
+                        .add_dialog()
+                        .test_action("test_engine_profile"),
                     // ── 大模型（OpenAI 兼容）──
                     Field::group("大模型管理"),
                     Field::list("openai_profiles", "已配置的模型", openai_item_fields())
                         .summary(&["name", "model"])
-                        .add_dialog(),
-                    Field::note(
-                        "OpenAI 兼容接口（DeepSeek / 硅基流动 / Ollama 等），每套可以起个名字。\n\
-                         BaseURL 填 https://api.deepseek.com 或 https://xxx/v1 都行，会自动补全路径。",
-                    ),
-                    Field::button("test_translate", "测试一下"),
+                        .add_dialog()
+                        .test_action("test_engine_profile"),
                 ],
             ),
             Section::new(
@@ -338,6 +328,21 @@ mod tests {
         }
     }
 
+    /// 会话 32：底部那个「测试一下」和两张列表下面的长说明都删了，
+    /// 测试改挂到每张卡片 / 新建弹窗上。
+    #[test]
+    fn engine_section_has_no_standalone_test_or_long_notes() {
+        let s = Translate.sections();
+        let keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
+        assert!(!keys.contains(&"test_translate"), "不该再有独立的测试按钮");
+        let notes = s[0]
+            .fields
+            .iter()
+            .filter(|f| matches!(f.kind, crate::tools::FieldKind::Note { .. }))
+            .count();
+        assert_eq!(notes, 1, "引擎页只留「翻译模式」下的一行说明");
+    }
+
     /// 厂商卡片：折叠摘要取「名称 · 厂商 · 机翻/大模型」，新建走弹窗。
     #[test]
     fn vendor_list_is_collapsed_with_dialog() {
@@ -352,6 +357,7 @@ mod tests {
                 item_fields,
                 summary,
                 add_dialog,
+                test_action,
             } => {
                 let keys: Vec<&str> = item_fields.iter().map(|x| x.key).collect();
                 for k in [
@@ -367,6 +373,7 @@ mod tests {
                 }
                 assert_eq!(*summary, vec!["name", "vendor", "use_llm"]);
                 assert!(*add_dialog, "新建要走弹窗");
+                assert_eq!(*test_action, Some("test_engine_profile"));
             }
             other => panic!("应该是 list 字段，实际：{other:?}"),
         }
@@ -415,6 +422,7 @@ mod tests {
                 item_fields,
                 summary,
                 add_dialog,
+                test_action,
             } => {
                 let keys: Vec<&str> = item_fields.iter().map(|x| x.key).collect();
                 for k in ["name", "base", "model", "key", "prompt"] {
@@ -422,6 +430,7 @@ mod tests {
                 }
                 assert_eq!(*summary, vec!["name", "model"]);
                 assert!(*add_dialog);
+                assert_eq!(*test_action, Some("test_engine_profile"));
             }
             other => panic!("应该是 list 字段，实际：{other:?}"),
         }

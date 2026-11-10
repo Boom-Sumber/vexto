@@ -299,6 +299,13 @@ pub struct Config {
     #[serde(default)]
     pub autostart: bool,
 
+    /// 极轻模式：关闭窗口时销毁 WebView，把内存还给系统。
+    /// **默认开**（`d_true`，老配置没有这个字段时按开处理，ADR-013 只增字段）。
+    /// 关掉后窗口只 `hide()`、WebView 常驻，下次打开更快但会一直占内存。
+    /// 这一个开关同时管设置 / 下载列表 / 新建任务 / 划词弹窗四条关闭路径。
+    #[serde(default = "d_true")]
+    pub lite_mode: bool,
+
     // ---- 版本 ----
     /// 配置格式版本，从 1 开始。老配置没有这个字段时按 1 处理
     #[serde(default = "d_version")]
@@ -439,6 +446,7 @@ impl Default for Config {
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),
             autostart: false,
+            lite_mode: true,
             version: d_version(),
         }
     }

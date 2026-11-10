@@ -305,6 +305,24 @@ function fieldGroup(f) {
 // 输入时不重画（否则光标会跳），只有增删、切换下拉才动 DOM。
 // 列表变了要 `renderFields()`：上面「翻译模式」的下拉是从这些列表算出来的。
 
+/// 实测一套引擎配置。卡片里刚改的值、弹窗里还没保存的草稿都能测：
+/// 后端用一份临时配置发一句翻译，不写盘、也不动当前正在用的引擎。
+async function testProfile(action, item, host, btn) {
+  const old = host.querySelector(".result");
+  if (old) old.remove();
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "测试中…";
+  try {
+    renderResult(host, await invoke(action, { profile: item }));
+  } catch (e) {
+    renderResult(host, { ok: false, message: errText(e) });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 function newItemId() {
   return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -453,6 +471,20 @@ function fieldList(f) {
     sums.set(it.id, sum);
     head.append(sum);
 
+    // 「测试」在「删除」左侧：先用这套配置实测一句，不写入配置
+    if (f.test_action) {
+      const test = document.createElement("button");
+      test.type = "button";
+      test.className = "btn li-test";
+      test.textContent = "测试";
+      test.title = "用这套配置实测一句翻译（不写入配置）";
+      test.addEventListener("click", () => {
+        const fresh = readItems().find((x) => x.id === it.id) || it;
+        testProfile(f.test_action, fresh, c, test);
+      });
+      head.append(test);
+    }
+
     const del = document.createElement("button");
     del.type = "button";
     del.className = "btn li-del";
@@ -500,7 +532,7 @@ function fieldList(f) {
     // 后端给的 label 是「已配置的厂商 / 已配置的模型」，去掉前缀正好当弹窗标题，
     // 不必再往 schema 里加一个 add_title 字段，也不在这里硬编码字段名。
     const noun = String(f.label || "一条").replace(/^已配置的/, "") || "一条";
-    openFormDialog("添加" + noun, itemFields, (draft) => {
+    openFormDialog("添加" + noun, itemFields, f.test_action, (draft) => {
       const item = Object.assign({ id: newItemId() }, draft);
       const next = readItems();
       next.push(item);
@@ -545,7 +577,7 @@ function fieldList(f) {
 // 字段来自后端 `item_fields`，只支持 text / password / select / switch。
 // `show_if` 读的是**草稿对象**，切厂商时重画一次，让另一家的凭据行跟着出现 / 消失。
 
-function openFormDialog(title, fields, onSave) {
+function openFormDialog(title, fields, testAction, onSave) {
   const draft = {};
   for (const fld of fields) {
     // select 的草稿值必须等于界面上默认选中的那一项：浏览器会自动选中第一个
@@ -560,6 +592,14 @@ function openFormDialog(title, fields, onSave) {
 
   el("fm-title").textContent = title;
   const body = el("fm-body");
+
+  // 弹窗里的「测试」测的是**当前草稿**（还没保存、甚至还没进列表）。
+  // 只有后端声明了 test_action 的列表才有这个按钮。
+  const testBtn = el("fmTest");
+  testBtn.classList.toggle("hidden", !testAction);
+  testBtn.onclick = testAction
+    ? () => testProfile(testAction, JSON.parse(JSON.stringify(draft)), body, testBtn)
+    : null;
 
   // 项内联动只看草稿自己，复用卡片详情那一套判断
   const shown = (fld) => itemShowIf(fld, draft);
@@ -975,9 +1015,27 @@ function renderDirty() {
   }
 }
 
+/// 值相等判断：list 字段是对象数组，而保存前后对象键顺序可能不同
+/// （前端草稿按表单字段顺序，后端按 Rust 结构顺序），所以不能直接 JSON.stringify 比。
+function stableJson(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(stableJson).join(",") + "]";
+  return "{" + Object.keys(v).sort()
+    .map((k) => JSON.stringify(k) + ":" + stableJson(v[k])).join(",") + "}";
+}
+
 /// 一个字段被改动：只记待保存，**不打请求**。
+///
+/// 会话 32：只在值真的变了才进 pending。以前 blur 一下、下拉重选同一个值
+/// 都会写一条改动，用户什么都没改也看到「有 N 项未保存」；改回原值也要
+/// 把这条 pending 撤掉，而不是留着一个和磁盘一致的「假改动」。
 function commit(key, value) {
-  state.pending[key] = value;
+  const original = state.values[key];
+  if (stableJson(original) === stableJson(value)) {
+    delete state.pending[key];
+  } else {
+    state.pending[key] = value;
+  }
   applyShowIf();          // 立刻重算联动，不等保存
   renderDirty();
   // 列表里改名 / 切大模型开关后，上面的动态下拉文字要跟着变。
@@ -1162,6 +1220,9 @@ async function boot() {
       await selectTool(id, { keepBanner: true });
     }
   });
+
+  // 首屏（工具列表 + 字段值）都填好了，才让后端把窗口显示出来
+  window.TitleBar?.reveal?.();
 }
 
 window.addEventListener("DOMContentLoaded", boot);

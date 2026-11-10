@@ -19,6 +19,17 @@ window.TitleBar = (function () {
   const invoke = window.__TAURI__.core.invoke;
   const getCurrentWindow = window.__TAURI__.window.getCurrentWindow;
 
+  // 普通窗口是 `visible(false)` 建的：WebView2 首帧是白底，建出来就显示
+  // 会先闪一下白屏。页面把自己的首屏数据填完后调 reveal()，后端才 show。
+  // 划词弹窗不加载 titlebar.js，它走自己的 popup_ready。
+  // **别用 rAF 等下一帧**：隐藏窗口里 Chromium 会暂停 rAF，窗口将永远不显示。
+  let revealed = false;
+  function reveal() {
+    if (revealed) return;
+    revealed = true;
+    invoke("window_ready").catch(() => {});
+  }
+
   const RESIZE = {
     n: "North",
     s: "South",
@@ -92,6 +103,12 @@ window.TitleBar = (function () {
     mountIcons();
     if (o.resize !== false) mountResize();
     mountFocus();
+
+    // 兜底：页面脚本万一抛错（没调到 reveal），load 之后 1.5s 也必须显示窗口，
+    // 否则用户会以为程序没反应。正常情况下页面 init 末尾会提前调 reveal()。
+    const armFallback = () => setTimeout(reveal, 1500);
+    if (document.readyState === "complete") armFallback();
+    else window.addEventListener("load", armFallback, { once: true });
     const tb = document.querySelector(".tb");
     if (tb && o.maximize !== false) {
       // 双击标题栏最大化 / 还原（Windows 习惯）
@@ -102,5 +119,5 @@ window.TitleBar = (function () {
     }
   }
 
-  return { mount };
+  return { mount, reveal };
 })();

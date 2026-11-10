@@ -56,6 +56,16 @@
   word-break: break-all;
 }
 
+/* User-Agent：基础样式里 textarea 是 resize:none，这里放开纵向拉伸。
+   overflow-wrap:anywhere 才能让「Mozilla/5.0 (Windows NT …)」这种长串自动折行。 */
+.ua-input {
+  height: 52px;
+  min-height: 52px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  resize: vertical;
+}
+
 .error { margin-top: 10px; }
 
 /* 一行：label（右对齐定宽）+ 输入区 + 可选按钮 */

@@ -16,6 +16,12 @@ const el = (id) => document.getElementById(id);
 // 热键预填只有 url，不会有这些字段。
 const extras = new Map();
 
+// UA 文本框允许视觉折行；用户真敲进去的回车不能带进 aria2 的 header，
+// 提交前把换行连同它后面的空白一起吃掉，让折开的两截重新拼回一个 UA。
+function cleanUa(s) {
+  return String(s || "").replace(/[\r\n]+\s*/g, "").trim();
+}
+
 let defaultDir = "";
 let submitting = false;
 let probeSeq = 0;
@@ -281,7 +287,7 @@ async function submitLinks() {
     dir: el("dir").value.trim() || defaultDir,
     max_speed_kb: Number(el("speed").value) || 0,
     connections: Number(el("conn").value) || 0,
-    user_agent: el("ua").value.trim(),
+    user_agent: cleanUa(el("ua").value),
     referer: el("referer").value.trim(),
     // 校验和只对单条链接有意义：多条链接内容是不同文件，不可能共用一个摘要。
     // 后端 `validate::checksum_option` 会再校验格式，这里只在多链接时丢弃。
@@ -531,4 +537,6 @@ function addPrefill(payload) {
   syncAuthHint();
   updateSpaceHint();
   el("links").focus();
+  // 默认值 / 预填都上屏了，再让后端显示窗口（会话 32 修白屏）
+  window.TitleBar?.reveal?.();
 })();

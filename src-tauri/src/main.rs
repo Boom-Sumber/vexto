@@ -777,6 +777,65 @@ fn test_translate() -> TestOut {
     }
 }
 
+/// 测试某一套引擎配置（会话 32：卡片头 / 新建弹窗里的「测试」按钮）。
+///
+/// 传进来的可能是一份刚改过、甚至还没进列表的草稿，所以**不能**拿
+/// `config::load()` 里那个 active_engine 去测。做法是 clone 当前配置，把两张
+/// 列表换成「只有这一套」、把 active 指过去，再走正常的 translate()。
+/// 全程不落盘，也不影响用户当前正在用的引擎。
+///
+/// 缓存必须临时关掉：cache_key 只含 engine.id() / 语向 / 原文，不含实例，
+/// 否则连测两套凭据不同的百度实例会命中上一次的结果，测试就成假的了。
+#[tauri::command]
+fn test_engine_profile(profile: Value) -> TestOut {
+    let cfg = config::load();
+    let probe = probe_text(&cfg.to);
+    let mut tmp = cfg.clone();
+    tmp.cache_enabled = false;
+    const ID: &str = "__probe__";
+    if profile.get("vendor").is_some() {
+        let mut p: config::VendorProfile = serde_json::from_value(profile).unwrap_or_default();
+        p.id = ID.into();
+        tmp.vendor_profiles = vec![p];
+        tmp.openai_profiles.clear();
+        tmp.active_engine = format!("vendor:{ID}");
+    } else {
+        let mut p: config::ModelProfile = serde_json::from_value(profile).unwrap_or_default();
+        p.id = ID.into();
+        tmp.openai_profiles = vec![p];
+        tmp.vendor_profiles.clear();
+        tmp.active_engine = format!("openai:{ID}");
+    }
+    let t0 = Instant::now();
+    match translate::translate(&tmp, probe) {
+        Ok(r) => TestOut {
+            ok: true,
+            message: r.dst,
+            from: r.from,
+            to: r.to,
+            ms: t0.elapsed().as_millis() as u64,
+        },
+        Err(e) => TestOut {
+            ok: false,
+            message: e,
+            from: String::new(),
+            to: String::new(),
+            ms: t0.elapsed().as_millis() as u64,
+        },
+    }
+}
+
+/// 前端首屏渲染完才把窗口显示出来（会话 32 修白屏）。
+/// 普通窗口都是 `visible(false)` 建的：WebView2 首帧是白底，早 show 就会闪一下。
+/// 划词弹窗走自己的 `popup_ready`，不走这里。
+#[tauri::command]
+fn window_ready(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.show().map_err(|e| format!("显示窗口失败：{e}"))?;
+    // visible(false) 时 build 后那次 set_focus 是空操作，show 之后要补一次
+    let _ = window.set_focus();
+    Ok(())
+}
+
 /// 打开配置目录（文件资源管理器）。
 #[tauri::command]
 fn open_config_dir() -> SimpleOut {
@@ -1465,7 +1524,16 @@ fn window_action(window: tauri::WebviewWindow, action: String) -> Result<(), Str
                 window.maximize().map_err(|e| format!("最大化失败：{e}"))
             }
         }
-        "close" => window.destroy().map_err(|e| format!("关闭窗口失败：{e}")),
+        // 极轻模式开（默认）：销毁 WebView 立刻释放内存（ADR-007）。
+        // 关掉后只隐藏：窗口还在，`open_*()` 直接 show() 复用现成的 WebView，
+        // 下次打开不再重新加载页面，代价是内存常驻。
+        "close" => {
+            if config::load().lite_mode {
+                window.destroy().map_err(|e| format!("关闭窗口失败：{e}"))
+            } else {
+                window.hide().map_err(|e| format!("隐藏窗口失败：{e}"))
+            }
+        }
         other => Err(format!("未知窗口操作：{other}")),
     }
 }
@@ -1483,13 +1551,15 @@ fn main() {
             save_tool_config,
             set_tool_enabled,
             test_translate,
+            test_engine_profile,
             open_config_dir,
             open_config_file,
             take_pending_tool,
             config_path,
             hotkey_error,
-            // 翻译弹窗
+            // 翻译弹窗 / 窗口首帧
             popup_ready,
+            window_ready,
             resize_popup,
             close_popup,
             copy_text,

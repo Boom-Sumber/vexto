@@ -97,7 +97,9 @@
       <div class="field" data-link-only>
         <label class="lbl" for="ua">User-Agent：</label>
         <div class="input-wrap">
-          <input id="ua" class="input" type="text" spellcheck="false" placeholder="选填" />
+          <!-- UA 是一长串无空格字符，单行框看不全：用两行可折行的文本框。
+               视觉折行不进 value；手敲的回车由 new_task.js 的 cleanUa() 去掉。 -->
+          <textarea id="ua" class="input ua-input" rows="2" spellcheck="false" placeholder="选填"></textarea>
         </div>
       </div>
       <div class="field" data-link-only>

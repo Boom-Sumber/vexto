@@ -64,6 +64,11 @@ impl Tool for General {
                      只写当前用户的启动项（HKCU），不需要管理员权限；\n\
                      换了安装目录的话下次启动会自动把路径改正。",
                 ),
+                Field::group("性能"),
+                Field::switch("lite_mode", "极轻模式"),
+                Field::note(
+                    "开启时关闭窗口立即释放 WebView 内存；关闭后窗口只是隐藏、再次打开更快，但会一直占内存。",
+                ),
                 Field::group("翻译与弹窗"),
                 Field::switch("cache_enabled", "翻译缓存"),
                 Field::note("开着缓存时，同一段文字再次翻译直接用上次结果，不消耗额度。"),

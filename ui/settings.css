@@ -364,7 +364,12 @@ input.capturing {
 .li-switch { justify-self: start; }
 
 .list-add { align-self: flex-start; }
+/* 卡片头：「测试」在「删除」左侧，两者都是同一排的小按钮 */
+.li-test { flex: 0 0 auto; margin-right: var(--sp-2); }
 .li-del { flex: 0 0 auto; }
+/* 卡片 / 弹窗里的实测结果框（复用 .result 的配色） */
+.list-item > .result { margin: 0 var(--sp-3) var(--sp-3); }
+.fm-body .result { margin-top: var(--sp-4); }
 
 /* ── 表单弹窗（新建一条配置）──────────────────────────────────────────── */
 

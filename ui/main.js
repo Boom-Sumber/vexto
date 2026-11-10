@@ -329,4 +329,5 @@ for (const b of document.querySelectorAll("button.cat")) {
   // 不再加定时器：实测（PrintWindow 连续两帧 7%→18%）事件通道工作正常。
   // 「文件已删除」的判定在后端 snapshot 里做（对 complete 任务 stat 一次），
   // 所以不需要前端额外轮询文件系统。
+  window.TitleBar?.reveal?.();
 })();

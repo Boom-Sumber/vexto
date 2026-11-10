@@ -3,8 +3,9 @@
 //! **窗口一律运行时创建**：`tauri.conf.json` 里 `app.windows` 是 `[]`，启动时不建任何
 //! WebView —— 这是"轻"的核心（启动即建窗会立刻拉起 6 个 msedgewebview2.exe，约 269 MB）。
 //!
-//! 两个窗口的关闭语义都是 **destroy 而不是 hide**（ADR-007）：`hide()` 只是把窗口藏起来，
-//! WebView2 的 6 个子进程会一直驻留，实测约 300 MB。
+//! 关闭语义由「极轻模式」开关决定（ADR-007 / 会话 32）：默认开 = **destroy**，
+//! 立刻释放 WebView2 的 6 个子进程（实测约 300 MB）；关掉 = **hide**，窗口与
+//! WebView 挂起常驻，下次打开不用重新加载页面，但内存不释放。
 
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::Duration;
@@ -472,11 +473,18 @@ pub fn close(app: &AppHandle) {
     // 位置记忆也要清：下次唤出是一次新弹窗，得按当时的模式/光标重新摆。
     PLACED.store(false, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(POPUP_LABEL) {
-        crate::dlog::dlog("popup::close: destroy");
-        let _ = w.destroy();
-        // 等 WebView2 进程组收尾后再把主进程的工作集换出去：
-        // 立刻调只会把还没回收的页又换出去一次，等 1.2s 更稳。
-        crate::mem::trim_soon(1200);
+        if crate::config::load().lite_mode {
+            crate::dlog::dlog("popup::close: destroy（极轻模式）");
+            let _ = w.destroy();
+            // 等 WebView2 进程组收尾后再把主进程的工作集换出去：
+            // 立刻调只会把还没回收的页又换出去一次，等 1.2s 更稳。
+            crate::mem::trim_soon(1200);
+        } else {
+            // 极轻模式关了：只隐藏，WebView 留着给下一次划词直接复用。
+            // 状态已经在上面复位，下一次 show() 会当成新一轮重新摆位置。
+            crate::dlog::dlog("popup::close: hide（极轻模式已关，WebView 挂起）");
+            let _ = w.hide();
+        }
     }
 }
 
@@ -587,6 +595,10 @@ pub fn open_settings(app: &AppHandle) {
         .min_inner_size(700.0, 480.0)
         .resizable(true)
         .center()
+        // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
+        // 先藏着，等前端 load 完调 window_ready 再显示；深色窗口底色是双保险。
+        .visible(false)
+        .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
 
@@ -628,6 +640,10 @@ pub fn open_main_window(app: &AppHandle) {
         .min_inner_size(560.0, 360.0)
         .resizable(true)
         .center()
+        // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
+        // 先藏着，等前端 load 完调 window_ready 再显示；深色窗口底色是双保险。
+        .visible(false)
+        .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
 
@@ -686,6 +702,10 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<NewTaskPrefill>) {
         .min_inner_size(600.0, 540.0)
         .resizable(false)
         .center()
+        // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
+        // 先藏着，等前端 load 完调 window_ready 再显示；深色窗口底色是双保险。
+        .visible(false)
+        .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
 

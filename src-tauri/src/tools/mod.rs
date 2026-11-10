@@ -111,6 +111,11 @@ pub enum FieldKind {
         /// 弹窗里只能填 `item_fields`，保存后 append 进列表。
         #[serde(default)]
         add_dialog: bool,
+        /// 卡片头 / 新建弹窗里的「测试」按钮调哪个后端命令（会话 32）。
+        /// 传当前项（可以是没保存的草稿）过去，后端用临时配置实测、不落盘。
+        /// 只有「这套配置到底能不能用」需要验证的列表才给：厂商与模型。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        test_action: Option<&'static str>,
     },
 }
 
@@ -249,6 +254,7 @@ impl Field {
                 item_fields: items,
                 summary: &[],
                 add_dialog: false,
+                test_action: None,
             },
         )
     }
@@ -265,6 +271,15 @@ impl Field {
     pub fn add_dialog(mut self) -> Self {
         if let FieldKind::List { add_dialog, .. } = &mut self.kind {
             *add_dialog = true;
+        }
+        self
+    }
+
+    /// 给卡片头和新建弹窗挂「测试」按钮，`cmd` 是后端命令名。
+    /// 对非 list 字段是空操作。
+    pub fn test_action(mut self, cmd: &'static str) -> Self {
+        if let FieldKind::List { test_action, .. } = &mut self.kind {
+            *test_action = Some(cmd);
         }
         self
     }
