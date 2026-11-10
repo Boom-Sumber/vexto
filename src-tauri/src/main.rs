@@ -1097,10 +1097,29 @@ fn download_add_torrent(task: crate::download::NewTorrent) -> Result<String, Str
     Ok(st.gid)
 }
 
-/// 新建页拿默认下载目录（显示成输入框的灰色占位符）。
+/// 新建任务页的默认值：目录 / 限速 / 连接数 / User-Agent。
+///
+/// 一次取回四个值而不是四次 invoke：新建页每次开窗都要这四项，串四个 IPC 会让
+/// 窗口先画出空框再一个个跳。`ua` 为空表示「不干涉」——用 aria2 自带 UA，
+/// 不冒充浏览器（会话 25 用户确认）。
+#[derive(Serialize)]
+struct TaskDefaultsOut {
+    dir: String,
+    speed: u32,
+    connections: u32,
+    ua: String,
+}
+
 #[tauri::command]
-fn download_default_dir() -> String {
-    crate::download::engine::default_download_dir()
+fn download_task_defaults() -> TaskDefaultsOut {
+    let cfg = config::load();
+    TaskDefaultsOut {
+        dir: crate::download::engine::default_download_dir(),
+        speed: cfg.max_speed_kb,
+        // 界面上限是 16；手改配置越界时在这里夹一次，别把一个非法值送进 aria2。
+        connections: cfg.max_connection_per_server.clamp(1, 16),
+        ua: cfg.default_user_agent.clone(),
+    }
 }
 
 /// 新建页取热键 / 扩展预填的条目（取走后清空）。
@@ -1348,7 +1367,7 @@ fn main() {
             // 新建下载任务（会话 16 / 会话 24 种子与高级选项）
             download_add,
             download_add_torrent,
-            download_default_dir,
+            download_task_defaults,
             download_probe,
             disk_free,
             open_path,

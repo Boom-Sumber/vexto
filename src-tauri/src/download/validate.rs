@@ -1,6 +1,6 @@
-//! 新建任务高级选项的校验与规范化（S3.5 第三轮）。
+//! 新建任务高级选项的校验与规范化（S3.5 第三轮起，会话 25 补 Authorization）。
 //!
-//! 这两项都是「用户手填 → aria2 option」，必须在后端再校验一遍：前端可能绕过
+//! 这些都是「用户手填 → aria2 option」，必须在后端再校验一遍：前端可能绕过
 //! （脚本直接调命令），而 aria2 对非法值的报错又很难懂（一个 RPC error 字符串）。
 //! 保持纯函数、不碰文件系统，方便单测锁住边界。
 
@@ -40,6 +40,36 @@ pub fn checksum_option(raw: &str) -> Result<Option<String>, String> {
         return Err(format!("{kind} 摘要必须是 {n} 位十六进制字符"));
     }
     Ok(Some(format!("{kind}={}", digest.to_ascii_lowercase())))
+}
+
+/// `Authorization` 头值的长度上限。
+///
+/// 4 KB：JWT 一般 1–2 KB，再长基本是粘错了东西。这不是安全边界（换行已经剔掉），
+/// 只是别让一段误粘的网页正文被塞进 aria2 的参数里。
+const MAX_AUTH_LEN: usize = 4 * 1024;
+
+/// 用户填的 `Authorization` → aria2 `header` 数组里的一行。
+///
+/// - 空串返回 `Ok(None)`（用户没填，不写这个头）；
+/// - 换行一并剔掉：aria2 把 header 值按行拼进请求，留一行就等于请求头注入
+///   （与 Cookie 同口径，见 `engine::cookie_line`）；
+/// - 不校验是不是 `Bearer xxx`：有的站点用 `Basic`、`Token` 或自定义方案，
+///   强行只放 Bearer 会把合法用法挡掉。
+///
+/// **调用方负责不把它写进日志**：令牌等价于密码。
+pub fn authorization_header(raw: &str) -> Result<Option<String>, String> {
+    let v = raw.replace(['\r', '\n'], "");
+    let v = v.trim();
+    if v.is_empty() {
+        return Ok(None);
+    }
+    if v.len() > MAX_AUTH_LEN {
+        return Err("认证令牌过长（上限 4 KB）".into());
+    }
+    if v.bytes().any(|b| b < 0x20 && b != b'\t') {
+        return Err("认证令牌里含有不可见控制字符".into());
+    }
+    Ok(Some(format!("Authorization: {v}")))
 }
 
 /// base64 字符数上限：约 4.5 MB 的种子文件。
@@ -115,6 +145,41 @@ mod tests {
         assert!(checksum_option("sha-256=zz").unwrap_err().contains("十六进制"));
         assert!(checksum_option("sha-256=abcd").unwrap_err().contains("64 位"));
         assert!(checksum_option("md5=").unwrap_err().contains("32 位"));
+    }
+
+    #[test]
+    fn authorization_empty_is_absent() {
+        assert_eq!(authorization_header("").unwrap(), None);
+        assert_eq!(authorization_header("  \r\n\t").unwrap(), None);
+    }
+
+    #[test]
+    fn authorization_keeps_the_raw_scheme() {
+        // 不强行加 Bearer：Basic / Token / 自定义方案都要能透传
+        assert_eq!(
+            authorization_header("  Bearer abc.def  ").unwrap().as_deref(),
+            Some("Authorization: Bearer abc.def")
+        );
+        assert_eq!(
+            authorization_header("Basic dXNlcjpwdw==").unwrap().as_deref(),
+            Some("Authorization: Basic dXNlcjpwdw==")
+        );
+    }
+
+    /// 请求头注入：换行必须被剔掉，不能变成第二个头。
+    #[test]
+    fn authorization_strips_newlines() {
+        assert_eq!(
+            authorization_header("Bearer a\r\nX-Evil: 1").unwrap().as_deref(),
+            Some("Authorization: Bearer aX-Evil: 1")
+        );
+    }
+
+    #[test]
+    fn authorization_rejects_oversize_and_control_chars() {
+        let too_long = "a".repeat(MAX_AUTH_LEN + 1);
+        assert!(authorization_header(&too_long).unwrap_err().contains("过长"));
+        assert!(authorization_header("Bearer a\u{0}b").unwrap_err().contains("控制字符"));
     }
 
     #[test]

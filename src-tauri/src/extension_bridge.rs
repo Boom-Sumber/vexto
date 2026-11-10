@@ -343,14 +343,6 @@ fn bearer_ok(req: &Request, secret: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn supported_url(url: &str) -> bool {
-    let l = url.trim().to_ascii_lowercase();
-    l.starts_with("http://")
-        || l.starts_with("https://")
-        || l.starts_with("ftp://")
-        || l.starts_with("magnet:?")
-}
-
 /// 扩展给的文件名可能是完整路径或带非法字符，这里只留一个安全的基名。
 /// 扩展交过来的文件名只取基名，清洗规则与下载引擎**共用一份**
 /// （`naming::sanitize`：非法字符、保留名、长度上限都在那里）。
@@ -370,7 +362,10 @@ fn prefill_from_add(body: &[u8]) -> Result<crate::popup::NewTaskPrefill, String>
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "缺少 url".to_string())?;
-    if !supported_url(url) {
+    // 支持哪些协议只认一处：`download::looks_like_url`。
+    // 磁力现在被那边关着（ALLOW_MAGNET = false），所以扩展交来磁力会走 fallback
+    // 让浏览器自己下——比「接管了却下不了」诚实。
+    if !crate::download::looks_like_url(url) {
         return Err(format!("不支持的链接类型：{url}"));
     }
 
@@ -621,6 +616,17 @@ mod tests {
         assert!(prefill_from_add(br#"{"url":"file:///etc/passwd"}"#).is_err());
         assert!(prefill_from_add(br#"{}"#).is_err());
         assert!(prefill_from_add(b"not json").is_err());
+    }
+
+    /// 磁力链在会话 25 被关掉（BT 入口未开放）：扩展交过来必须走 fallback，
+    /// 不能「收下了但下不了」。开关在 `download::ALLOW_MAGNET`，与剪贴板同一处。
+    #[test]
+    fn add_request_rejects_magnet_while_bt_is_closed() {
+        let body = br#"{"url":"magnet:?xt=urn:btih:abc123"}"#;
+        assert_eq!(
+            prefill_from_add(body).is_err(),
+            !crate::download::ALLOW_MAGNET
+        );
     }
 
     #[test]

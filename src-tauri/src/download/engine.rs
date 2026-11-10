@@ -206,20 +206,27 @@ pub fn add_task(
     if !t.referer.trim().is_empty() {
         opts.insert("referer".into(), serde_json::json!(t.referer.trim()));
     }
-    // 浏览器扩展交过来的登录态：只走 Cookie 头，Referer / UA 用各自的 option。
-    if let Some(h) = cookie_header(&t.cookie) {
-        opts.insert("header".into(), h);
+    // 浏览器扩展交过来的登录态 + 用户填的 Authorization：**共用 aria2 的 `header`
+    // 数组**。它是列表选项，分两次 insert 会后者覆盖前者（Cookie 会被吃掉）。
+    let headers = request_headers(&t.cookie, &t.authorization)?;
+    if !headers.is_empty() {
+        opts.insert("header".into(), serde_json::json!(headers));
     }
     // 校验和与 HTTP 鉴权：先过一遍纯函数校验，非法值直接拦在发起 RPC 之前，
     // 别让用户面对 aria2 那句看不懂的英文错误。
     if let Some(cs) = crate::download::validate::checksum_option(&t.checksum)? {
         opts.insert("checksum".into(), serde_json::json!(cs));
     }
-    if !t.http_user.trim().is_empty() {
-        opts.insert("http-user".into(), serde_json::json!(t.http_user.trim()));
-    }
-    if !t.http_passwd.is_empty() {
-        opts.insert("http-passwd".into(), serde_json::json!(t.http_passwd));
+    // Authorization 与 用户名/密码 互斥（ADR-024）：填了原始头就不再发 Basic，
+    // 否则两个 Authorization 头一起贴上去，服务器行为不可预期。
+    let has_auth_header = headers.iter().any(|h| h.starts_with("Authorization:"));
+    if !has_auth_header {
+        if !t.http_user.trim().is_empty() {
+            opts.insert("http-user".into(), serde_json::json!(t.http_user.trim()));
+        }
+        if !t.http_passwd.is_empty() {
+            opts.insert("http-passwd".into(), serde_json::json!(t.http_passwd));
+        }
     }
 
     let gid = rpc.add_uri(&t.uri, serde_json::Value::Object(opts))?;
@@ -507,18 +514,35 @@ fn remove_conf(p: Option<PathBuf>) {
     }
 }
 
-/// Cookie → aria2 的 `header` 数组。
+/// Cookie → aria2 的 `header` 里的一行。
 ///
 /// 空值返回 `None`（不要发一个空的 Cookie 头）；换行必须剔掉——aria2 把
 /// header 值按行拼进请求，多一行就等于请求头注入。
-fn cookie_header(cookie: &str) -> Option<serde_json::Value> {
+fn cookie_line(cookie: &str) -> Option<String> {
     let c = cookie.replace(['\r', '\n'], "");
     let c = c.trim();
     if c.is_empty() {
         None
     } else {
-        Some(serde_json::json!([format!("Cookie: {c}")]))
+        Some(format!("Cookie: {c}"))
     }
+}
+
+/// Cookie 与 Authorization 合成 aria2 的 `header` 列表。
+///
+/// **必须一次性构造**：`header` 是列表选项，往同一个 `Map` 里分两次 insert
+/// 会让后写的把先写的整个替换掉（Cookie 就这么被 Authorization 吃掉的）。
+///
+/// 顺序固定 Cookie → Authorization，方便断言与排查。
+fn request_headers(cookie: &str, authorization: &str) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    if let Some(c) = cookie_line(cookie) {
+        out.push(c);
+    }
+    if let Some(a) = crate::download::validate::authorization_header(authorization)? {
+        out.push(a);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -529,14 +553,33 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
-    fn cookie_header_skips_empty_and_strips_newlines() {
-        assert!(cookie_header("   ").is_none());
-        assert!(cookie_header("\r\n\t").is_none());
-        let v = cookie_header("sid=1; theme=dark").unwrap();
-        assert_eq!(v, serde_json::json!(["Cookie: sid=1; theme=dark"]));
+    fn cookie_line_skips_empty_and_strips_newlines() {
+        assert!(cookie_line("   ").is_none());
+        assert!(cookie_line("\r\n\t").is_none());
+        assert_eq!(
+            cookie_line("sid=1; theme=dark").as_deref(),
+            Some("Cookie: sid=1; theme=dark")
+        );
         // 请求头注入：换行必须被剔掉，不能变成第二个头
-        let v = cookie_header("sid=1\r\nX-Evil: 1").unwrap();
-        assert_eq!(v, serde_json::json!(["Cookie: sid=1X-Evil: 1"]));
+        assert_eq!(
+            cookie_line("sid=1\r\nX-Evil: 1").as_deref(),
+            Some("Cookie: sid=1X-Evil: 1")
+        );
+    }
+
+    /// Cookie 与 Authorization 必须是**同一个数组里的两项**。
+    /// 这条测试锁的是「分两次 insert 会互相覆盖」这个坑。
+    #[test]
+    fn cookie_and_authorization_share_one_header_list() {
+        assert_eq!(
+            request_headers("sid=1", "Bearer t").unwrap(),
+            vec!["Cookie: sid=1".to_string(), "Authorization: Bearer t".to_string()]
+        );
+        assert_eq!(request_headers("", "Bearer t").unwrap().len(), 1);
+        assert_eq!(request_headers("sid=1", "").unwrap().len(), 1);
+        assert!(request_headers("", "").unwrap().is_empty());
+        // 非法令牌必须在这里就失败，不能等 aria2 回一串英文
+        assert!(request_headers("", &"a".repeat(5000)).is_err());
     }
     use std::sync::Arc;
 

@@ -33,6 +33,12 @@
   color: var(--text-primary);
   border-bottom-color: var(--accent);
 }
+/* 暂时关闭的页签（种子任务）：灰掉且不响应悬停，鼠标指针不改手型 */
+.tab:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+.tab:disabled:hover { color: var(--text-disabled); }
 
 /* ── 主体 ─────────────────────────────────────────────────────────────── */
 
@@ -61,8 +67,11 @@
 }
 
 .field .lbl {
-  flex: 0 0 76px;
+  /* 104px：「User-Agent：」这类 13px 的长标签约 83px，76px 会折成两行（会话 25）。
+     nowrap 是保险：以后再加更长的标签，宁可挤出一点也不能折行。 */
+  flex: 0 0 104px;
   text-align: right;
+  white-space: nowrap;
   color: var(--text-secondary);
   font-size: var(--fs-md);
 }
@@ -109,13 +118,59 @@
 /* 步进区与后缀在同一个输入框里共存时，后缀再往里让一档（规则在 base.css） */
 .input-wrap.has-stepper .suffix { right: calc(var(--w-stepper) + var(--sp-2)); }
 
-/* 「需下载 1.3 MB，可用 153.3 GB」 */
+/* 「需下载 1.3 MB，可用 153.3 GB」
+ * 左缩进 = 标签列（104）+ .field 的 gap（10），和表单首列严格对齐。 */
 .hint-row {
   min-height: 18px;
-  margin: var(--sp-2) 0 0 86px;
+  margin: var(--sp-2) 0 0 114px;
   color: var(--text-dim);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
+}
+
+/* ── 认证信息（用户名 / 密码 / Authorization）───────────────────────────── */
+
+/* 两行合成一项，所以整行改成顶部对齐；标签用 line-height = 控件高度
+ * 让自己垂直居中在第一行的输入框上，而不是漂在两行中间。 */
+.field.auth { align-items: flex-start; }
+.field.auth > .lbl { line-height: var(--h-control); }
+
+.auth-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-row { display: flex; gap: 10px; }
+.auth-row > .input {
+  flex: 1 1 50%;
+  min-width: 0;
+}
+
+/* Authorization 前缀：像输入框的左半截，和右边输入框共用一条外框 */
+.auth-prefix {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-default);
+  border-right: 0;
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  background: var(--bg-bar);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  user-select: none;
+}
+.auth-row.group > .input { border-radius: 0 var(--r-md) var(--r-md) 0; }
+
+/* 两组认证信息都填了时的提醒：后端以 Authorization 为准，Basic 不发。 */
+.auth-hint {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
 }
 
 /* ── 高级选项 ─────────────────────────────────────────────────────────── */

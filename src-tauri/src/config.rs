@@ -98,6 +98,17 @@ pub struct Config {
     /// 同时下载数，界面限 1–16，后端再 clamp 一次防止手改配置越界。
     #[serde(default = "d_max_concurrent")]
     pub max_concurrent: u32,
+    /// 单文件 HTTP 连接数：新建任务页「连接数」的默认值，落成 aria2 的
+    /// `split` / `max-connection-per-server`。默认 16 与参考界面一致；
+    /// aria2 自己是 1，对大文件太保守。
+    #[serde(default = "d_connections")]
+    pub max_connection_per_server: u32,
+    /// 默认 User-Agent。**空串 = 不干涉**，用 aria2 自带 UA，不冒充浏览器。
+    ///
+    /// 新建页的 UA 框默认取这个值；设置页另给 Chrome / Edge / Safari / Firefox
+    /// 四个预设，用户点一下就填进来（会话 25 用户要求）。
+    #[serde(default)]
+    pub default_user_agent: String,
     /// 下载完成 / 失败时弹系统通知。
     #[serde(default = "d_true")]
     pub notify_download: bool,
@@ -174,6 +185,10 @@ fn d_popup_timeout() -> u64 {
 fn d_max_concurrent() -> u32 {
     5
 }
+/// 单文件连接数默认 16（参考界面同值）。aria2 默认 1，大文件会被拉成一条连接。
+fn d_connections() -> u32 {
+    16
+}
 /// 代理默认直连：没有代理时设成别的会让所有下载都连不上。
 fn d_proxy_mode() -> String {
     "direct".to_string()
@@ -215,6 +230,8 @@ impl Default for Config {
             receive_dir: String::new(),
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
+            max_connection_per_server: d_connections(),
+            default_user_agent: String::new(),
             notify_download: true,
             proxy_mode: d_proxy_mode(),
             proxy_url: String::new(),
@@ -350,6 +367,16 @@ mod tests {
         assert_eq!(c.download_dir, "D:\\Downloads");
         assert_eq!(c.max_speed_kb, 0);
         assert_eq!(c.max_concurrent, 5);
+    }
+
+    /// 会话 25 新增：单文件连接数与默认 User-Agent。
+    /// 老配置缺这两个字段时必须落到 16 / 空串——空串表示「不冒充浏览器」，
+    /// 而不是某个写死的 UA 字符串。
+    #[test]
+    fn task_defaults_for_old_config() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.max_connection_per_server, 16);
+        assert_eq!(c.default_user_agent, "");
     }
 
     /// 新值要能原样存回去，且不影响其它字段。

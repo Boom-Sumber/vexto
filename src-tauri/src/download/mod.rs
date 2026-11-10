@@ -47,6 +47,13 @@ pub struct NewTask {
     /// **不写日志、不回显**：和 Cookie 一样按敏感值处理。
     #[serde(default)]
     pub http_passwd: String,
+    /// 原始 `Authorization` 头（如 `Bearer xxx`），写进 aria2 的 `header` 数组。
+    ///
+    /// 与用户名 / 密码是**同一个「认证信息」区块**的两种填法：填了这个，
+    /// 后端就不发 Basic 头（`engine::request_headers` 里二者互斥，见 ADR-024）。
+    /// 同样不写日志、不回显。
+    #[serde(default)]
+    pub authorization: String,
 }
 
 /// 「种子任务」页提交的一条。
@@ -88,7 +95,11 @@ pub fn add_task(cfg: &config::Config, t: &NewTask) -> Result<rpc::TaskStatus, St
     }
     let uri = t.uri.trim();
     if !looks_like_url(uri) {
-        return Err(format!("不是支持的下载链接（http / https / ftp / magnet / .torrent）：{uri}"));
+        // 磁力单独给一句话：说「不是支持的链接」用户会以为自己复制错了。
+        if starts_ci(uri, "magnet:") {
+            return Err("暂不支持磁力链接：BT / 磁力功能将在后续版本开放".to_string());
+        }
+        return Err(format!("不是支持的下载链接（http / https / ftp）：{uri}"));
     }
     let st = engine::add_task(cfg, t)?;
     // 状态变了，立刻唤醒 pump 重取一次快照，不等下一个轮询周期。
@@ -102,12 +113,19 @@ fn starts_ci(s: &str, prefix: &str) -> bool {
         .is_some_and(|h| h.eq_ignore_ascii_case(prefix))
 }
 
+/// 磁力链接是否开放。**暂不开**（会话 25 用户要求）。
+///
+/// S3.5 第三轮已经把 `aria2.addTorrent` 与种子页签做完了，但用户要求先把 BT
+/// 相关入口关掉，等真正集成时再开。留这一个开关而不是删代码：剪贴板识别、
+/// 扩展接收、新建页提交三处都看它，改成 `true` 就一起恢复。
+pub const ALLOW_MAGNET: bool = false;
+
 /// 剪贴板内容是不是下载链接。磁力链可能几 KB 长，**不截断判断**（任务书 §S3.8）。
 pub fn looks_like_url(s: &str) -> bool {
     let t = s.trim();
     starts_ci(t, "http://")
         || starts_ci(t, "https://")
-        || starts_ci(t, "magnet:")
+        || (ALLOW_MAGNET && starts_ci(t, "magnet:"))
         || starts_ci(t, "ftp://")
         || t.to_ascii_lowercase().ends_with(".torrent")
 }
@@ -132,10 +150,13 @@ pub fn clipboard_url() -> Option<String> {
 mod tests {
     use super::looks_like_url;
 
-    /// 06-TESTING §6.2.4 的三条，外加大小写与长磁力链。
+    /// 06-TESTING §6.2.4 的三条，外加大小写。
+    ///
+    /// 磁力链接在会话 25 被**主动关掉**（`ALLOW_MAGNET = false`）：BT 入口还没开放，
+    /// 认进来只会让用户一路填到提交才看到「暂不支持」。
     #[test]
-    fn looks_like_url_accepts_magnet() {
-        assert!(looks_like_url("magnet:?xt=urn:btih:abc123"));
+    fn looks_like_url_rejects_magnet_while_bt_is_closed() {
+        assert!(!looks_like_url("magnet:?xt=urn:btih:abc123"));
         assert!(looks_like_url("https://example.com/f.zip"));
         assert!(!looks_like_url("just some text"));
     }
@@ -149,11 +170,16 @@ mod tests {
         assert!(looks_like_url("  https://example.com/a.bin  "));
     }
 
-    /// 磁力链可能很长，不许因为长度截断而误判。
+    /// 超长链接不许因为长度截断而误判。
+    ///
+    /// 原本这条测的是磁力链；会话 25 磁力关闭后，磁力那半个断言改成跟着
+    /// `ALLOW_MAGNET` 走——开关一打开这条测试就自动恢复原意。
     #[test]
-    fn long_magnet_is_not_truncated() {
-        let long = format!("magnet:?xt=urn:btih:{}&dn={}", "a".repeat(3000), "file");
+    fn long_url_is_not_truncated() {
+        let long = format!("https://example.com/{}", "a".repeat(3000));
         assert!(looks_like_url(&long));
+        let long_magnet = format!("magnet:?xt=urn:btih:{}&dn={}", "a".repeat(3000), "file");
+        assert_eq!(looks_like_url(&long_magnet), super::ALLOW_MAGNET);
     }
 
     #[test]

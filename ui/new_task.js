@@ -1,8 +1,9 @@
 // 新建任务窗口（按 Rayburst 参考界面还原）。
 //
-// 两个页签：「链接任务」（http/https/ftp/magnet）与「种子任务」（.torrent）。
-// 存储路径 / 可用空间 / 高级选项是**共享区**，两个页签都能改；仅链接任务
-// 有意义的字段（UA / Referer / 校验和 / HTTP 鉴权）在种子页签隐藏。
+// **本轮只有「链接任务」一个可用页签**：种子任务 / 磁力按用户要求先关闭，
+// 按钮留在界面上但 disabled（后端 `addTorrent` 与校验都还在，开放时删掉
+// disabled 即可）。
+// 存储路径 / 可用空间 / 高级选项是共享区。
 // 单链接时自动探测文件名与大小；多链接时名字框留空、只提示「选填」，
 // 「重新获取」禁用——一个名字框表达不了多个不同文件名。
 
@@ -82,6 +83,9 @@ function guessName(url) {
 // ── 页签 ────────────────────────────────────────────────────────────────
 
 function setTab(which) {
+  // 种子任务页签暂时关闭：任何路径（脚本、键盘）都退回链接页签，
+  // 否则会出现「界面没有种子页、activeTab 却是 torrent」的错位提交。
+  if (which === "torrent" && el("tabTorrent").disabled) return;
   const link = which === "link";
   activeTab = link ? "link" : "torrent";
   el("tabLink").classList.toggle("active", link);
@@ -95,6 +99,24 @@ function setTab(which) {
   }
   clearErrors();
   updateSpaceHint();
+}
+
+// ── 认证信息 ────────────────────────────────────────────────────────────
+
+/// 后端以 Authorization 为准、不发 Basic（ADR-024）。两组都填时界面必须说明，
+/// 否则用户会以为用户名密码也生效了。
+function syncAuthHint() {
+  const hasHeader = el("authorization").value.trim() !== "";
+  const hasBasic =
+    el("httpUser").value.trim() !== "" || el("httpPasswd").value !== "";
+  el("authHint").classList.toggle("hidden", !(hasHeader && hasBasic));
+}
+
+/// 展开高级选项。浏览器接管带来 UA 时必须调它，否则值填了用户看不见。
+function expandAdvanced() {
+  if (el("advToggle").checked) return;
+  el("advToggle").checked = true;
+  el("advPane").classList.remove("hidden");
 }
 
 // ── 重命名 / 大小 / 可用空间 ────────────────────────────────────────────
@@ -266,6 +288,9 @@ async function submitLinks() {
     checksum: single ? el("checksum").value.trim() : "",
     http_user: el("httpUser").value.trim(),
     http_passwd: el("httpPasswd").value,
+    // 原始 Authorization 头。与上面两项同属「认证信息」区块，同时填时后端
+    // 只发这个（ADR-024）；界面上的 authHint 已经提前告知。
+    authorization: el("authorization").value.trim(),
   };
   const typedName = single ? el("name").value.trim() : "";
   const tasks = links.map((uri) => {
@@ -285,6 +310,7 @@ async function submitLinks() {
       checksum: base.checksum,
       http_user: base.http_user,
       http_passwd: base.http_passwd,
+      authorization: base.authorization,
     };
   });
 
@@ -386,6 +412,13 @@ function addPrefill(payload) {
     el("name").dataset.userEdited = "1";
     el("nameSize").textContent = ex.size ? fmtBytes(ex.size) : "";
   }
+  // 接管带来的 UA 回显（用户要求）：只写单链接——多链接的 UA 可能各不相同，
+  // 塞进同一个框会把第一条的 UA 应用到全部任务（提交时本来就是按链取 ex.userAgent）。
+  // 用户手动改过 UA 的话不覆盖。
+  if (ex && ex.userAgent && el("ua").dataset.userEdited !== "1") {
+    el("ua").value = ex.userAgent;
+    expandAdvanced();
+  }
   syncNameState();
 
   // 扩展给了大小时不再探测：探测失败会把刚显示的大小清空。
@@ -398,8 +431,16 @@ function addPrefill(payload) {
 }
 
 (async function init() {
+  // 限速 / 连接数 / UA 的默认值来自设置（会话 25 用户要求）。
+  // 一次取回：串四个 IPC 会让窗口先画出空框再一个个跳值。
   try {
-    defaultDir = await invoke("download_default_dir");
+    const d = await invoke("download_task_defaults");
+    defaultDir = d.dir || "";
+    // 0 = 不限速 / 不限连接，照实显示 0，不留空框
+    el("speed").value = String(d.speed ?? 0);
+    el("conn").value = String(d.connections ?? 0);
+    // UA 为空表示「用 aria2 自带 UA」：框里留空，不冒充浏览器
+    el("ua").value = d.ua || "";
   } catch (e) {
     defaultDir = "";
   }
@@ -433,6 +474,13 @@ function addPrefill(payload) {
   el("name").addEventListener("input", () => {
     el("name").dataset.userEdited = "1";
   });
+  // UA 一旦被用户改过，浏览器接管就不再覆盖它
+  el("ua").addEventListener("input", () => {
+    el("ua").dataset.userEdited = "1";
+  });
+  for (const id of ["httpUser", "httpPasswd", "authorization"]) {
+    el(id).addEventListener("input", syncAuthHint);
+  }
   el("reprobe").addEventListener("click", () => probeNow(true));
 
   el("pickDir").addEventListener("click", () => {
@@ -480,6 +528,7 @@ function addPrefill(payload) {
   }
 
   syncNameState();
+  syncAuthHint();
   updateSpaceHint();
   el("links").focus();
 })();
