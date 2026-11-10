@@ -81,7 +81,7 @@ impl Engine for OpenAiCompat {
     }
 
     fn is_ready(&self, cfg: &Config) -> bool {
-        cfg.openai_profile().is_some_and(|p| {
+        cfg.active_openai_profile().is_some_and(|p| {
             !p.key.trim().is_empty() && !p.base.trim().is_empty() && !p.model.trim().is_empty()
         })
     }
@@ -95,14 +95,14 @@ impl Engine for OpenAiCompat {
     /// 带上用户起的模型名（「OpenAI 兼容 · DeepSeek」），否则弹窗和状态行
     /// 只显示「OpenAI 兼容」，配了五套也看不出当前用的是哪套。
     fn display_name(&self, cfg: &Config) -> String {
-        match cfg.openai_profile() {
+        match cfg.active_openai_profile() {
             Some(p) if !p.name.trim().is_empty() => format!("{} · {}", self.name(), p.name.trim()),
             _ => self.name().to_string(),
         }
     }
 
     fn translate_one(&self, cfg: &Config, text: &str) -> Result<Translated, TranslateError> {
-        let profile = cfg.openai_profile().ok_or_else(|| {
+        let profile = cfg.active_openai_profile().ok_or_else(|| {
             TranslateError::NotReady(
                 "还没有添加 OpenAI 兼容的模型。\n右键托盘图标 → 设置… → 翻译 → 引擎 → 添加模型"
                     .to_string(),
@@ -293,11 +293,11 @@ mod tests {
             "还没添加模型时只显示引擎名"
         );
         cfg.openai_profiles = vec![profile("a", "DeepSeek")];
-        cfg.openai_active = "a".into();
+        cfg.active_engine = "openai:a".into();
         assert_eq!(OpenAiCompat.display_name(&cfg), "OpenAI 兼容 · DeepSeek");
-        // active 指向不存在的 id → 退回第一条，名字取第一条的
-        cfg.openai_active = "gone".into();
-        assert_eq!(OpenAiCompat.display_name(&cfg), "OpenAI 兼容 · DeepSeek");
+        // 切到厂商实例后不再是「当前」，名字退回引擎名（不拿别的实例的名字冒充）
+        cfg.active_engine = "vendor:v1".into();
+        assert_eq!(OpenAiCompat.display_name(&cfg), "OpenAI 兼容");
     }
 
     /// 就绪判断改成看「当前那一套」，不是看历史遗留的单字段。
@@ -306,7 +306,7 @@ mod tests {
         let mut cfg = Config::default();
         assert!(!OpenAiCompat.is_ready(&cfg), "列表为空时必须判未就绪");
         cfg.openai_profiles = vec![profile("a", "A")];
-        cfg.openai_active = "a".into();
+        cfg.active_engine = "openai:a".into();
         assert!(OpenAiCompat.is_ready(&cfg));
         cfg.openai_profiles[0].key.clear();
         assert!(!OpenAiCompat.is_ready(&cfg), "Key 空 → 未就绪");

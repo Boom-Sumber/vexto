@@ -125,18 +125,21 @@ fn with_timeout(mut payload: Value, cfg: &config::Config) -> Value {
 /// 不能等前端点开了再问一次 —— 那会让弹窗闪一下。
 fn with_engine(mut payload: Value, cfg: &config::Config) -> Value {
     if let Value::Object(m) = &mut payload {
-        // 会话 29 起配置里没有单一的 `engine` 字段了，实际引擎由「模式 + 厂商」
-        // 算出来。弹窗前端仍按 `engine`（引擎 id）比较，所以这里给算好的 id。
-        let engine_id = translate::engine_id_of(cfg);
-        m.insert("engine".to_string(), json!(engine_id));
+        // 弹窗的引擎菜单直接列「用户配好的实例」：值就是 `active_engine` 的写法
+        // （`vendor:<id>` / `openai:<id>`），点哪个就写哪个，不需要再换算。
+        let label = cfg.active_engine_label();
+        m.insert("engine".to_string(), json!(cfg.active_engine));
         m.insert(
             "engineName".to_string(),
-            json!(translate::engine_by_id(&engine_id)
-                .map(|e| e.display_name(cfg))
-                .unwrap_or_else(|| "未配置引擎".to_string())),
+            json!(if label.is_empty() {
+                "未配置引擎".to_string()
+            } else {
+                label
+            }),
         );
-        let list: Vec<Value> = translate::ENGINE_CHOICES
-            .iter()
+        let list: Vec<Value> = cfg
+            .engine_choices()
+            .into_iter()
             .map(|(id, name)| json!({ "id": id, "name": name }))
             .collect();
         m.insert("engines".to_string(), Value::Array(list));
@@ -174,7 +177,7 @@ fn run_translate(app: AppHandle) {
         }
 
         // 1) 缺凭据就直接引到设置页：这时弹窗只会显示一句"去设置"，不如直接开设置
-        if !engine_ready(&cfg) {
+        if !translate::engine_ready(&cfg) {
             dlog::dlog("translate_selection: 引擎未配置，打开设置页");
             let a = app.clone();
             let _ = app.run_on_main_thread(move || {
@@ -257,7 +260,7 @@ fn open_input_translate(app: AppHandle) {
             return;
         }
         // 缺凭据时先去配置，不然弹个输入框让用户白打一段字
-        if !engine_ready(&cfg) {
+        if !translate::engine_ready(&cfg) {
             dlog::dlog("input_translate: 引擎未配置，打开设置页");
             popup::close(&a);
             popup::open_settings_at(&a, "translate");
@@ -355,13 +358,9 @@ async fn translate_text(
     }
 }
 
-/// 当前引擎是否配好了。用于「缺配置就直接开设置页」这条分支——
-/// 以前这里是硬编码检查百度的 appid/secret，多引擎之后必须问引擎自己。
-fn engine_ready(cfg: &config::Config) -> bool {
-    translate::engine_by_id(&cfg.engine)
-        .map(|e| e.is_ready(cfg))
-        .unwrap_or(false)
-}
+// 就绪判断统一放在 `translate::engine_ready()`：它先按 `active_engine` 找到实例，
+// 再把实例里的凭据投影到扁平字段，最后才问引擎。这里曾经直接读废弃的 `cfg.engine`
+// （迁移后恒为空）→ 划词热键永远被引去设置页，会话 31 实机发现并修掉。
 
 /// 热键 / 托盘「翻译选中文字」的入口。
 pub fn translate_selection(app: AppHandle) {
@@ -412,16 +411,6 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
                 continue;
             }
             keys.push(f.key);
-            // `list` 字段还会写一个「使用中」的目标键（例如 `openai_active`）。
-            // 它不是独立字段（界面上看不出来），但同样是配置键：读要读出来，
-            // 存也要放行 —— 会话 30 第一版就是漏在这里，点了「使用中」保存不进去。
-            if let tools::FieldKind::List {
-                active_key: Some(a),
-                ..
-            } = &f.kind
-            {
-                keys.push(*a);
-            }
         }
     }
     keys
@@ -917,15 +906,20 @@ fn start_dragging(win: tauri::WebviewWindow) -> Result<(), String> {
 /// 前端自己已经有源文本，所以这里只负责切引擎，重翻由前端再调一次 `translate_text`。
 #[tauri::command]
 fn switch_engine(engine_id: String) -> SimpleOut {
-    let Some((mode, vendor)) = translate::engine_parts(&engine_id) else {
+    let mut cfg = config::load();
+    // 只在「用户自己配好的实例」里选：传一个不存在的 id 会被拒，
+    // 不会把 active_engine 写成一个谁都解析不了的值。
+    let Some((_, label)) = cfg
+        .engine_choices()
+        .into_iter()
+        .find(|(id, _)| *id == engine_id)
+    else {
         return SimpleOut {
             ok: false,
             message: format!("未知的翻译引擎「{engine_id}」"),
         };
     };
-    let mut cfg = config::load();
-    cfg.engine_mode = mode.to_string();
-    cfg.vendor = vendor.to_string();
+    cfg.active_engine = engine_id;
     if let Err(e) = config::save(&cfg) {
         return SimpleOut {
             ok: false,
@@ -934,12 +928,7 @@ fn switch_engine(engine_id: String) -> SimpleOut {
     }
     SimpleOut {
         ok: true,
-        message: format!(
-            "已切换到{}",
-            translate::engine_by_id(&engine_id)
-                .map(|e| e.name())
-                .unwrap_or(&engine_id)
-        ),
+        message: format!("已切换到{label}"),
     }
 }
 
@@ -1614,7 +1603,7 @@ fn main() {
             tauri::RunEvent::Ready => {
                 let cfg = config::load();
                 // 第一次运行没配引擎：直接把设置页打开，否则用户不知道该干什么。
-                if !engine_ready(&cfg) {
+                if !translate::engine_ready(&cfg) {
                     open_settings(app);
                 }
             }
@@ -1705,14 +1694,13 @@ mod tests {
     fn tool_value_keys_come_from_sections() {
         let keys = tool_value_keys("translate");
         assert!(keys.contains(&"hotkey"));
-        // 会话 29 起引擎由「模式 + 厂商」两个字段决定，老的单一下拉不再进界面
-        assert!(keys.contains(&"engine_mode"));
-        assert!(keys.contains(&"vendor"));
+        // 会话 31 起引擎页签是「翻译模式 + 两张列表」
+        assert!(keys.contains(&"active_engine"));
         assert!(keys.contains(&"to"));
-        // list 字段的「使用中」目标键不是独立字段，但必须能读能存。
-        // 会话 30 第一版漏了它，表现为「点了使用中，保存后还是原来那套」。
+        // 会话 31：厂商与模型都是列表字段，翻译模式单独存 active_engine
+        assert!(keys.contains(&"vendor_profiles"));
         assert!(keys.contains(&"openai_profiles"));
-        assert!(keys.contains(&"openai_active"));
+        assert!(keys.contains(&"active_engine"));
         // 通用工具的字段不该出现在翻译里
         assert!(!keys.contains(&"popup_timeout_ms"));
     }
@@ -1752,19 +1740,7 @@ mod tests {
                         tool.id(),
                         f.key
                     );
-                    // list 的「使用中」目标键同样要能在 Config 里找到
-                    if let crate::tools::FieldKind::List {
-                        active_key: Some(a),
-                        ..
-                    } = &f.kind
-                    {
-                        assert!(
-                            map.contains_key(*a),
-                            "工具 {} 的 list 联动键 {} 在 Config 里不存在",
-                            tool.id(),
-                            a
-                        );
-                    }
+
                 }
             }
         }

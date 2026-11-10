@@ -280,7 +280,7 @@ input.capturing {
 .list-body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
 }
 
 .list-empty {
@@ -289,41 +289,61 @@ input.capturing {
 }
 
 .list-item {
-  padding: var(--sp-3);
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
   background: var(--bg-input);
 }
-
-/* 「使用中」那套描边高亮，一眼看出当前用的是哪个 */
-.list-item.on { border-color: var(--accent); }
+/* 展开时描边提亮，和收起的卡片区分开 */
+.list-item.open { border-color: var(--accent); }
 
 .li-head {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-1);
+  min-height: 38px;
 }
 
-/* 自绘单选：和设置页其他控件同一套口径（appearance:none 之后自己画） */
-.li-pick {
+/* 展开箭头：一个自绘的「›」，open 时转 90° */
+.li-arrow {
   flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  border: 1px solid var(--border-default);
-  border-radius: 50%;
+  border: 0;
   background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
+  position: relative;
+  transition: transform .15s ease;
 }
-.li-pick:hover { border-color: var(--accent); }
-.li-pick.on {
-  border-color: var(--accent);
-  background: radial-gradient(circle, var(--accent) 0 4px, transparent 4.5px);
+.li-arrow::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
 }
+.li-arrow:hover { color: var(--text-primary); }
+.list-item.open .li-arrow { transform: rotate(90deg); }
 
-.li-name {
+.li-sum {
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+}
+
+.li-detail {
+  padding: var(--sp-1) var(--sp-3) var(--sp-3);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .li-row {
@@ -340,9 +360,37 @@ input.capturing {
   text-align: right;
 }
 
+/* 展开区里的开关：控件列靠左 */
+.li-switch { justify-self: start; }
+
 .list-add { align-self: flex-start; }
 .li-del { flex: 0 0 auto; }
 
+/* ── 表单弹窗（新建一条配置）──────────────────────────────────────────── */
+
+.modal-wide { width: 460px; }
+
+.fm-body { margin: var(--sp-4) 0 var(--sp-5); }
+
+.fm-row {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.fm-row:last-child { margin-bottom: 0; }
+
+.fm-label {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* 开关行和其它行共用 104px 标签列：标签右对齐、勾选框靠控件列左侧。
+ * 曾经给这行单独换过「1fr auto」两栏，结果标签贴到弹窗左边缘、开关被推到
+ * 最右，和上面几行完全不对齐（会话 31 截图复核发现）。 */
+.fm-switch input[type="checkbox"] { justify-self: start; }
 
 /* ── 分组标题 ─────────────────────────────────────────────────────────── */
 

@@ -96,61 +96,67 @@ pub fn engine_by_id(id: &str) -> Option<Box<dyn Engine>> {
     }
 }
 
-/// 厂商字段 → 引擎 id 前缀。不认识的值一律当百度（配置被手改坏时也能用）。
-fn vendor_id(cfg: &Config) -> &'static str {
-    if cfg.vendor.trim() == config::VENDOR_YOUDAO {
-        "youdao"
-    } else {
-        "baidu"
-    }
-}
-
-/// 配置 → 实际引擎 id。这是**唯一**的「模式 + 厂商」换算入口。
+/// 当前配置 → 实际引擎 id。这是**唯一**的「哪个实例 → 哪个引擎」换算入口。
+///
+/// 空串表示「一个可用实例都没有」：调用方据此给出「先去添加一个」的中文提示，
+/// 而不是让引擎报一句看不懂的错误。
 pub fn engine_id_of(cfg: &Config) -> String {
-    match cfg.engine_mode.trim() {
-        config::MODE_OPENAI => "openai".to_string(),
-        config::MODE_VENDOR_LLM => format!("{}-llm", vendor_id(cfg)),
-        // 空串与 vendor_mt 都走机器翻译：空串只会在还没迁移的配置上出现
-        _ => vendor_id(cfg).to_string(),
+    if let Some(p) = cfg.active_vendor_profile() {
+        let base = if p.vendor == config::VENDOR_YOUDAO {
+            "youdao"
+        } else {
+            "baidu"
+        };
+        return if p.use_llm {
+            format!("{base}-llm")
+        } else {
+            base.to_string()
+        };
     }
+    if cfg.active_openai_profile().is_some() {
+        return "openai".to_string();
+    }
+    String::new()
 }
 
-/// 设置页「翻译模式」下拉框。
-pub const MODE_OPTIONS: &[(&str, &str)] = &[
-    (config::MODE_VENDOR_MT, "厂商机器翻译"),
-    (config::MODE_VENDOR_LLM, "厂商大模型翻译"),
-    (config::MODE_OPENAI, "OpenAI 兼容大模型"),
-];
+/// 把当前厂商实例的凭据「投影」到 Config 的扁平字段，返回一份给引擎用的配置。
+///
+/// 引擎实现（`baidu.rs` / `youdao.rs`）读的一直是 `cfg.appid` 这类字段。让它们
+/// 改成「先找实例再取字段」会把每个引擎都写一遍实例查找；投影一次，
+/// 引擎代码一行都不用改，也更容易单测（构造 Config 就能测）。
+///
+/// **所有要问引擎 `is_ready` / `translate_one` 的入口都必须先过这里**：会话 31
+/// 迁移后扁平字段在磁盘上是空的（凭据只存在实例里），直接拿 `config::load()`
+/// 的结果去问会一直得到「未配置」。
+pub fn prepared_config(cfg: &Config) -> Config {
+    let mut out = cfg.clone();
+    if let Some(p) = cfg.active_vendor_profile() {
+        out.appid = p.appid.clone();
+        out.secret = p.secret.clone();
+        out.youdao_app_key = p.youdao_app_key.clone();
+        out.youdao_app_secret = p.youdao_app_secret.clone();
+    }
+    out
+}
 
-/// 设置页「厂商」下拉框。只在两种厂商模式下显示。
+/// 当前引擎是否可用（凭据已投影）。
+///
+/// 唯一的就绪判断入口：`translate()`、划词热键、启动时自动开设置页、设置页状态行
+/// 都走它。别自己拿 `Config` 去问 `Engine::is_ready`，也别再读废弃的 `cfg.engine`。
+pub fn engine_ready(cfg: &Config) -> bool {
+    let id = engine_id_of(cfg);
+    if id.is_empty() {
+        return false;
+    }
+    let prepared = prepared_config(cfg);
+    engine_by_id(&id).is_some_and(|e| e.is_ready(&prepared))
+}
+
+/// 设置页「添加厂商」弹窗里的厂商下拉。
 pub const VENDOR_OPTIONS: &[(&str, &str)] = &[
     (config::VENDOR_BAIDU, "百度"),
     (config::VENDOR_YOUDAO, "有道"),
 ];
-
-/// 翻译弹窗的引擎切换菜单用：五个引擎平铺。
-///
-/// 弹窗是「随手切一下」的场景，不套模式/厂商两层——列表短，直接列全。
-pub const ENGINE_CHOICES: &[(&str, &str)] = &[
-    ("baidu", "百度翻译"),
-    ("baidu-llm", "百度大模型翻译"),
-    ("youdao", "有道翻译"),
-    ("youdao-llm", "有道大模型翻译"),
-    ("openai", "OpenAI 兼容"),
-];
-
-/// 引擎 id → `(engine_mode, vendor)`。弹窗切引擎时用它写回配置。
-/// 未知 id 返回 `None`。
-pub fn engine_parts(id: &str) -> Option<(&'static str, &'static str)> {
-    match id.trim().to_ascii_lowercase().as_str() {
-        "baidu" => Some((config::MODE_VENDOR_MT, config::VENDOR_BAIDU)),
-        "baidu-llm" => Some((config::MODE_VENDOR_LLM, config::VENDOR_BAIDU)),
-        "youdao" => Some((config::MODE_VENDOR_MT, config::VENDOR_YOUDAO)),
-        "youdao-llm" => Some((config::MODE_VENDOR_LLM, config::VENDOR_YOUDAO)),
-        "openai" => Some((config::MODE_OPENAI, config::VENDOR_BAIDU)),
-        _ => None,
-    }
-}
 
 pub const MAX_CHUNKS: usize = 4;
 /// 缓存条数上限。200 条 × 平均几百字 ≈ 几十 KB，对常驻内存无压力
@@ -375,13 +381,21 @@ fn pick(v: &str, fallback: &str) -> String {
 /// `from` 为空/`auto` 时由引擎自动检测；返回值里的 `from` 是检测出来的实际语种。
 pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
     let engine_id = engine_id_of(cfg);
+    if engine_id.is_empty() {
+        return Err(
+            "还没有可用的翻译引擎。\n右键托盘图标 → 设置… → 翻译 → 引擎 → \
+             在「厂商管理」或「大模型管理」里添加一个，然后在「翻译模式」里选中它。"
+                .to_string(),
+        );
+    }
     let engine = engine_by_id(&engine_id).ok_or_else(|| {
-        format!(
-            "未知的翻译引擎「{engine_id}」，去设置 → 翻译 → 引擎 里重选一下模式与厂商。"
-        )
+        format!("未知的翻译引擎「{engine_id}」，去设置 → 翻译 → 引擎 里重选一下翻译模式。")
     })?;
 
-    if !engine.is_ready(cfg) {
+    // 凭据先投影到扁平字段：引擎实现只认 `cfg.appid` 那一套，不知道「实例」的存在
+    let base_cfg = prepared_config(cfg);
+
+    if !engine.is_ready(&base_cfg) {
         return Err(engine.ready_hint().to_string());
     }
 
@@ -392,8 +406,8 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
 
     // 先定方向：这一步可能触发语种检测（本地或网络），所以必须在查缓存之前做，
     // 让缓存 key 用的是**解析后的**语向。否则同一段中文在 to2 改动后会命中旧缓存。
-    let (from, to) = resolve_direction(cfg, text);
-    let mut call_cfg = cfg.clone();
+    let (from, to) = resolve_direction(&base_cfg, text);
+    let mut call_cfg = base_cfg;
     call_cfg.from = from.clone();
     call_cfg.to = to.clone();
 
@@ -526,111 +540,196 @@ mod tests {
         assert!(engine_by_id("deepl").is_none());
     }
 
-    /// 模式 × 厂商的所有组合都必须路由到一个**已实现**的引擎。
+    fn vendor_profile(id: &str, vendor: &str, use_llm: bool) -> config::VendorProfile {
+        config::VendorProfile {
+            id: id.into(),
+            name: format!("{vendor}-{id}"),
+            vendor: vendor.into(),
+            use_llm,
+            appid: "app".into(),
+            secret: "sec".into(),
+            youdao_app_key: "yk".into(),
+            youdao_app_secret: "ys".into(),
+        }
+    }
+
+    fn model_profile(id: &str) -> config::ModelProfile {
+        config::ModelProfile {
+            id: id.into(),
+            name: format!("model-{id}"),
+            base: "https://api.deepseek.com".into(),
+            model: "deepseek-chat".into(),
+            key: "sk".into(),
+            prompt: String::new(),
+        }
+    }
+
+    /// 厂商实例 × 机翻/大模型，加上 OpenAI 实例，五种形态都要路由到**已实现**的引擎。
     #[test]
-    fn every_mode_vendor_combination_resolves() {
+    fn every_profile_shape_resolves_to_an_engine() {
         let mut seen = Vec::new();
-        for (mode, _) in MODE_OPTIONS {
-            for (vendor, _) in VENDOR_OPTIONS {
+        for vendor in [config::VENDOR_BAIDU, config::VENDOR_YOUDAO] {
+            for use_llm in [false, true] {
                 let cfg = Config {
-                    engine_mode: mode.to_string(),
-                    vendor: vendor.to_string(),
+                    vendor_profiles: vec![vendor_profile("v1", vendor, use_llm)],
+                    active_engine: "vendor:v1".into(),
                     ..Config::default()
                 };
                 let id = engine_id_of(&cfg);
                 let e = engine_by_id(&id)
-                    .unwrap_or_else(|| panic!("{mode}+{vendor} → {id} 没有实现"));
+                    .unwrap_or_else(|| panic!("{vendor}/llm={use_llm} → {id} 没有实现"));
                 assert_eq!(e.id(), id);
                 seen.push(id);
             }
         }
-        // OpenAI 兼容不看厂商，两次都会算出同一个 id —— 这是预期
-        assert!(seen.contains(&"baidu".to_string()));
-        assert!(seen.contains(&"baidu-llm".to_string()));
-        assert!(seen.contains(&"youdao".to_string()));
-        assert!(seen.contains(&"youdao-llm".to_string()));
-        assert!(seen.contains(&"openai".to_string()));
-    }
-
-    #[test]
-    fn engine_id_of_maps_all_five_shapes() {
-        let mk = |mode: &str, vendor: &str| {
-            engine_id_of(&Config {
-                engine_mode: mode.to_string(),
-                vendor: vendor.to_string(),
-                ..Config::default()
-            })
+        let cfg = Config {
+            openai_profiles: vec![model_profile("m1")],
+            active_engine: "openai:m1".into(),
+            ..Config::default()
         };
-        assert_eq!(mk(config::MODE_VENDOR_MT, config::VENDOR_BAIDU), "baidu");
-        assert_eq!(mk(config::MODE_VENDOR_LLM, config::VENDOR_BAIDU), "baidu-llm");
-        assert_eq!(mk(config::MODE_VENDOR_MT, config::VENDOR_YOUDAO), "youdao");
-        assert_eq!(
-            mk(config::MODE_VENDOR_LLM, config::VENDOR_YOUDAO),
-            "youdao-llm"
+        assert_eq!(engine_id_of(&cfg), "openai");
+        assert!(engine_by_id("openai").is_some());
+
+        for id in ["baidu", "baidu-llm", "youdao", "youdao-llm"] {
+            assert!(seen.contains(&id.to_string()), "{id} 没被覆盖到");
+        }
+    }
+
+    /// 一个实例都没配时返回空串：调用方据此给「先去添加」的提示，
+    /// 而不是让引擎报一句看不懂的错误。
+    #[test]
+    fn engine_id_of_is_empty_without_profiles() {
+        assert_eq!(engine_id_of(&Config::default()), "");
+        // 有列表但 active 指向不存在的 id → 也是空（不会瞎猜第一条）
+        let cfg = Config {
+            vendor_profiles: vec![vendor_profile("v1", config::VENDOR_BAIDU, false)],
+            active_engine: "vendor:nope".into(),
+            ..Config::default()
+        };
+        assert_eq!(engine_id_of(&cfg), "");
+    }
+
+    /// 未知厂商代码当百度处理（配置被手改坏也要能用）。
+    #[test]
+    fn unknown_vendor_falls_back_to_baidu() {
+        let cfg = Config {
+            vendor_profiles: vec![vendor_profile("v1", "klingon", false)],
+            active_engine: "vendor:v1".into(),
+            ..Config::default()
+        };
+        assert_eq!(engine_id_of(&cfg), "baidu");
+    }
+
+    /// 凭据投影：翻译前要把当前实例的四组凭据写到扁平字段上，
+    /// 这样引擎实现不用知道「实例」这回事。
+    #[test]
+    fn credentials_are_projected_from_active_profile() {
+        let mut p = vendor_profile("v1", config::VENDOR_YOUDAO, true);
+        p.youdao_app_key = "KEY".into();
+        p.youdao_app_secret = "SEC".into();
+        let cfg = Config {
+            vendor_profiles: vec![p],
+            active_engine: "vendor:v1".into(),
+            ..Config::default()
+        };
+        let out = prepared_config(&cfg);
+        assert_eq!(out.youdao_app_key, "KEY");
+        assert_eq!(out.youdao_app_secret, "SEC");
+        // 选的是 OpenAI 时不做任何投影，扁平字段保持空
+        let cfg2 = Config {
+            openai_profiles: vec![model_profile("m1")],
+            active_engine: "openai:m1".into(),
+            ..Config::default()
+        };
+        assert!(prepared_config(&cfg2).appid.is_empty());
+    }
+
+    /// 会话 31 实机回归：迁移后扁平凭据字段是空的，所有就绪判断必须先投影。
+    /// 曾经 `engine_ready()` 读废弃的 `cfg.engine`（恒空）→ 划词热键永远被引去设置页，
+    /// 设置页状态行也一直显示「未配置」。
+    #[test]
+    fn engine_ready_uses_projected_credentials() {
+        let mut p = vendor_profile("v1", config::VENDOR_BAIDU, false);
+        p.appid = "APP".into();
+        p.secret = "SEC".into();
+        let mut cfg = Config {
+            vendor_profiles: vec![p],
+            active_engine: "vendor:v1".into(),
+            ..Config::default()
+        };
+        // 迁移后的真实形状：扁平字段全空，凭据只在实例里
+        assert!(cfg.appid.is_empty() && cfg.secret.is_empty());
+        assert!(engine_ready(&cfg), "投影后应判已就绪");
+        assert!(
+            !engine_by_id("baidu").unwrap().is_ready(&cfg),
+            "直接拿原始 cfg 问引擎会误判未配置"
         );
-        assert_eq!(mk(config::MODE_OPENAI, config::VENDOR_BAIDU), "openai");
-        // 配置被手改坏时也要能用：不认识的厂商当百度、不认识的模式当机器翻译
-        assert_eq!(mk("vendor_x", "klingon"), "baidu");
-        assert_eq!(mk("", ""), "baidu");
-    }
 
-    /// 弹窗切引擎会把 id 写回 mode + vendor，必须能无损往返。
-    #[test]
-    fn engine_parts_roundtrips_with_engine_id_of() {
-        for (id, name) in ENGINE_CHOICES {
-            let (mode, vendor) = engine_parts(id)
-                .unwrap_or_else(|| panic!("{id}（{name}）没有反解成 mode + vendor"));
-            let cfg = Config {
-                engine_mode: mode.to_string(),
-                vendor: vendor.to_string(),
-                ..Config::default()
-            };
-            assert_eq!(engine_id_of(&cfg), *id, "{id} 往返不一致");
-            assert!(engine_by_id(id).is_some(), "{id} 没有实现");
-        }
-        assert!(engine_parts("deepl").is_none());
+        cfg.vendor_profiles[0].secret.clear();
+        assert!(!engine_ready(&cfg), "实例里缺密钥 → 未就绪");
+
+        // 没有任何实例 → 不就绪（不能靠 engine_by_id(\"\") 的默认百度蒙混过关）
+        assert!(!engine_ready(&Config::default()));
+
+        // OpenAI 实例：key / base / model 齐了才算就绪
+        let mut oa = Config {
+            openai_profiles: vec![model_profile("m1")],
+            active_engine: "openai:m1".into(),
+            ..Config::default()
+        };
+        assert!(engine_ready(&oa));
+        oa.openai_profiles[0].key.clear();
+        assert!(!engine_ready(&oa));
     }
 
     #[test]
-    fn mode_and_vendor_options_cover_config_constants() {        for (id, name) in MODE_OPTIONS {
-            assert!(!name.is_empty());
-            // `openai` 恰好既是模式值也是引擎 id，其余模式值不该是引擎 id
-            if *id != config::MODE_OPENAI {
-                assert!(engine_by_id(id).is_none(), "{id} 是模式不是引擎 id");
-            }
-        }
+    fn vendor_options_match_config_constants() {
         for (id, name) in VENDOR_OPTIONS {
             assert!(!name.is_empty());
             assert!(matches!(*id, config::VENDOR_BAIDU | config::VENDOR_YOUDAO));
         }
+        assert_eq!(VENDOR_OPTIONS.len(), 2, "现在只有两家，加第三家时同步这里");
     }
 
     // ── 未就绪要给出可照做的中文提示 ─────────────────────────
+
+    /// 一个实例都没配：要指出去哪添加，而不是报一句「未知引擎」。
+    #[test]
+    fn translate_without_profiles_says_where_to_add() {
+        let err = translate(&Config::default(), "hello").unwrap_err();
+        assert!(err.contains("还没有可用的翻译引擎"), "实际：{err}");
+        assert!(err.contains("厂商管理"), "要指出添加位置：{err}");
+    }
+
+    /// 有实例但凭据没填：要指出缺什么、去哪填。
     #[test]
     fn translate_without_credentials_says_where_to_fill() {
         let cfg = Config {
-            appid: String::new(),
-            secret: String::new(),
+            vendor_profiles: vec![vendor_profile("v1", config::VENDOR_BAIDU, false)],
+            active_engine: "vendor:v1".into(),
             ..Config::default()
         };
+        // vendor_profile() 里凭据是占位的，先清空
+        let mut cfg = cfg;
+        cfg.vendor_profiles[0].appid.clear();
+        cfg.vendor_profiles[0].secret.clear();
         let err = translate(&cfg, "hello").unwrap_err();
         assert!(err.contains("APPID"), "错误里要指出缺什么：{err}");
         assert!(err.contains("设置"), "错误里要指出去哪填：{err}");
     }
 
+    /// 选的是有道、凭据没填 → 提示里要出现「有道」（不能一律说百度）。
     #[test]
-    fn translate_unknown_engine_says_where_to_change() {
-        // 模式值写坏 → 路由到 baidu（兜底），但引擎 id 本身不可能未知；
-        // 这里直接测 `engine_by_id` 的兜底分支的提示语由 translate 给出。
-        let cfg = Config {
-            engine_mode: config::MODE_VENDOR_MT.into(),
-            vendor: config::VENDOR_YOUDAO.into(),
-            youdao_app_key: String::new(),
-            youdao_app_secret: String::new(),
+    fn translate_youdao_without_credentials_names_the_vendor() {
+        let mut cfg = Config {
+            vendor_profiles: vec![vendor_profile("v1", config::VENDOR_YOUDAO, false)],
+            active_engine: "vendor:v1".into(),
             ..Config::default()
         };
+        cfg.vendor_profiles[0].youdao_app_key.clear();
+        cfg.vendor_profiles[0].youdao_app_secret.clear();
         let err = translate(&cfg, "hello").unwrap_err();
-        assert!(err.contains("有道"), "未配置时要说是哪家缺凭据：{err}");
+        assert!(err.contains("有道"), "要为具体那家指路：{err}");
         assert!(err.contains("设置"), "实际：{err}");
     }
 

@@ -21,15 +21,14 @@ pub mod translate_tool;
 
 use serde::Serialize;
 
-/// 字段的联动条件：全部条件都满足时才显示。
+/// 字段的联动条件：`key` 命中 `equals` 里任一值时就显示。
 ///
-/// 仍然**不做任意表达式**（没有 `or` / `not` / 括号 / 嵌套比较），只允许：
-/// - 一个 key 命中多个候选值之一（OR，用于「厂商模式下的两个模式都显示厂商」）；
-/// - 再 AND 一层同样的条件（用于「厂商=有道 **且** 模式不是 OpenAI」）。
+/// 仍然**不做任意表达式**（没有 `or` / `not` / 括号 / 嵌套比较）。`equals` 是数组
+/// 而不是单值，是为了「一家厂商的凭据只在两种模式下显示」这类需求。
 ///
-/// 会话 29 才加这两条能力：翻译引擎拆成「模式 + 厂商」两个维度后，
-/// 凭据字段必须同时看两个字段，单条件表达不了。**深度上限就是两层**，
-/// 别在这条路上继续加。
+/// 会话 29 曾经加过一层 AND（`also`），会话 31 把引擎页签改成「选一个已配置实例」
+/// 之后不再需要，构造手段已删——字段留着，真需要时直接构造即可，不必改序列化形状。
+/// **别在这条路上继续加**，再复杂就该换方案了。
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ShowIf {
     pub key: &'static str,
@@ -71,6 +70,12 @@ pub enum FieldKind {
     /// 下拉选择。`(值, 显示名)`
     Select {
         options: &'static [(&'static str, &'static str)],
+        /// 选项由前端**动态**算出来，`options` 作废。
+        ///
+        /// 目前只有 `"engines"`：翻译模式的下拉要列出用户配好的实例，数量随配置
+        /// 变，静态表表达不了。前端按这个名字去找数据源。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        dynamic: Option<&'static str>,
     },
     /// 热键：前端只读 + 捕获模式，用户点一下直接按组合键
     Hotkey,
@@ -89,20 +94,23 @@ pub enum FieldKind {
     Group {
         title: &'static str,
     },
-    /// 可重复的一组配置（会话 30）。
+    /// 可重复的一组配置（会话 30，会话 31 改成折叠卡片）。
     ///
-    /// 第一个用它的地方是「OpenAI 兼容的多套模型」：每套有名称 / BaseURL /
-    /// 模型名 / API Key，用户可以加任意多套、各起名字。
+    /// 用它的是「厂商管理」与「大模型管理」：用户可以加任意多套、各起名字。
     ///
     /// `item_fields` 描述「每一项里有哪些输入框」，它们的 `key` 是**对象内的键名**
-    /// （例如 `name` / `base`），不是顶层配置键。整组的值是一个对象数组。
-    /// **不支持嵌套 list**，也不支持项内联动——真需要那些就是该换方案了。
+    /// （例如 `name` / `vendor`），不是顶层配置键。整组的值是一个对象数组。
+    /// **不支持嵌套 list**，也不支持项内 `show_if` 的跨项联动（只能在项内判断）。
     List {
         item_fields: Vec<Field>,
-        /// 「使用中」单选被选中时，把那一项的 `id` 写到这个配置键。
-        /// `None` = 这组配置没有「当前项」的概念。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        active_key: Option<&'static str>,
+        /// 折叠时显示的一行摘要用哪几个字段（按顺序用「 · 」连起来）。
+        /// 空 = 不折叠，卡片直接展开（会话 30 的样式）。
+        #[serde(skip_serializing_if = "<[&str]>::is_empty")]
+        summary: &'static [&'static str],
+        /// 新建走弹窗（而不是在列表末尾插一张空卡）。
+        /// 弹窗里只能填 `item_fields`，保存后 append 进列表。
+        #[serde(default)]
+        add_dialog: bool,
     },
 }
 
@@ -187,7 +195,26 @@ impl Field {
         label: &'static str,
         options: &'static [(&'static str, &'static str)],
     ) -> Self {
-        Self::new(key, label, FieldKind::Select { options })
+        Self::new(
+            key,
+            label,
+            FieldKind::Select {
+                options,
+                dynamic: None,
+            },
+        )
+    }
+
+    /// 选项由前端动态生成的下拉（`source` 目前只有 `"engines"`）。
+    pub fn select_dynamic(key: &'static str, label: &'static str, source: &'static str) -> Self {
+        Self::new(
+            key,
+            label,
+            FieldKind::Select {
+                options: &[],
+                dynamic: Some(source),
+            },
+        )
     }
 
     pub fn hotkey(key: &'static str, label: &'static str) -> Self {
@@ -220,16 +247,24 @@ impl Field {
             label,
             FieldKind::List {
                 item_fields: items,
-                active_key: None,
+                summary: &[],
+                add_dialog: false,
             },
         )
     }
 
-    /// 给 list 加「使用中」单选：选中项的 `id` 写到 `active_key`。
-    /// 对非 list 字段是空操作。
-    pub fn active_key(mut self, key: &'static str) -> Self {
-        if let FieldKind::List { active_key, .. } = &mut self.kind {
-            *active_key = Some(key);
+    /// 折叠成单行卡片，摘要取这几个字段（按顺序）。对非 list 字段是空操作。
+    pub fn summary(mut self, fields: &'static [&'static str]) -> Self {
+        if let FieldKind::List { summary, .. } = &mut self.kind {
+            *summary = fields;
+        }
+        self
+    }
+
+    /// 新建走弹窗。对非 list 字段是空操作。
+    pub fn add_dialog(mut self) -> Self {
+        if let FieldKind::List { add_dialog, .. } = &mut self.kind {
+            *add_dialog = true;
         }
         self
     }
@@ -244,30 +279,6 @@ impl Field {
         self
     }
 
-    /// 只在 `key` 命中 `equals` 里任一值时显示（OR）。
-    pub fn show_if_any(mut self, key: &'static str, equals: &'static [&'static str]) -> Self {
-        self.show_if = Some(ShowIf {
-            key,
-            equals: equals.to_vec(),
-            also: None,
-        });
-        self
-    }
-
-    /// 追加一个「同时满足且命中任一值」的条件（AND + OR）。
-    pub fn and_if_any(mut self, key: &'static str, equals: &'static [&'static str]) -> Self {
-        if let Some(s) = self.show_if.as_mut() {
-            // 已经有一层 also 时不再往下加：schema 到这里为止
-            if s.also.is_none() {
-                s.also = Some(Box::new(ShowIf {
-                    key,
-                    equals: equals.to_vec(),
-                    also: None,
-                }));
-            }
-        }
-        self
-    }
 }
 
 /// 一个标签页 / 分组。
@@ -390,26 +401,8 @@ mod tests {
         );
     }
 
-    /// 多值 + AND：翻译引擎的凭据字段就靠这个同时看「模式」和「厂商」。
     #[test]
-    fn show_if_supports_multiple_values_and_one_and() {
-        let f = Field::password("youdao_app_secret", "应用密钥")
-            .show_if("vendor", "youdao")
-            .and_if_any("engine_mode", &["vendor_mt", "vendor_llm"]);
-        let v: Value = serde_json::to_value(&f).unwrap();
-        assert_eq!(v["show_if"]["key"], "vendor");
-        assert_eq!(v["show_if"]["equals"], serde_json::json!(["youdao"]));
-        let also = &v["show_if"]["also"];
-        assert_eq!(also["key"], "engine_mode");
-        assert_eq!(also["equals"], serde_json::json!(["vendor_mt", "vendor_llm"]));
-        assert!(also.get("also").is_none(), "只允许一层 AND");
-    }
-
-    /// list 的 item_fields 与 active_key 要能序列化给前端：
-    /// 前端靠 `item_fields` 决定每张卡片画哪些输入框，靠 `active_key`
-    /// 知道「使用中」单选写到哪个配置键。
-    #[test]
-    fn list_serializes_item_fields_and_active_key() {
+    fn list_serializes_item_fields_summary_and_dialog() {
         let f = Field::list(
             "profiles",
             "模型列表",
@@ -418,10 +411,12 @@ mod tests {
                 Field::password("key", "API Key"),
             ],
         )
-        .active_key("active_id");
+        .summary(&["name", "key"])
+        .add_dialog();
         let v: Value = serde_json::to_value(&f).unwrap();
         assert_eq!(v["type"], "list");
-        assert_eq!(v["active_key"], "active_id");
+        assert_eq!(v["summary"], serde_json::json!(["name", "key"]));
+        assert_eq!(v["add_dialog"], true);
         let items = v["item_fields"].as_array().unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0]["key"], "name");
@@ -429,41 +424,38 @@ mod tests {
         assert_eq!(items[1]["type"], "password");
     }
 
-    /// 没设 active_key 时不该出现这个键（前端按「没有它就不画单选」判断）。
+    /// 不折叠时不写 `summary`、不弹窗时 `add_dialog` 是 false —— 前端据此
+    /// 退回会话 30 的「整张展开 + 末尾插空卡」样式。
     #[test]
-    fn list_without_active_key_omits_it() {
+    fn list_without_summary_and_dialog_serializes_plain() {
         let v: Value = serde_json::to_value(Field::list("p", "P", vec![])).unwrap();
-        assert!(v.get("active_key").is_none(), "{v}");
+        assert!(v.get("summary").is_none(), "{v}");
+        assert_eq!(v["add_dialog"], false);
     }
 
-    /// `active_key` 对非 list 字段是空操作，不该 panic 也不该改类型。
+    /// `summary` / `add_dialog` 对非 list 字段是空操作，不该 panic 也不该改类型。
     #[test]
-    fn active_key_on_non_list_is_noop() {
-        let v: Value = serde_json::to_value(Field::switch("a", "A").active_key("b")).unwrap();
+    fn list_builders_on_non_list_are_noops() {
+        let v: Value =
+            serde_json::to_value(Field::switch("a", "A").summary(&["x"]).add_dialog()).unwrap();
         assert_eq!(v["type"], "switch");
-        assert!(v.get("active_key").is_none());
+        assert!(v.get("summary").is_none());
+        assert!(v.get("add_dialog").is_none());
     }
 
-    /// 没有 `show_if` 时 `and_if_any` 是空操作，不该凭空造出一个条件。
+    /// 动态下拉要带上数据源名，前端按它去找候选项（`engines` = 已配置实例）。
     #[test]
-    fn and_if_without_show_if_is_noop() {
-        let f = Field::switch("a", "A").and_if_any("b", &["x"]);
-        assert!(f.show_if.is_none());
+    fn select_dynamic_serializes_source() {
+        let v: Value = serde_json::to_value(Field::select_dynamic("active_engine", "翻译模式", "engines"))
+            .unwrap();
+        assert_eq!(v["type"], "select");
+        assert_eq!(v["dynamic"], "engines");
+        assert_eq!(v["options"].as_array().unwrap().len(), 0, "动态下拉不带静态选项");
+        // 普通下拉不该出现 dynamic
+        let v2: Value = serde_json::to_value(Field::select("s", "S", &[("a", "A")])).unwrap();
+        assert!(v2.get("dynamic").is_none(), "{v2}");
     }
 
-    /// AND 只允许一层：再加一次不该覆盖或叠加出第三层。
-    #[test]
-    fn and_if_keeps_single_level() {
-        let f = Field::switch("a", "A")
-            .show_if("b", "x")
-            .and_if_any("c", &["y"])
-            .and_if_any("d", &["z"]);
-        let s = f.show_if.unwrap();
-        assert_eq!(s.also.as_ref().unwrap().key, "c");
-        assert!(s.also.unwrap().also.is_none(), "不该出现第三层");
-    }
-
-    /// `placeholder` 是 `Option`，没填时不该出现在 JSON 里。
     #[test]
     fn optional_field_parts_are_skipped() {
         let v: Value = serde_json::to_value(Field::text_hint("a", "A", "提示")).unwrap();

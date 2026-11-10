@@ -72,6 +72,18 @@
       </div>
     </div>
   </div>
+  <!-- 新建厂商 / 模型的表单弹窗。字段由 settings.js 按后端 schema 生成，
+       同样不用系统弹窗（同 #dirty-modal 的理由）。 -->
+  <div id="form-modal" class="modal hidden">
+    <div class="modal-card modal-wide">
+      <h2 id="fm-title">添加</h2>
+      <div id="fm-body" class="fm-body"></div>
+      <div class="modal-acts">
+        <button id="fmCancel" class="btn" type="button">取消</button>
+        <button id="fmSave" class="btn btn-primary" type="button">保存</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="icons.js"></script>

@@ -44,32 +44,76 @@ pub struct ModelProfile {
     pub prompt: String,
 }
 
+/// 一套「厂商翻译」配置。
+///
+/// 可以对同一家厂商建多套（例如两个百度应用、一个有额度一个没有），各起名字，
+/// 用哪套由 `active_engine` 指向。`use_llm` 决定走这家的机器翻译还是大模型翻译
+/// ——同一家也能配两套，一套机翻一套大模型。
+///
+/// 四组凭据都放在一个结构里而不是 `enum`：用户在弹窗里切厂商时，已经填过的另一家
+/// 字段不会丢（切回来还在），也不用为「切厂商」写一套字段搬迁逻辑。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct VendorProfile {
+    /// 稳定标识（前端生成），用户改不了；改名不影响「当前使用」的指向
+    #[serde(default)]
+    pub id: String,
+    /// 用户自定义的名字，显示在设置页与翻译弹窗里
+    #[serde(default)]
+    pub name: String,
+    /// 厂商：`baidu` | `youdao`。以后接第三家只扩这个字段的取值
+    #[serde(default)]
+    pub vendor: String,
+    /// 这家用大模型翻译（true）还是机器翻译（false）
+    #[serde(default)]
+    pub use_llm: bool,
+    /// 百度：APPID / 密钥
+    #[serde(default)]
+    pub appid: String,
+    #[serde(default)]
+    pub secret: String,
+    /// 有道：应用 ID / 应用密钥
+    #[serde(default)]
+    pub youdao_app_key: String,
+    #[serde(default)]
+    pub youdao_app_secret: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     // ---- 翻译引擎 ----
-    /// **老字段，只用于读旧配置**（会话 29 起不再由界面写入）。
+    /// **老字段，只用于读旧配置**（会话 31 起不再由界面写入）。
     ///
-    /// 以前它既是「选哪个引擎」又是「引擎种类」，拆成三模式 + 厂商之后它没法
-    /// 表达 `baidu-llm` 这种组合。`migrate_engine()` 会把它换算成
-    /// `engine_mode` + `vendor` 并清空；清空后不再序列化，配置文件里就不会留
-    /// 一个永远不更新的死字段。
+    /// 演变史：`engine`（baidu/openai）→ `engine_mode` + `vendor`（三模式 + 厂商）
+    /// → 现在 `vendor_profiles` + `active_engine`（可多套实例）。前两代都只在
+    /// `migrate_*()` 里读一次，迁完清空、不再序列化。
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub engine: String,
-    /// 翻译模式：`vendor_mt` 厂商机器翻译 | `vendor_llm` 厂商大模型 | `openai` OpenAI 兼容。
-    ///
-    /// 空串 = 老配置还没迁移，`migrate_engine()` 会按 `engine` 补上。
-    #[serde(default)]
+    /// 老字段：`vendor_mt` | `vendor_llm` | `openai`
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub engine_mode: String,
-    /// 厂商：`baidu` | `youdao`。只在 `vendor_mt` / `vendor_llm` 下有意义，
-    /// 切到 OpenAI 兼容时它保留原值（切回来还在），但界面上会藏起来。
-    #[serde(default)]
+    /// 老字段：`baidu` | `youdao`
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub vendor: String,
-    /// 百度翻译 APPID
-    #[serde(default)]
+    /// **迁移后仍用作「投影目标」**：翻译前会把当前厂商实例的凭据写进这几个
+    /// 字段，引擎实现（`baidu.rs` / `youdao.rs`）就不用知道「实例」这回事。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub appid: String,
-    /// 百度翻译密钥
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub secret: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub youdao_app_key: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub youdao_app_secret: String,
+    /// 厂商实例列表。界面上是「厂商管理」的卡片列表。
+    #[serde(default)]
+    pub vendor_profiles: Vec<VendorProfile>,
+    /// 当前用哪一个实例：`vendor:<id>` 或 `openai:<id>`。
+    ///
+    /// 一个字符串同时表达「哪一类」和「哪一个」，比「模式 + 各自 active」两个
+    /// 字段少一半改坏的可能（两个字段可能互相矛盾）。
+    #[serde(default)]
+    pub active_engine: String,
+
     /// 源语言。`auto` = 自动检测
     #[serde(default = "d_from")]
     pub from: String,
@@ -86,10 +130,6 @@ pub struct Config {
 
     // ---- OpenAI 兼容（DeepSeek / 硅基流动 / Ollama）----
     /// **老字段，只用于读旧配置**（会话 30 起不再由界面写入）。
-    ///
-    /// 以前只能存一套 OpenAI 兼容配置，现在改成 `openai_profiles` 列表。
-    /// `migrate_openai()` 会把有内容的那套搬进列表并清空这四个字段；
-    /// 清空后不序列化，配置文件里不会留一份永远不更新的副本。
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub openai_base: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -101,18 +141,9 @@ pub struct Config {
     /// OpenAI 兼容的多套模型配置。空列表 = 还没添加过。
     #[serde(default)]
     pub openai_profiles: Vec<ModelProfile>,
-    /// 当前用哪一套：存 `ModelProfile.id`。为空或指向不存在的 id 时
-    /// 退回列表第一条（`Config::openai_profile()`），不让配置坏掉就用不了。
-    #[serde(default)]
+    /// **老字段**：会话 30 用它指向当前模型，31 起统一走 `active_engine`
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub openai_active: String,
-
-    // ---- 有道智云（会话 29）----
-    /// 有道智云应用 ID。文本翻译与「大模型翻译」共用这一套凭据。
-    #[serde(default)]
-    pub youdao_app_key: String,
-    /// 有道智云应用密钥。**按敏感值处理**：不写日志、不回显。
-    #[serde(default)]
-    pub youdao_app_secret: String,
 
     // ---- 热键 ----
     /// 划词翻译热键，**永远存归一化形式**（`Ctrl+Alt+T`），
@@ -349,10 +380,12 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             engine: String::new(),
-            engine_mode: MODE_VENDOR_MT.to_string(),
-            vendor: VENDOR_BAIDU.to_string(),
+            engine_mode: String::new(),
+            vendor: String::new(),
             appid: String::new(),
             secret: String::new(),
+            vendor_profiles: Vec::new(),
+            active_engine: String::new(),
             from: d_from(),
             to: d_to(),
             to2: d_to2(),
@@ -504,17 +537,173 @@ pub fn migrate_openai(cfg: &mut Config) {
     cfg.openai_prompt.clear();
 }
 
+/// 把老的单套凭据搬成「厂商实例」，并算出 `active_engine`。
+///
+/// 迁移是**幂等**的：只要 `vendor_profiles` 已经有内容就不再根据老字段造新的，
+/// 老字段本身也会被清空（不再序列化），所以第二次跑什么都不会发生。
+pub fn migrate_vendors(cfg: &mut Config) {
+    // 1) 老的单套凭据 → 实例（只在列表为空时）
+    if cfg.vendor_profiles.is_empty() {
+        // 老配置只有「当前这家用不用大模型」一个标志，两家都迁时给 engine_mode
+        // 指向的那家，另一家保持机器翻译。
+        let legacy_llm = cfg.engine_mode.trim() == MODE_VENDOR_LLM;
+        let legacy_vendor = if cfg.vendor.trim() == VENDOR_YOUDAO {
+            VENDOR_YOUDAO
+        } else {
+            VENDOR_BAIDU
+        };
+        if !cfg.appid.trim().is_empty() || !cfg.secret.trim().is_empty() {
+            cfg.vendor_profiles.push(VendorProfile {
+                id: "baidu-default".to_string(),
+                name: "百度".to_string(),
+                vendor: VENDOR_BAIDU.to_string(),
+                use_llm: legacy_llm && legacy_vendor == VENDOR_BAIDU,
+                appid: cfg.appid.clone(),
+                secret: cfg.secret.clone(),
+                ..VendorProfile::default()
+            });
+        }
+        if !cfg.youdao_app_key.trim().is_empty() || !cfg.youdao_app_secret.trim().is_empty() {
+            cfg.vendor_profiles.push(VendorProfile {
+                id: "youdao-default".to_string(),
+                name: "有道".to_string(),
+                vendor: VENDOR_YOUDAO.to_string(),
+                use_llm: legacy_llm && legacy_vendor == VENDOR_YOUDAO,
+                youdao_app_key: cfg.youdao_app_key.clone(),
+                youdao_app_secret: cfg.youdao_app_secret.clone(),
+                ..VendorProfile::default()
+            });
+        }
+    }
+
+    // 2) 手改配置可能漏字段：补 id / 名字 / 厂商，否则卡片没标题、指向也会断
+    for (i, p) in cfg.vendor_profiles.iter_mut().enumerate() {
+        if p.vendor.trim().is_empty() {
+            p.vendor = VENDOR_BAIDU.to_string();
+        }
+        if p.id.trim().is_empty() {
+            p.id = format!("vendor-{}", i + 1);
+        }
+        if p.name.trim().is_empty() {
+            p.name = format!("{} {}", vendor_label(&p.vendor), i + 1);
+        }
+    }
+
+    // 3) 老模式 → active_engine（只在没设过时）
+    if cfg.active_engine.trim().is_empty() {
+        if cfg.engine_mode.trim() == MODE_OPENAI {
+            let id = if cfg.openai_profiles.iter().any(|p| p.id == cfg.openai_active) {
+                cfg.openai_active.clone()
+            } else {
+                cfg.openai_profiles
+                    .first()
+                    .map(|p| p.id.clone())
+                    .unwrap_or_default()
+            };
+            if !id.is_empty() {
+                cfg.active_engine = format!("openai:{id}");
+            }
+        } else {
+            let want = if cfg.vendor.trim() == VENDOR_YOUDAO {
+                VENDOR_YOUDAO
+            } else {
+                VENDOR_BAIDU
+            };
+            if let Some(p) = cfg
+                .vendor_profiles
+                .iter()
+                .find(|p| p.vendor == want)
+                .or_else(|| cfg.vendor_profiles.first())
+            {
+                cfg.active_engine = format!("vendor:{}", p.id);
+            }
+        }
+    }
+
+    // 4) active 失效（删了当前那套 / 手改成不存在的 id）→ 顺位到第一项。
+    //    顺序：厂商在前、OpenAI 在后，和界面上的分组顺序一致。
+    if cfg.active_vendor_profile().is_none() && cfg.active_openai_profile().is_none() {
+        cfg.active_engine = cfg
+            .vendor_profiles
+            .first()
+            .map(|p| format!("vendor:{}", p.id))
+            .or_else(|| {
+                cfg.openai_profiles
+                    .first()
+                    .map(|p| format!("openai:{}", p.id))
+            })
+            .unwrap_or_default();
+    }
+
+    // 5) 老字段清空 → 不再序列化
+    cfg.engine.clear();
+    cfg.engine_mode.clear();
+    cfg.vendor.clear();
+    cfg.appid.clear();
+    cfg.secret.clear();
+    cfg.youdao_app_key.clear();
+    cfg.youdao_app_secret.clear();
+    cfg.openai_active.clear();
+}
+
+/// 厂商代码 → 中文名。未知值原样返回，别给卡片一个空标题。
+pub fn vendor_label(vendor: &str) -> &str {
+    match vendor.trim() {
+        VENDOR_YOUDAO => "有道",
+        VENDOR_BAIDU => "百度",
+        other => other,
+    }
+}
+
 impl Config {
-    /// 当前使用的 OpenAI 兼容配置。
+    /// 当前选中的厂商实例。`active_engine` 不是 `vendor:` 前缀或指向不存在的 id
+    /// 时返回 `None`（由 `migrate_vendors` 负责顺位，运行期不会长期为空）。
+    pub fn active_vendor_profile(&self) -> Option<&VendorProfile> {
+        let id = self.active_engine.trim().strip_prefix("vendor:")?;
+        self.vendor_profiles.iter().find(|p| p.id == id)
+    }
+
+    /// 当前选中的 OpenAI 模型。
+    pub fn active_openai_profile(&self) -> Option<&ModelProfile> {
+        let id = self.active_engine.trim().strip_prefix("openai:")?;
+        self.openai_profiles.iter().find(|p| p.id == id)
+    }
+
+    /// 「翻译模式」下拉的全部候选项：`(active_engine 的值, 显示名)`。
     ///
-    /// `openai_active` 为空或指向不存在的 id 时退回第一条——配置被手改坏也不该
-    /// 让翻译直接不可用。列表为空才返回 `None`（这时引擎报「还没添加模型」）。
-    pub fn openai_profile(&self) -> Option<&ModelProfile> {
-        let id = self.openai_active.trim();
-        self.openai_profiles
+    /// 厂商实例在前、OpenAI 模型在后，和设置页的分组顺序一致。
+    /// 没配置任何实例时返回空——设置页据此显示「先去下面添加」。
+    pub fn engine_choices(&self) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = self
+            .vendor_profiles
             .iter()
-            .find(|p| p.id == id)
-            .or_else(|| self.openai_profiles.first())
+            .map(|p| {
+                let suffix = if p.use_llm { " · 大模型" } else { "" };
+                (
+                    format!("vendor:{}", p.id),
+                    format!("{}{suffix}", p.name.trim()),
+                )
+            })
+            .collect();
+        out.extend(self.openai_profiles.iter().map(|p| {
+            (
+                format!("openai:{}", p.id),
+                format!("OpenAI 兼容 · {}", p.name.trim()),
+            )
+        }));
+        out
+    }
+
+    /// 当前实例的显示名（状态行、翻译弹窗用）。没有可用实例时给空串。
+    pub fn active_engine_label(&self) -> String {
+        if let Some(p) = self.active_vendor_profile() {
+            let suffix = if p.use_llm { " · 大模型" } else { "" };
+            return format!("{}{suffix}", p.name.trim());
+        }
+        if let Some(p) = self.active_openai_profile() {
+            return format!("OpenAI 兼容 · {}", p.name.trim());
+        }
+        String::new()
     }
 }
 
@@ -525,6 +714,7 @@ pub fn load() -> Config {
     };
     migrate_engine(&mut cfg);
     migrate_openai(&mut cfg);
+    migrate_vendors(&mut cfg);
     cfg
 }
 
@@ -540,8 +730,8 @@ pub fn save(cfg: &Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        migrate_engine, migrate_openai, Config, ModelProfile, MODE_OPENAI, MODE_VENDOR_LLM,
-        MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
+        migrate_engine, migrate_openai, migrate_vendors, Config, ModelProfile, VendorProfile,
+        MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
     };
 
     /// 老版本只有 appid，新版本加了字段也必须能读出来（ADR-013）。
@@ -604,7 +794,9 @@ mod tests {
     fn config_corrupt_json_falls_back_to_default() {
         let bad = "{ this is not json";
         let c: Config = serde_json::from_str(bad).unwrap_or_default();
-        assert_eq!(c.engine_mode, MODE_VENDOR_MT);
+        // 默认配置一个实例都没有，翻译模式留空，由界面提示「先去添加」
+        assert!(c.engine_mode.is_empty());
+        assert!(c.vendor_profiles.is_empty());
     }
 
     /// 关掉缓存时 `cache_enabled=false` 要能读出来（布尔字段最容易被漏 default）。
@@ -692,7 +884,7 @@ mod tests {
         let d: Config = serde_json::from_str(&s).unwrap();
         assert_eq!(d.max_speed_kb, 2048);
         assert_eq!(d.max_concurrent, 8);
-        assert_eq!(d.engine_mode, MODE_VENDOR_MT);
+        assert!(d.engine_mode.is_empty());
     }
 
     // ── 会话 30：OpenAI 多模型列表 ────────────────────────────
@@ -759,30 +951,78 @@ mod tests {
         assert_eq!(c.openai_active, "a");
     }
 
-    #[test]
-    fn openai_profile_prefers_active_then_falls_back() {
-        let mk = |id: &str, name: &str| ModelProfile {
+    fn model(id: &str, name: &str) -> ModelProfile {
+        ModelProfile {
             id: id.into(),
             name: name.into(),
             base: format!("https://{id}"),
             model: "m".into(),
             key: "k".into(),
             prompt: String::new(),
-        };
+        }
+    }
+
+    fn vendor(id: &str, name: &str, vendor: &str, use_llm: bool) -> VendorProfile {
+        VendorProfile {
+            id: id.into(),
+            name: name.into(),
+            vendor: vendor.into(),
+            use_llm,
+            appid: "app".into(),
+            secret: "sec".into(),
+            youdao_app_key: "yk".into(),
+            youdao_app_secret: "ys".into(),
+        }
+    }
+
+    /// `active_engine` 是唯一的选择入口：只有前缀与 id 都对上才算选中，
+    /// 不会「碰巧」落到列表第一条上（那是会话 30 的旧语义，已经去掉）。
+    #[test]
+    fn active_profiles_follow_active_engine() {
         let mut c = Config {
-            openai_profiles: vec![mk("a", "A"), mk("b", "B")],
+            vendor_profiles: vec![vendor("v1", "百度", VENDOR_BAIDU, false)],
+            openai_profiles: vec![model("a", "A"), model("b", "B")],
             ..Config::default()
         };
-        c.openai_active = "b".into();
-        assert_eq!(c.openai_profile().unwrap().name, "B");
-        // 指向不存在的 id / 空 → 第一条
-        c.openai_active = "nope".into();
-        assert_eq!(c.openai_profile().unwrap().name, "A");
-        c.openai_active.clear();
-        assert_eq!(c.openai_profile().unwrap().name, "A");
-        // 空列表 → None（引擎据此报「还没添加模型」）
-        c.openai_profiles.clear();
-        assert!(c.openai_profile().is_none());
+
+        c.active_engine = "openai:b".into();
+        assert_eq!(c.active_openai_profile().unwrap().name, "B");
+        assert!(c.active_vendor_profile().is_none());
+        assert_eq!(c.active_engine_label(), "OpenAI 兼容 · B");
+
+        c.active_engine = "vendor:v1".into();
+        assert_eq!(c.active_vendor_profile().unwrap().name, "百度");
+        assert!(c.active_openai_profile().is_none());
+        assert_eq!(c.active_engine_label(), "百度");
+
+        // 前缀与 id 不匹配 → 两边都是 None（由 migrate_vendors 负责顺位）
+        c.active_engine = "vendor:nope".into();
+        assert!(c.active_vendor_profile().is_none());
+        assert!(c.active_openai_profile().is_none());
+        assert_eq!(c.active_engine_label(), "");
+    }
+
+    /// 下拉候选项：厂商在前、OpenAI 在后，名字带「· 大模型」后缀。
+    #[test]
+    fn engine_choices_list_vendors_then_models() {
+        let c = Config {
+            vendor_profiles: vec![
+                vendor("v1", "百度主账号", VENDOR_BAIDU, false),
+                vendor("v2", "有道大模型", VENDOR_YOUDAO, true),
+            ],
+            openai_profiles: vec![model("a", "DeepSeek")],
+            ..Config::default()
+        };
+        assert_eq!(
+            c.engine_choices(),
+            vec![
+                ("vendor:v1".to_string(), "百度主账号".to_string()),
+                ("vendor:v2".to_string(), "有道大模型 · 大模型".to_string()),
+                ("openai:a".to_string(), "OpenAI 兼容 · DeepSeek".to_string()),
+            ]
+        );
+        // 什么都没配 → 空（设置页据此显示「先去添加」）
+        assert!(Config::default().engine_choices().is_empty());
     }
 
     /// 列表要能原样存回去（含中文名与空指令）。
@@ -854,11 +1094,16 @@ mod tests {
         assert_eq!(c.vendor, VENDOR_BAIDU);
     }
 
-    /// 空的 `engine` 不该被序列化：配置文件里留一个恒为空的对象没意义。
+    /// 迁移过的老字段都不该再被序列化，配置文件里只留新结构。
     #[test]
-    fn empty_legacy_engine_is_not_serialized() {
-        let s = serde_json::to_string(&Config::default()).unwrap();
-        assert!(!s.contains("\"engine\":"), "实际：{s}");
-        assert!(s.contains("\"engine_mode\""));
+    fn legacy_fields_are_not_serialized() {
+        // 默认配置里老字段都是空串，`skip_serializing_if` 会把它们全部略掉
+        let v = serde_json::to_value(Config::default()).unwrap();
+        let obj = v.as_object().unwrap();
+        for old in ["engine", "engine_mode", "vendor", "appid", "openai_active"] {
+            assert!(!obj.contains_key(old), "顶层老字段 {old} 还在：{v}");
+        }
+        assert!(obj.contains_key("vendor_profiles"));
+        assert!(obj.contains_key("active_engine"));
     }
 }

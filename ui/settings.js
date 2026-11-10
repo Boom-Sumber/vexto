@@ -12,6 +12,13 @@
 //
 // 为什么改：之前「改一下就存」在改到一半时（比如刚改了限速还没填连接数）
 // 也会立刻落盘，用户没有一个「这批改动我想反悔」的出口。
+//
+// **会话 31 的两处有意例外**（都只服务于「引擎配置」这一类，别在别处照抄）：
+//   ① `engineChoices()` 从两张列表算出动态下拉的候选；后端 schema 只给一个
+//      数据源名 `engines`，没有把「哪两张列表」也序列化下来。
+//   ② `fieldList()` 删除当前实例时顺位到第一项——要先改 `active_engine`，
+//      不这么做下拉会短暂指到一个已不存在的 id。
+// 其它工具、其它字段一律仍走 schema，不认识这些键也就不会被影响。见 ADR-031。
 
 const T = window.__TAURI__;
 const invoke = T.core.invoke;
@@ -26,6 +33,10 @@ const state = {
   values: {},      // 后端读回来的值
   pending: {},     // 还没保存的改动（key → value），优先于 values
 };
+
+// 页面上所有「动态下拉」的 select 节点（目前只有翻译模式一个）。
+// 候选来自同页的两张列表，改名 / 增删后要原地刷新，不能整页重画（会丢焦点）。
+let engineSelectNodes = [];
 
 // ── 小工具 ────────────────────────────────────────────────────────────────
 
@@ -189,6 +200,8 @@ function currentSection() {
 function renderFields() {
   const box = el("fields");
   box.textContent = "";
+  // 字段 DOM 全换了，旧的下拉节点不再有效（isConnected=false），别留着
+  engineSelectNodes = [];
   const sec = currentSection();
   if (!sec) return;
   for (const f of sec.fields) {
@@ -286,15 +299,74 @@ function fieldGroup(f) {
 
 // ── 可重复的一组配置（list）────────────────────────────────────────────
 //
-// 第一个用户是「OpenAI 兼容的多套模型」：每套有名称 / BaseURL / 模型名 / Key。
-// 整组的值是一个对象数组，任何改动都整体 commit 回去——数组的增删本来就要
-// 整体替换，再叠一套逐字段 diff 只会更难懂。
+// 卡片永远是「一行摘要 + 展开箭头 + 删除」：点箭头摊开详细配置，就地可改；
+// 新建走弹窗（`add_dialog`）。摘要取后端给的 `summary`，没给就用前两个字段。
 //
-// 输入时不重画（否则光标会跳），只有增删和切换「使用中」才 draw()。
-// 每项的身份靠 `id`，改名不影响「使用中」的指向。
+// 输入时不重画（否则光标会跳），只有增删、切换下拉才动 DOM。
+// 列表变了要 `renderFields()`：上面「翻译模式」的下拉是从这些列表算出来的。
 
 function newItemId() {
   return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// 一条摘要文本：select 显示选项文字、switch 显示中文，其余原样
+function summaryText(f, it) {
+  const keys = (f.summary && f.summary.length
+    ? f.summary
+    : (f.item_fields || []).slice(0, 2).map((x) => x.key));
+  const parts = [];
+  for (const k of keys) {
+    const fld = (f.item_fields || []).find((x) => x.key === k);
+    let v = it[k];
+    if (fld && fld.type === "select") {
+      const hit = (fld.options || []).find((o) => String(o[0]) === String(v));
+      if (hit) v = hit[1];
+    } else if (fld && fld.type === "switch") {
+      v = k === "use_llm" ? (v ? "大模型" : "机器翻译") : v ? "开" : "关";
+    }
+    if (v != null && String(v).trim() !== "") parts.push(String(v));
+  }
+  return parts.join(" · ") || "未命名";
+}
+
+// 项内联动：只看这一项自己的字段，不跨项、不读全局 pending
+function itemShowIf(fld, it) {
+  if (!fld.show_if) return true;
+  const list = Array.isArray(fld.show_if.equals)
+    ? fld.show_if.equals
+    : [fld.show_if.equals];
+  return list.some((e) => String(e) === String(it[fld.show_if.key] ?? ""));
+}
+
+// 一个控件（详情区与弹窗共用）：text / password / select / switch
+function itemControl(fld, value, onChange) {
+  if (fld.type === "switch") {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!value;
+    cb.addEventListener("change", () => onChange(cb.checked));
+    return cb;
+  }
+  if (fld.type === "select") {
+    const sel = document.createElement("select");
+    for (const [v, txt] of fld.options || []) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = txt;
+      if (String(value) === String(v)) o.selected = true;
+      sel.append(o);
+    }
+    sel.addEventListener("change", () => onChange(sel.value));
+    return sel;
+  }
+  const inp = document.createElement("input");
+  inp.className = "input";
+  inp.type = fld.type === "password" ? "password" : "text";
+  inp.spellcheck = false;
+  inp.value = value == null ? "" : String(value);
+  if (fld.placeholder) inp.placeholder = fld.placeholder;
+  inp.addEventListener("input", () => onChange(inp.value));
+  return inp;
 }
 
 function fieldList(f) {
@@ -305,127 +377,243 @@ function fieldList(f) {
   body.className = "list-body";
   w.append(body);
 
-  const activeKey = f.active_key || "";
   const itemFields = f.item_fields || [];
-
-  // 名称永远放头行，剩下的按声明顺序排；没声明 name 就把第一个当名称。
-  const nameField = itemFields.find((x) => x.key === "name") || itemFields[0] || null;
-  const restFields = itemFields.filter((x) => x !== nameField);
+  const sums = new Map();   // id → 摘要节点
+  const details = new Map(); // id → 详情容器
 
   function readItems() {
     const v = val(f.key);
     return Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : [];
   }
 
-  function patch(id, fieldKey, value) {
+  function patch(id, key, value) {
     const next = readItems();
     const it = next.find((x) => x.id === id);
     if (!it) return;
-    it[fieldKey] = value;
+    it[key] = value;
     commit(f.key, next);
+    refreshSummary(id);
   }
 
-  function card(it, activeId) {
+  function refreshSummary(id) {
+    const it = readItems().find((x) => x.id === id);
+    const n = sums.get(id);
+    if (it && n) n.textContent = summaryText(f, it);
+  }
+
+  function fillDetail(box, it) {
+    box.textContent = "";
+    for (const fld of itemFields) {
+      if (!itemShowIf(fld, it)) continue;
+      const row = document.createElement("div");
+      row.className = "li-row";
+
+      const lab = document.createElement("span");
+      lab.className = "li-label";
+      lab.textContent = fld.label || fld.key;
+      row.append(lab);
+
+      const ctrl = itemControl(fld, it[fld.key], (v) => {
+        patch(it.id, fld.key, v);
+        // 切厂商要让另一家的凭据行出现 / 消失
+        if (fld.type === "select") {
+          const fresh = readItems().find((x) => x.id === it.id);
+          if (fresh) fillDetail(box, fresh);
+        }
+      });
+      if (fld.type === "switch") {
+        const wrap = document.createElement("label");
+        wrap.className = "li-switch";
+        wrap.append(ctrl);
+        row.append(wrap);
+      } else {
+        row.append(ctrl);
+      }
+      box.append(row);
+    }
+  }
+
+  function card(it) {
     const c = document.createElement("div");
-    c.className = "list-item" + (activeId === it.id ? " on" : "");
+    c.className = "list-item";
 
     const head = document.createElement("div");
     head.className = "li-head";
 
-    if (activeKey) {
-      const pick = document.createElement("button");
-      pick.type = "button";
-      pick.className = "li-pick" + (activeId === it.id ? " on" : "");
-      pick.title = activeId === it.id ? "当前使用这套" : "点一下改用这套";
-      pick.setAttribute("aria-label", "使用这套");
-      pick.addEventListener("click", () => {
-        if (activeId === it.id) return;
-        commit(activeKey, it.id);
-        draw();
-      });
-      head.append(pick);
-    }
+    const arrow = document.createElement("button");
+    arrow.type = "button";
+    arrow.className = "li-arrow";
+    arrow.title = "展开 / 收起";
+    arrow.setAttribute("aria-label", "展开");
+    head.append(arrow);
 
-    if (nameField) {
-      const name = document.createElement("input");
-      name.className = "input li-name";
-      name.type = "text";
-      name.spellcheck = false;
-      name.value = it[nameField.key] == null ? "" : String(it[nameField.key]);
-      name.placeholder = nameField.placeholder || nameField.label || "名称";
-      name.addEventListener("input", () => patch(it.id, nameField.key, name.value));
-      head.append(name);
-    }
+    const sum = document.createElement("span");
+    sum.className = "li-sum";
+    sum.textContent = summaryText(f, it);
+    sums.set(it.id, sum);
+    head.append(sum);
 
     const del = document.createElement("button");
     del.type = "button";
     del.className = "btn li-del";
     del.textContent = "删除";
     del.title = "只删这套配置，不动任何账号";
-    del.addEventListener("click", () => {
-      const next = readItems().filter((x) => x.id !== it.id);
-      commit(f.key, next);
-      // 删掉的正好是「使用中」→ 顺位给第一条，没剩下就清空
-      if (activeKey && String(val(activeKey) || "") === it.id) {
-        commit(activeKey, next[0] ? next[0].id : "");
-      }
-      draw();
-    });
+    del.addEventListener("click", () => removeItem(it.id));
     head.append(del);
+
     c.append(head);
 
-    for (const fld of restFields) {
-      const row = document.createElement("label");
-      row.className = "li-row";
-      const lab = document.createElement("span");
-      lab.className = "li-label";
-      lab.textContent = fld.label || fld.key;
-      const inp = document.createElement("input");
-      inp.className = "input";
-      inp.type = fld.type === "password" ? "password" : "text";
-      inp.spellcheck = false;
-      inp.value = it[fld.key] == null ? "" : String(it[fld.key]);
-      if (fld.placeholder) inp.placeholder = fld.placeholder;
-      inp.addEventListener("input", () => patch(it.id, fld.key, inp.value));
-      row.append(lab, inp);
-      c.append(row);
-    }
+    const detail = document.createElement("div");
+    detail.className = "li-detail hidden";
+    details.set(it.id, detail);
+    fillDetail(detail, it);
+    c.append(detail);
+
+    arrow.addEventListener("click", () => {
+      const open = !c.classList.contains("open");
+      c.classList.toggle("open", open);
+      detail.classList.toggle("hidden", !open);
+    });
+
     return c;
+  }
+
+  function removeItem(id) {
+    const next = readItems().filter((x) => x.id !== id);
+    commit(f.key, next);
+    // 删的正好是「当前使用」→ 顺位：厂商优先、OpenAI 其次
+    const prefix = f.key === "vendor_profiles" ? "vendor:" : "openai:";
+    if (String(val("active_engine") || "") === prefix + id) {
+      const vendors = f.key === "vendor_profiles" ? next : (val("vendor_profiles") || []);
+      const models = f.key === "openai_profiles" ? next : (val("openai_profiles") || []);
+      const pick = vendors[0]
+        ? "vendor:" + vendors[0].id
+        : models[0]
+        ? "openai:" + models[0].id
+        : "";
+      commit("active_engine", pick);
+    }
+    renderFields();
+  }
+
+  function addItem() {
+    // 后端给的 label 是「已配置的厂商 / 已配置的模型」，去掉前缀正好当弹窗标题，
+    // 不必再往 schema 里加一个 add_title 字段，也不在这里硬编码字段名。
+    const noun = String(f.label || "一条").replace(/^已配置的/, "") || "一条";
+    openFormDialog("添加" + noun, itemFields, (draft) => {
+      const item = Object.assign({ id: newItemId() }, draft);
+      const next = readItems();
+      next.push(item);
+      commit(f.key, next);
+      // 第一个添加的直接设为当前使用，否则用户以为没生效
+      if (!String(val("active_engine") || "")) {
+        const prefix = f.key === "vendor_profiles" ? "vendor:" : "openai:";
+        commit("active_engine", prefix + item.id);
+      }
+      renderFields();
+    });
   }
 
   function draw() {
     body.textContent = "";
+    sums.clear();
+    details.clear();
     const items = readItems();
-    const activeId = activeKey ? String(val(activeKey) || "") : "";
 
     if (!items.length) {
       const empty = document.createElement("div");
       empty.className = "list-empty";
-      empty.textContent = "还没有添加。点下面的「添加」建一套。";
+      empty.textContent = "还没有添加。点下面的「添加」新建一套。";
       body.append(empty);
     }
-    for (const it of items) body.append(card(it, activeId));
+    for (const it of items) body.append(card(it));
 
     const add = document.createElement("button");
     add.type = "button";
     add.className = "btn list-add";
     add.textContent = "添加";
-    add.addEventListener("click", () => {
-      const next = readItems();
-      const item = { id: newItemId() };
-      for (const fld of itemFields) item[fld.key] = "";
-      next.push(item);
-      commit(f.key, next);
-      // 之前一个都没有 → 新加的这条直接设为使用中，否则用户会以为没生效
-      if (activeKey && !String(val(activeKey) || "")) commit(activeKey, item.id);
-      draw();
-    });
+    add.addEventListener("click", addItem);
     body.append(add);
   }
 
   draw();
   return w;
 }
+
+// ── 表单弹窗（新建一条配置）────────────────────────────────────────────
+//
+// 字段来自后端 `item_fields`，只支持 text / password / select / switch。
+// `show_if` 读的是**草稿对象**，切厂商时重画一次，让另一家的凭据行跟着出现 / 消失。
+
+function openFormDialog(title, fields, onSave) {
+  const draft = {};
+  for (const fld of fields) {
+    // select 的草稿值必须等于界面上默认选中的那一项：浏览器会自动选中第一个
+    // option，但草稿若留空，项内 show_if 就认为「没选厂商」，两家的凭据行
+    // 全被藏起来，连 APPID 都没地方填。会话 31 实机发现的坑。
+    draft[fld.key] = fld.type === "switch"
+      ? false
+      : fld.type === "select"
+        ? String((fld.options && fld.options[0] && fld.options[0][0]) || "")
+        : "";
+  }
+
+  el("fm-title").textContent = title;
+  const body = el("fm-body");
+
+  // 项内联动只看草稿自己，复用卡片详情那一套判断
+  const shown = (fld) => itemShowIf(fld, draft);
+
+  function draw() {
+    body.textContent = "";
+    for (const fld of fields) {
+      if (!shown(fld)) continue;
+      const row = document.createElement("div");
+      row.className = "fm-row" + (fld.type === "switch" ? " fm-switch" : "");
+
+      const lab = document.createElement("span");
+      lab.className = "fm-label";
+      lab.textContent = fld.label || fld.key;
+      row.append(lab);
+
+      const ctrl = itemControl(fld, draft[fld.key], (v) => {
+        draft[fld.key] = v;
+        // 下拉切换会改变「哪些字段该显示」，必须重画
+        if (fld.type === "select") draw();
+      });
+      row.append(ctrl);
+      body.append(row);
+    }
+  }
+
+  function close() {
+    el("form-modal").classList.add("hidden");
+  }
+
+  el("fmSave").onclick = () => {
+    // 名称留空给个占位，别让卡片出现空标题。认 name / vendor / model
+    // 三个通用键（两张列表都是这个形状），不是某个工具专属分支。
+    // 厂商没填名字就叫「百度」/「有道」，模型没填就用模型名。
+    if (!String(draft.name || "").trim()) {
+      const vf = fields.find((x) => x.key === "vendor");
+      const hit = vf && (vf.options || []).find(
+        (o) => String(o[0]) === String(draft.vendor || "")
+      );
+      draft.name = (hit && String(hit[1]))
+        || String(draft.model || "").trim()
+        || "未命名";
+    }
+    close();
+    onSave(draft);
+  };
+  el("fmCancel").onclick = close;
+
+  draw();
+  el("form-modal").classList.remove("hidden");
+  const first = body.querySelector("input[type=text], select");
+  if (first) first.focus();
+}
+
 
 function fieldInput(f, inputType) {
   const w = wrapField(f);
@@ -534,19 +722,83 @@ function fieldSwitch(f) {
   return w;
 }
 
-function fieldSelect(f) {
-  const w = wrapField(f);
-  const l = labelNode(f.label || "");
-  const sel = document.createElement("select");
-  const cur = val(f.key);
-  for (const opt of f.options || []) {
-    // options 是 [[value, label], ...] 的二元组数组
-    const [v, txt] = opt;
+// 「翻译模式」的候选项：从当前配置里的厂商实例 + OpenAI 模型算出来。
+// 值就是 `active_engine` 的写法（`vendor:<id>` / `openai:<id>`）。
+function engineChoices() {
+  const listOf = (k) => {
+    const v = val(k);
+    return Array.isArray(v) ? v : [];
+  };
+  const out = [];
+  for (const p of listOf("vendor_profiles")) {
+    const name = String(p.name || "").trim() || "未命名";
+    out.push(["vendor:" + p.id, name + (p.use_llm ? " · 大模型" : "")]);
+  }
+  for (const p of listOf("openai_profiles")) {
+    const name = String(p.name || "").trim() || "未命名";
+    out.push(["openai:" + p.id, "OpenAI 兼容 · " + name]);
+  }
+  return out;
+}
+
+/// 填充一个动态下拉。候选为空时给一条禁用占位，别让用户对着空框发愣。
+function fillEngineSelect(sel, opts, cur) {
+  sel.textContent = "";
+  sel.disabled = !opts.length;
+  if (!opts.length) {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "（还没有配置，先在下面添加）";
+    sel.append(o);
+    return;
+  }
+  // options 是 [[value, label], ...] 的二元组数组
+  for (const [v, txt] of opts) {
     const o = document.createElement("option");
     o.value = v;
     o.textContent = txt;
     if (String(cur) === String(v)) o.selected = true;
     sel.append(o);
+  }
+}
+
+/// 候选变了就**原地**重建 options，不换 select 节点（焦点与选中态都不丢）。
+/// 用候选签名去重：逐字输入名称时不会每次都动 DOM。
+/// 由 `commit()` 统一调用，所以列表里的改名 / 切开关 / 增删全都覆盖得到。
+function refreshEngineSelects() {
+  if (!engineSelectNodes.length) return;
+  const opts = engineChoices();
+  const sig = JSON.stringify(opts);
+  for (const sel of engineSelectNodes) {
+    if (!sel.isConnected || sel.dataset.optSig === sig) continue;
+    sel.dataset.optSig = sig;
+    // 保留用户刚选的值；旧值已不在候选里时浏览器会停在第一项，
+    // 写回由 `removeItem()` 的顺位与后端 `migrate_vendors()` 兜底。
+    fillEngineSelect(sel, opts, val(sel.dataset.key || ""));
+  }
+}
+
+function fieldSelect(f) {
+  const w = wrapField(f);
+  const l = labelNode(f.label || "");
+  const sel = document.createElement("select");
+
+  if (f.dynamic) {
+    // dynamic 的选项来自同页配置，`options` 是后端给的空表，作废
+    sel.dataset.key = f.key;
+    engineSelectNodes.push(sel);
+    const opts = engineChoices();
+    fillEngineSelect(sel, opts, val(f.key));
+    sel.dataset.optSig = JSON.stringify(opts);
+  } else {
+    const cur = val(f.key);
+    for (const [v, txt] of f.options || []) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = txt;
+      if (String(cur) === String(v)) o.selected = true;
+      sel.append(o);
+    }
   }
   sel.addEventListener("change", () => commit(f.key, sel.value));
   w.append(l, sel);
@@ -728,6 +980,10 @@ function commit(key, value) {
   state.pending[key] = value;
   applyShowIf();          // 立刻重算联动，不等保存
   renderDirty();
+  // 列表里改名 / 切大模型开关后，上面的动态下拉文字要跟着变。
+  // 这里统一刷，避免在每个 list 分支里各写一遍；函数内部按签名去重，
+  // 所以逐字输入不会反复动 DOM。
+  refreshEngineSelects();
 }
 
 /// 把 pending 里的所有改动一次交出去。返回是否成功。
