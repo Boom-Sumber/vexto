@@ -15,6 +15,7 @@ mod config;
 mod dlog;
 mod download;
 mod extension_bridge;
+mod fileops;
 mod hotkey;
 mod lang;
 mod mem;
@@ -1010,8 +1011,25 @@ fn download_unpause(gid: String) -> Result<(), String> {
 
 /// `06` §6.4.2 第 5 条要「删掉所有任务」，含已完成 / 出错的记录。
 /// aria2 对这类记录调 `remove` 会报 GID not found，必须分流。
+///
+/// 会话 27 起：如果设置里打开了「删任务同时删文件」，这里连文件一起删
+/// （默认进回收站，见 `fileops::delete`）。**前端已经做过二次确认**，
+/// 后端不做弹窗——这是个 Tauri 命令，没有窗口可以弹。
 #[tauri::command]
 fn download_remove(gid: String) -> Result<(), String> {
+    let cfg = config::load();
+    // 删之前先把文件路径拿到手：历史与实时任务各查一次，删完就查不到了。
+    let target = if cfg.delete_file_with_task {
+        crate::download::engine::rpc_handle()
+            .and_then(|r| r.snapshot().ok())
+            .and_then(|s| s.tasks.into_iter().find(|t| t.gid == gid))
+            .or_else(|| crate::download::history::find(&gid))
+            .map(|t| t.file_path)
+            .filter(|p| !p.trim().is_empty())
+    } else {
+        None
+    };
+
     // 历史记录先删：它是本地数据，删了就不会再被 merge 补回来。
     let from_history = crate::download::history::remove(&gid);
     let live = with_download_rpc(|r| {
@@ -1027,12 +1045,24 @@ fn download_remove(gid: String) -> Result<(), String> {
             _ => r.remove_result(&gid),
         }
     });
-    match live {
+    let removed = match live {
         Ok(()) => Ok(()),
         // 只剩历史记录（引擎已退出或 gid 已不在 aria2）时，删历史就算成功。
         Err(_) if from_history => Ok(()),
         Err(e) => Err(e),
+    };
+
+    // 任务删掉了但文件删失败，不能整体报错——那是两件事，任务确实没了。
+    if removed.is_ok() {
+        if let Some(path) = target {
+            let recycle = cfg.delete_mode != "permanent";
+            if let Err(e) = crate::fileops::delete(&path, recycle) {
+                crate::dlog::dlog(&format!("remove: 删文件失败（任务已删）：{e}"));
+                return Err(format!("任务已删除，但文件没删掉：{e}"));
+            }
+        }
     }
+    removed
 }
 
 #[tauri::command]
@@ -1098,7 +1128,7 @@ struct DownloadAddOut {
 /// 不用 `?` 提前返回：用户一次贴了 5 个链接，第 2 个坏掉不该让另外 4 个也不下。
 #[tauri::command]
 fn download_add(tasks: Vec<crate::download::NewTask>) -> DownloadAddOut {
-    let cfg = config::load();
+    let mut cfg = config::load();
     let mut ok = 0usize;
     let mut failed = Vec::new();
     for t in &tasks {
@@ -1108,6 +1138,21 @@ fn download_add(tasks: Vec<crate::download::NewTask>) -> DownloadAddOut {
                 uri: t.uri.clone(),
                 error,
             }),
+        }
+    }
+    // 「记住上次保存位置」：只在真的入队成功时写，且只认用户填过的目录——
+    // 留空 = 跟随默认目录，那种情况不该把默认路径固化成「上次用过」。
+    if ok > 0 && cfg.remember_last_dir {
+        if let Some(dir) = tasks
+            .iter()
+            .map(|t| t.dir.trim())
+            .find(|d| !d.is_empty())
+            .map(|d| d.replace('/', "\\"))
+        {
+            if dir != cfg.last_save_dir {
+                cfg.last_save_dir = dir;
+                let _ = config::save(&cfg);
+            }
         }
     }
     crate::download::pump::notify();
@@ -1141,8 +1186,20 @@ struct TaskDefaultsOut {
 #[tauri::command]
 fn download_task_defaults() -> TaskDefaultsOut {
     let cfg = config::load();
+    // 「记住上次保存位置」：上次那个目录还在就用它，目录被删了退回默认——
+    // 否则新建页会预填一个不存在的路径，用户点新建才发现目录建不出来。
+    let remembered = if cfg.remember_last_dir {
+        let d = cfg.last_save_dir.trim();
+        if !d.is_empty() && std::path::Path::new(d).is_dir() {
+            Some(d.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     TaskDefaultsOut {
-        dir: crate::download::engine::default_download_dir(),
+        dir: remembered.unwrap_or_else(crate::download::engine::default_download_dir),
         speed: cfg.max_speed_kb,
         // 界面上限是 16；手改配置越界时在这里夹一次，别把一个非法值送进 aria2。
         connections: cfg.max_connection_per_server.clamp(1, 16),
@@ -1321,6 +1378,27 @@ fn open_path(path: String) {
     let _ = std::process::Command::new("explorer.exe").arg(p).spawn();
 }
 
+/// 任务列表要的两条界面开关：要不要二次确认、删任务会不会连文件一起删。
+///
+/// 单独一个命令而不是塞进 `snapshot`：后者是 aria2 的任务数据，
+/// 混进配置项会让「历史合并」那条路径多一个不相干的字段。
+#[derive(Serialize)]
+struct UiFlagsOut {
+    confirm: bool,
+    delete_file: bool,
+    delete_mode: String,
+}
+
+#[tauri::command]
+fn download_ui_flags() -> UiFlagsOut {
+    let cfg = config::load();
+    UiFlagsOut {
+        confirm: cfg.confirm_remove,
+        delete_file: cfg.delete_file_with_task,
+        delete_mode: cfg.delete_mode,
+    }
+}
+
 /// 「发送测试通知」按钮。设置页的 Button 字段都是**无参命令**，所以单独包一层。
 ///
 /// 不看「启用系统通知」开关：用户点测试就是要当场确认通道通不通，
@@ -1419,6 +1497,7 @@ fn main() {
             download_add_torrent,
             download_task_defaults,
             notify_test,
+            download_ui_flags,
             open_download_dir,
             download_probe,
             disk_free,
@@ -1438,6 +1517,10 @@ fn main() {
             // 换过安装目录、被安全软件清掉、或用户手工删过，都在这里补齐 / 抹掉。
             // 失败只记日志——自启坏掉不该让程序起不来。
             crate::autostart::sync(cfg.autostart);
+
+            // 点击通知的处理器：**只注册一次**，重复注册会让一次点击触发多次。
+            // Windows 只在 toast 还停在屏幕上时上报点击，收进操作中心后就收不到了。
+            crate::download::notify::register_click(&handle);
 
             tray::build(&handle, &cfg.hotkey)?;
 
@@ -1519,6 +1602,12 @@ fn main() {
                     download::pump::stop();
                     if let Err(e) = download::engine::shutdown_all() {
                         dlog::dlog(&format!("exit: 关闭 aria2c 失败：{e}"));
+                    }
+                    // 「退出时清空已完成记录」：只清终态，出错的任务留着
+                    // （用户可能正想排查它为什么失败）。
+                    if config::load().clear_finished_on_exit {
+                        crate::download::history::clear_finished();
+                        dlog::dlog("exit: 已按设置清空已完成记录");
                     }
                 }
             }

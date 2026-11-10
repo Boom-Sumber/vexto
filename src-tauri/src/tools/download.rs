@@ -87,21 +87,68 @@ impl Tool for Download {
                 vec![
                     Field::group("下载路径"),
                     Field::dir("download_dir", "下载目录"),
+                    Field::switch("remember_last_dir", "记住上次保存位置"),
+                    Field::note("打开时先用上次实际用过的目录；那个目录不在了就退回上面的下载目录。"),
                     Field::group("速度与并发"),
                     Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
                     Field::number_unit("max_connection_per_server", "单文件连接数", 1, 16, "个"),
                     Field::number_unit("max_speed_kb", "下载限速", 0, 102_400, "KB/s"),
+                    Field::switch("auto_limit", "自动限速"),
                     Field::note(
-                        "限速填 0 表示不限；单文件连接数决定一个大文件被切成几条连接拉。",
+                        "限速填 0 表示不限；单文件连接数决定一个大文件被切成几条连接拉。\n\
+                         「自动限速」会按实测速度把上限往下收到「峰值 × 1.3」，只在降、不回升——\n\
+                         避免用一个虚高的上限让 aria2 开满连接空转。",
                     ),
                     Field::group("通知"),
                     Field::switch("notify_download", "启用系统通知"),
                     Field::switch("notify_on_start", "下载开始时通知"),
                     Field::switch("notify_on_done", "下载完成时通知"),
+                    Field::select(
+                        "notify_click_action",
+                        "点击通知时",
+                        &[("folder", "在文件夹中显示"), ("list", "打开下载列表")],
+                    ),
                     Field::button("notify_test", "发送测试通知"),
                     Field::note(
                         "「启用系统通知」是总开关，下面两项只在它打开时生效。\n\
-                         开始通知默认关——一次贴十条链接会连弹十条。",
+                         开始通知默认关——一次贴十条链接会连弹十条。\n\
+                         Windows 只在通知还停在屏幕上时上报点击，已经收进操作中心的点了不会有反应。",
+                    ),
+                    Field::group("完成后"),
+                    Field::select(
+                        "after_all_done",
+                        "全部下载完成后",
+                        &[
+                            ("none", "什么都不做"),
+                            ("shutdown", "关机（60 秒倒计时，可取消）"),
+                            ("sleep", "睡眠"),
+                            ("run", "运行程序"),
+                        ],
+                    ),
+                    Field::text_hint("after_all_done_cmd", "要运行的程序", r"D:\tools\done.exe")
+                        .show_if("after_all_done", "run"),
+                    Field::note(
+                        "只在「本轮真的下过东西、并且队列连续空 10 秒」后触发一次；\n\
+                         启动后 3 分钟内的空闲一律不算——否则开机自启会一启动就关机。",
+                    ),
+                    Field::group("删除与清理"),
+                    Field::select(
+                        "delete_mode",
+                        "文件删除方式",
+                        &[("recycle", "移入回收站"), ("permanent", "彻底删除")],
+                    ),
+                    Field::switch("delete_file_with_task", "删除任务时同时删文件"),
+                    Field::switch("confirm_remove", "删除前确认"),
+                    Field::switch("remove_missing_records", "文件丢失时移除记录"),
+                    Field::switch("clear_finished_on_exit", "退出时清空已完成记录"),
+                    Field::select(
+                        "history_keep",
+                        "已完成记录保留",
+                        &[("100", "最近 100 条"), ("300", "最近 300 条"), ("forever", "永久保留")],
+                    ),
+                    Field::note(
+                        "「同时删文件」默认关：删文件不可撤销，必须显式打开。\n\
+                         回收站里的文件可以还原；彻底删除不行。",
                     ),
                     Field::group("快捷键"),
                     Field::hotkey("hotkey_download", "打开新建下载任务"),

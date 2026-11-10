@@ -130,6 +130,47 @@ pub struct Config {
     /// aria2 RPC 端口。只绑 127.0.0.1；被占用时引擎自动换一个可用端口。
     #[serde(default = "d_rpc_port")]
     pub rpc_port: u16,
+
+    // ---- 完成后与清理（会话 27）----
+    /// 全部任务完成后做什么：`none` | `shutdown` | `sleep` | `run`。
+    ///
+    /// 触发条件是「队列从有活动变成零活动」，且启动 3 分钟内不算——
+    /// 否则「开机自启 + 上次全完成」会在启动时就执行。
+    #[serde(default = "d_after_none")]
+    pub after_all_done: String,
+    /// `after_all_done = run` 时启动什么（完整路径或 PATH 里的名字）。
+    #[serde(default)]
+    pub after_all_done_cmd: String,
+    /// 自动限速：按实测速度把上限收敛，别让 aria2 用满连接空转。
+    #[serde(default)]
+    pub auto_limit: bool,
+    /// 删任务时连文件一起删。默认关——删文件是不可逆的，必须显式打开。
+    #[serde(default)]
+    pub delete_file_with_task: bool,
+    /// 文件删除方式：`recycle`（移入回收站，默认）| `permanent`（彻底删除）。
+    #[serde(default = "d_delete_mode")]
+    pub delete_mode: String,
+    /// 删除任务前二次确认（默认开；关掉 = 点一下就删）。
+    #[serde(default = "d_true")]
+    pub confirm_remove: bool,
+    /// 文件已丢失时，顺手把这条历史记录也删掉。
+    #[serde(default)]
+    pub remove_missing_records: bool,
+    /// 退出程序时清空已完成记录。
+    #[serde(default)]
+    pub clear_finished_on_exit: bool,
+    /// 已完成记录保留条数：`100` | `300` | `forever`。
+    #[serde(default = "d_history_keep")]
+    pub history_keep: String,
+    /// 记住上次保存位置：新建任务默认用上次实际用的目录。
+    #[serde(default)]
+    pub remember_last_dir: bool,
+    /// 上次实际用的下载目录。**程序自己写，不进设置界面**。
+    #[serde(default)]
+    pub last_save_dir: String,
+    /// 点击通知时：`folder`（在文件夹中显示）| `list`（打开下载列表）。
+    #[serde(default = "d_click_folder")]
+    pub notify_click_action: String,
     /// 代理模式：`direct` 直连 / `system` 跟随系统 / `manual` 手动。
     ///
     /// aria2 自己不读 Windows 的 WinINET 设置，所以「跟随系统」必须由我们读
@@ -225,6 +266,22 @@ fn d_bridge_port() -> u16 {
 fn d_rpc_port() -> u16 {
     16800
 }
+/// 默认「什么都不做」：关机这种事必须是用户明确选的。
+fn d_after_none() -> String {
+    "none".to_string()
+}
+/// 默认走回收站：删错了还能捞回来。
+fn d_delete_mode() -> String {
+    "recycle".to_string()
+}
+/// 与历史模块原来的硬编码上限一致，升级后行为不变。
+fn d_history_keep() -> String {
+    "300".to_string()
+}
+/// 点通知先开文件夹——那是用户最可能想做的事。
+fn d_click_folder() -> String {
+    "folder".to_string()
+}
 fn d_version() -> u32 {
     1
 }
@@ -266,6 +323,18 @@ impl Default for Config {
             dns_servers: String::new(),
             check_certificate: true,
             rpc_port: d_rpc_port(),
+            after_all_done: d_after_none(),
+            after_all_done_cmd: String::new(),
+            auto_limit: false,
+            delete_file_with_task: false,
+            delete_mode: d_delete_mode(),
+            confirm_remove: true,
+            remove_missing_records: false,
+            clear_finished_on_exit: false,
+            history_keep: d_history_keep(),
+            remember_last_dir: false,
+            last_save_dir: String::new(),
+            notify_click_action: d_click_folder(),
             proxy_mode: d_proxy_mode(),
             proxy_url: String::new(),
             extension_bridge_enabled: true,
@@ -424,6 +493,23 @@ mod tests {
         assert!(c.notify_on_done);
         assert!(!c.notify_on_start, "批量下载时开始通知会刷屏");
         assert_eq!(c.rpc_port, 16800);
+    }
+
+    /// 会话 27 的清理 / 删除 / 完成动作：默认值必须偏保守——
+    /// 不关机、不删文件、删任务要确认、记录保留 300 条。
+    #[test]
+    fn cleanup_defaults_are_conservative() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.after_all_done, "none", "默认不许关机");
+        assert!(!c.delete_file_with_task, "默认不许连文件一起删");
+        assert_eq!(c.delete_mode, "recycle", "默认走回收站");
+        assert!(c.confirm_remove, "默认要确认");
+        assert!(!c.remove_missing_records);
+        assert!(!c.clear_finished_on_exit);
+        assert_eq!(c.history_keep, "300");
+        assert!(!c.remember_last_dir);
+        assert!(!c.auto_limit);
+        assert_eq!(c.notify_click_action, "folder");
     }
 
     /// 新值要能原样存回去，且不影响其它字段。

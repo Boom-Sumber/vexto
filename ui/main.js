@@ -18,6 +18,10 @@ let lastError = "";
 let filter = "all";
 let lastSnap = { tasks: [], global: {} };
 
+// 后端的两条界面开关（`download_ui_flags`）：要不要二次确认、删任务会不会连文件一起删。
+// 默认值取「要确认、不删文件」——没读到后端时也走最保守的那条。
+let uiFlags = { confirm: true, delete_file: false, delete_mode: "recycle" };
+
 const TITLES = {
   all: "全部",
   running: "进行中",
@@ -136,6 +140,13 @@ function createRow(t) {
     b.className = "btn";
     b.dataset.act = act;
     b.textContent = label;
+    // 「删除任务时同时删文件」打开时，把后果写在 tooltip 上——按钮上放不下，
+    // 但用户按下之前必须知道文件也会没。
+    if (act === "remove" && uiFlags.delete_file) {
+      b.title = uiFlags.delete_mode === "permanent"
+        ? "会连同文件一起彻底删除（不可恢复）"
+        : "会连同文件一起移到回收站";
+    }
     acts.appendChild(b);
   }
   row.append(top, bar, meta, acts);
@@ -243,10 +254,42 @@ el("list").addEventListener("click", (ev) => {
   switch (btn.dataset.act) {
     case "toggle": call("download_pause", { gid }); break;
     case "resume": call("download_unpause", { gid }); break;
-    case "remove": call("download_remove", { gid }); break;
+    case "remove": onRemove(btn, row, gid); break;
     case "open":   call("download_open_dir", { gid }); break;
   }
 });
+
+// ── 删除的二次确认 ──────────────────────────────────────────────────────
+//
+// 不用 `confirm()`：那是 WebView2 的系统对话框（白底、跟深色主题完全冲突，
+// 违反 13-UI 的「原生部件必须自绘」）。改成「点一下按钮变成『确认删除』，
+// 3 秒内再点一次才真删」——零弹窗、可撤销（不动手就自己复原）。
+
+const armTimers = new Map();
+
+function disarm(btn, row) {
+  const t = armTimers.get(row);
+  if (t) { clearTimeout(t); armTimers.delete(row); }
+  btn.dataset.armed = "";
+  btn.textContent = "删除";
+  btn.classList.remove("armed");
+}
+
+function onRemove(btn, row, gid) {
+  if (!uiFlags.confirm) {
+    call("download_remove", { gid });
+    return;
+  }
+  if (btn.dataset.armed === "1") {
+    disarm(btn, row);
+    call("download_remove", { gid });
+    return;
+  }
+  btn.dataset.armed = "1";
+  btn.textContent = "确认删除";
+  btn.classList.add("armed");
+  armTimers.set(row, setTimeout(() => disarm(btn, row), 3000));
+}
 
 el("clear").addEventListener("click", () => call("download_clear_finished"));
 
@@ -261,6 +304,12 @@ for (const b of document.querySelectorAll("button.cat")) {
 
 (async function init() {
   el("title").textContent = TITLES[filter] || "全部";
+  // 先取界面开关再渲染：删除按钮的提示要在第一批行建出来之前就定好。
+  try {
+    uiFlags = await invoke("download_ui_flags");
+  } catch (e) {
+    /* 读不到就用默认值（要确认、不删文件） */
+  }
   await refresh();
   // 订阅/渲染都不许静默失败：事件收不到或载荷形状变了，用户必须能在窗口里
   // 看到原因，而不是对着一个永远不动的进度条猜。

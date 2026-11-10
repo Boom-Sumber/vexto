@@ -173,6 +173,18 @@
   padding: 0 10px;
   font-size: var(--fs-xs);
 }
+/* 删除按钮在二次确认时文案会变长（「删除」→「确认删除」）。
+   定个最小宽度，避免整行按钮在两次点击之间左右跳。 */
+.acts .btn[data-act="remove"] {
+  min-width: 76px;
+}
+/* 已进入「确认删除」态：只换颜色，不动尺寸 */
+.acts .btn.armed,
+.acts .btn.armed:hover {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
 
 /* 文件已被删除：整行变灰 + 文件名加删除线，一眼能看出「记录还在、文件没了」。
    只弱化视觉，不禁用按钮：「打开目录」仍然能定位到那个目录。 */

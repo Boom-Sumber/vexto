@@ -22,6 +22,23 @@ use super::rpc::{Snapshot, TaskRow};
 /// 历史最多保留多少条。超出按时间从旧到新丢，避免文件无限长。
 const MAX_ENTRIES: usize = 300;
 
+/// 设置里的「已完成记录保留」→ 条数上限。`None` = 永久保留（不裁剪）。
+///
+/// 认不出来的值退回默认 300：配置被手改坏时宁可少存几条，也不能一下子
+/// 把用户的历史全裁掉（`None` 会让文件无限长，那更糟）。
+pub fn keep_limit(raw: &str) -> Option<usize> {
+    match raw.trim() {
+        "100" => Some(100),
+        "300" => Some(MAX_ENTRIES),
+        "forever" => None,
+        _ => Some(MAX_ENTRIES),
+    }
+}
+
+/// 上一次「清理丢失记录」的时间。合并快照是 500 ms 一次，不对它节流就是
+/// 每秒对 300 个路径做 600 次 stat。
+static LAST_SWEEP: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub gid: String,
@@ -166,14 +183,48 @@ pub fn observe(tasks: &[TaskRow]) -> Vec<HistoryEntry> {
         }
     }
 
-    if entries.len() > MAX_ENTRIES {
-        entries.truncate(MAX_ENTRIES);
-        changed = true;
+    if let Some(limit) = keep_limit(&crate::config::load().history_keep) {
+        if entries.len() > limit {
+            entries.truncate(limit);
+            changed = true;
+        }
     }
     if changed {
         store(entries);
     }
     fresh
+}
+
+/// 「文件丢失时移除记录」：把落盘文件已经不在的**已完成**记录删掉。
+///
+/// 只删 `complete`：`error` 的任务本来就可能没有文件（403 时连文件都没建），
+/// 拿「文件存在」当判据会把所有失败记录误删。
+///
+/// `force` 给用户主动点「清理」用；平时合并快照会以 60 秒为间隔节流调用。
+pub fn sweep_missing(force: bool) {
+    {
+        let mut g = match LAST_SWEEP.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        let now = std::time::Instant::now();
+        if !force {
+            if let Some(prev) = *g {
+                if now.saturating_duration_since(prev) < std::time::Duration::from_secs(60) {
+                    return;
+                }
+            }
+        }
+        *g = Some(now);
+    }
+    let mut entries = load();
+    let before = entries.len();
+    entries.retain(|e| {
+        e.status != "complete" || e.path.trim().is_empty() || Path::new(&e.path).exists()
+    });
+    if entries.len() != before {
+        store(entries);
+    }
 }
 
 /// 把历史补进快照（纯函数，便于单测）。
@@ -208,7 +259,21 @@ pub fn merge_entries(snap: &mut Snapshot, entries: &[HistoryEntry], exists: impl
 
 /// 把历史补进快照（读缓存 + 碰一次文件系统）。
 pub fn merge(snap: &mut Snapshot) {
+    let cfg = crate::config::load();
+    if cfg.remove_missing_records {
+        sweep_missing(false);
+    }
     let entries = load();
+    // 保留策略是配置项，但历史文件是老版本写的：这里顺带裁一次，
+    // 用户把 300 改成 100 之后不必等下一次下载完才生效。
+    if let Some(limit) = keep_limit(&cfg.history_keep) {
+        if entries.len() > limit {
+            let kept = entries[..limit].to_vec();
+            store(kept.clone());
+            merge_entries(snap, &kept, |p| Path::new(p).exists());
+            return;
+        }
+    }
     merge_entries(snap, &entries, |p| Path::new(p).exists());
 }
 
@@ -286,6 +351,17 @@ mod tests {
         assert!(entry_from_row(&row("g1", "paused", "a.zip")).is_none());
         assert!(entry_from_row(&row("g1", "complete", "a.zip")).is_some());
         assert!(entry_from_row(&row("g1", "error", "a.zip")).is_some());
+    }
+
+    /// 保留策略：认不出来的值必须退回默认 300，绝不能变成「永久保留」——
+    /// 那会让配置文件无限长。
+    #[test]
+    fn keep_limit_falls_back_to_default() {
+        assert_eq!(keep_limit("100"), Some(100));
+        assert_eq!(keep_limit("300"), Some(300));
+        assert_eq!(keep_limit("forever"), None);
+        assert_eq!(keep_limit(""), Some(300));
+        assert_eq!(keep_limit("手改坏了"), Some(300));
     }
 
     #[test]
