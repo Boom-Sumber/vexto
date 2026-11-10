@@ -30,6 +30,10 @@ use std::time::Duration;
 pub struct Lang {
     /// 百度翻译的代码。实测有效的那些，见文件头注释
     pub baidu: &'static str,
+    /// 有道智云的代码。**和百度那一列不一样**——日语是 `ja` 不是 `jp`，
+    /// 韩语是 `ko` 不是 `kor`，中文分 `zh-CHS` / `zh-CHT`。直接拿百度码发过去
+    /// 会得到 102「不支持的语言类型」，这正是 S1 那个老 bug 的另一种复发方式。
+    pub youdao: &'static str,
     /// whatlang 的 ISO 639-3 代码
     pub whatlang: &'static str,
     /// 设置页下拉框和提示语里的名字
@@ -41,81 +45,97 @@ pub struct Lang {
 pub const LANGS: &[Lang] = &[
     Lang {
         baidu: "zh",
+        youdao: "zh-CHS",
         whatlang: "cmn",
         name: "中文",
     },
     Lang {
         baidu: "cht",
+        youdao: "zh-CHT",
         whatlang: "cmn",
         name: "繁体中文",
     },
     Lang {
         baidu: "en",
+        youdao: "en",
         whatlang: "eng",
         name: "英语",
     },
     Lang {
         baidu: "jp",
+        youdao: "ja",
         whatlang: "jpn",
         name: "日语",
     },
     Lang {
         baidu: "kor",
+        youdao: "ko",
         whatlang: "kor",
         name: "韩语",
     },
     Lang {
         baidu: "fra",
+        youdao: "fr",
         whatlang: "fra",
         name: "法语",
     },
     Lang {
         baidu: "de",
+        youdao: "de",
         whatlang: "deu",
         name: "德语",
     },
     Lang {
         baidu: "spa",
+        youdao: "es",
         whatlang: "spa",
         name: "西班牙语",
     },
     Lang {
         baidu: "ru",
+        youdao: "ru",
         whatlang: "rus",
         name: "俄语",
     },
     Lang {
         baidu: "pt",
+        youdao: "pt",
         whatlang: "por",
         name: "葡萄牙语",
     },
     Lang {
         baidu: "it",
+        youdao: "it",
         whatlang: "ita",
         name: "意大利语",
     },
     Lang {
         baidu: "th",
+        youdao: "th",
         whatlang: "tha",
         name: "泰语",
     },
     Lang {
         baidu: "vie",
+        youdao: "vi",
         whatlang: "vie",
         name: "越南语",
     },
     Lang {
         baidu: "ara",
+        youdao: "ar",
         whatlang: "ara",
         name: "阿拉伯语",
     },
     Lang {
         baidu: "nl",
+        youdao: "nl",
         whatlang: "nld",
         name: "荷兰语",
     },
     Lang {
         baidu: "pl",
+        youdao: "pl",
         whatlang: "pol",
         name: "波兰语",
     },
@@ -135,6 +155,22 @@ pub fn name_of(baidu_code: &str) -> &str {
         .find(|l| l.baidu.eq_ignore_ascii_case(c))
         .map(|l| l.name)
         .unwrap_or(c)
+}
+
+/// 本项目内部代码（= 百度码）→ 有道码。
+///
+/// `auto` 原样返回（有道也认 `auto`）；不在表里的返回 `None`，由调用方给出
+/// 中文错误。**绝不回落到 `baidu` 那一列**——`jp` / `kor` / `fra` 发过去就是
+/// 102「不支持的语言类型」，而且这个错误看起来像账号问题，很难查。
+pub fn to_youdao(code: &str) -> Option<&'static str> {
+    let c = code.trim();
+    if c.is_empty() || c.eq_ignore_ascii_case("auto") {
+        return Some("auto");
+    }
+    LANGS
+        .iter()
+        .find(|l| l.baidu.eq_ignore_ascii_case(c))
+        .map(|l| l.youdao)
 }
 
 fn whatlang_to_baidu(code: &str) -> Option<&'static str> {
@@ -353,6 +389,52 @@ mod tests {
                 l.baidu
             );
         }
+    }
+
+    /// 有道代码必须每行都有、且唯一——重复会让「有道译回哪个语言」变得不确定。
+    #[test]
+    fn every_lang_row_has_unique_youdao_code() {
+        let mut seen = std::collections::HashSet::new();
+        for l in LANGS {
+            assert!(!l.youdao.trim().is_empty(), "{} 没有有道代码", l.name);
+            assert!(
+                seen.insert(l.youdao),
+                "有道代码 {:?} 重复了（{}）",
+                l.youdao,
+                l.name
+            );
+        }
+    }
+
+    /// 这条测试盯的是「别偷懒把百度码复制成有道码」：
+    /// 有 7 个语言两套代码不同，其中任何一个少映射一个都是 102 错误。
+    #[test]
+    fn youdao_codes_differ_from_baidu_where_they_must() {
+        let differ: Vec<&str> = LANGS
+            .iter()
+            .filter(|l| l.baidu != l.youdao)
+            .map(|l| l.baidu)
+            .collect();
+        assert_eq!(
+            differ,
+            vec!["zh", "cht", "jp", "kor", "fra", "spa", "vie", "ara"],
+            "这几门语言的有道码和百度码不同，实际：{differ:?}"
+        );
+        assert_eq!(to_youdao("jp"), Some("ja"));
+        assert_eq!(to_youdao("kor"), Some("ko"));
+        assert_eq!(to_youdao("fra"), Some("fr"));
+        assert_eq!(to_youdao("zh"), Some("zh-CHS"));
+        assert_eq!(to_youdao("cht"), Some("zh-CHT"));
+        assert_eq!(to_youdao("vie"), Some("vi"));
+        assert_eq!(to_youdao("ara"), Some("ar"));
+    }
+
+    #[test]
+    fn youdao_mapping_handles_auto_and_unknown() {
+        assert_eq!(to_youdao("auto"), Some("auto"));
+        assert_eq!(to_youdao(""), Some("auto"), "空值等于让引擎自己判");
+        assert_eq!(to_youdao("AUTO"), Some("auto"));
+        assert_eq!(to_youdao("klingon"), None, "不认识的要返回 None，不能瞎猜");
     }
 
     /// 这个测试是给「选日语结果翻译失败」那个 bug 立的碑：语言表里的代码必须能

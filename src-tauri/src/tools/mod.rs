@@ -21,15 +21,23 @@ pub mod translate_tool;
 
 use serde::Serialize;
 
-/// 字段的联动条件：只有 `其它字段 == 某值` 时才显示。
+/// 字段的联动条件：全部条件都满足时才显示。
 ///
-/// 一行判断，刻意不做表达式（`and`/`or`/`not`）——S2 任务书与架构文档都明确
-/// 「不要做更复杂的表达式」，因为 10 种字段里真正需要联动的只有「引擎=百度才显示
-/// APPID」这一类，加到 and/or 就是给自己挖坑。
+/// 仍然**不做任意表达式**（没有 `or` / `not` / 括号 / 嵌套比较），只允许：
+/// - 一个 key 命中多个候选值之一（OR，用于「厂商模式下的两个模式都显示厂商」）；
+/// - 再 AND 一层同样的条件（用于「厂商=有道 **且** 模式不是 OpenAI」）。
+///
+/// 会话 29 才加这两条能力：翻译引擎拆成「模式 + 厂商」两个维度后，
+/// 凭据字段必须同时看两个字段，单条件表达不了。**深度上限就是两层**，
+/// 别在这条路上继续加。
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ShowIf {
     pub key: &'static str,
-    pub equals: &'static str,
+    /// 命中其中之一即算满足（单值就是「等于」）
+    pub equals: Vec<&'static str>,
+    /// 必须同时满足的第二组条件。只允许一层，不嵌套
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub also: Option<Box<ShowIf>>,
 }
 
 /// 10 种字段类型。JSON 里以 `"type": "text" | "password" | ...` 区分。
@@ -191,7 +199,36 @@ impl Field {
 
     /// 只在 `key == equals` 时显示。
     pub fn show_if(mut self, key: &'static str, equals: &'static str) -> Self {
-        self.show_if = Some(ShowIf { key, equals });
+        self.show_if = Some(ShowIf {
+            key,
+            equals: vec![equals],
+            also: None,
+        });
+        self
+    }
+
+    /// 只在 `key` 命中 `equals` 里任一值时显示（OR）。
+    pub fn show_if_any(mut self, key: &'static str, equals: &'static [&'static str]) -> Self {
+        self.show_if = Some(ShowIf {
+            key,
+            equals: equals.to_vec(),
+            also: None,
+        });
+        self
+    }
+
+    /// 追加一个「同时满足且命中任一值」的条件（AND + OR）。
+    pub fn and_if_any(mut self, key: &'static str, equals: &'static [&'static str]) -> Self {
+        if let Some(s) = self.show_if.as_mut() {
+            // 已经有一层 also 时不再往下加：schema 到这里为止
+            if s.also.is_none() {
+                s.also = Some(Box::new(ShowIf {
+                    key,
+                    equals: equals.to_vec(),
+                    also: None,
+                }));
+            }
+        }
         self
     }
 }
@@ -307,7 +344,46 @@ mod tests {
         let f = Field::text_hint("appid", "APPID", "填 APPID").show_if("engine", "baidu");
         let v: Value = serde_json::to_value(&f).unwrap();
         assert_eq!(v["show_if"]["key"], "engine");
-        assert_eq!(v["show_if"]["equals"], "baidu");
+        // 会话 29 起 equals 统一是数组（前端按「命中任一」判断）
+        assert_eq!(v["show_if"]["equals"], serde_json::json!(["baidu"]));
+        assert!(
+            v["show_if"].get("also").is_none(),
+            "单条件时不该出现 also：{v}"
+        );
+    }
+
+    /// 多值 + AND：翻译引擎的凭据字段就靠这个同时看「模式」和「厂商」。
+    #[test]
+    fn show_if_supports_multiple_values_and_one_and() {
+        let f = Field::password("youdao_app_secret", "应用密钥")
+            .show_if("vendor", "youdao")
+            .and_if_any("engine_mode", &["vendor_mt", "vendor_llm"]);
+        let v: Value = serde_json::to_value(&f).unwrap();
+        assert_eq!(v["show_if"]["key"], "vendor");
+        assert_eq!(v["show_if"]["equals"], serde_json::json!(["youdao"]));
+        let also = &v["show_if"]["also"];
+        assert_eq!(also["key"], "engine_mode");
+        assert_eq!(also["equals"], serde_json::json!(["vendor_mt", "vendor_llm"]));
+        assert!(also.get("also").is_none(), "只允许一层 AND");
+    }
+
+    /// 没有 `show_if` 时 `and_if_any` 是空操作，不该凭空造出一个条件。
+    #[test]
+    fn and_if_without_show_if_is_noop() {
+        let f = Field::switch("a", "A").and_if_any("b", &["x"]);
+        assert!(f.show_if.is_none());
+    }
+
+    /// AND 只允许一层：再加一次不该覆盖或叠加出第三层。
+    #[test]
+    fn and_if_keeps_single_level() {
+        let f = Field::switch("a", "A")
+            .show_if("b", "x")
+            .and_if_any("c", &["y"])
+            .and_if_any("d", &["z"]);
+        let s = f.show_if.unwrap();
+        assert_eq!(s.also.as_ref().unwrap().key, "c");
+        assert!(s.also.unwrap().also.is_none(), "不该出现第三层");
     }
 
     /// `placeholder` 是 `Option`，没填时不该出现在 JSON 里。

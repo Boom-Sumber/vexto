@@ -546,9 +546,21 @@ function applyShowIf() {
     } catch {
       continue;
     }
-    const shown = String(val(cond.key)) === String(cond.equals);
-    n.classList.toggle("hidden", !shown);
+    n.classList.toggle("hidden", !showIfMatch(cond));
   }
+}
+
+/// 一条联动条件是否成立。
+///
+/// `equals` 是数组（命中任一即算满足），`also` 是「同时满足」的第二层条件
+/// ——翻译引擎拆成「模式 + 厂商」后，凭据字段必须同时看两个字段。
+/// 旧后端给的是字符串 `equals`，这里兼容一下，混版本时不至于整页字段乱显隐。
+function showIfMatch(cond) {
+  if (!cond || !cond.key) return true;
+  const list = Array.isArray(cond.equals) ? cond.equals : [cond.equals];
+  const cur = String(val(cond.key));
+  if (!list.some((e) => String(e) === cur)) return false;
+  return cond.also ? showIfMatch(cond.also) : true;
 }
 
 // ── 保存 / 放弃 ─────────────────────────────────────────────────────────

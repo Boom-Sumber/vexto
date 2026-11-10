@@ -8,12 +8,35 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// 翻译模式取值。`engine_mode` 只认这三个，代码里一律用常量，避免拼错。
+pub const MODE_VENDOR_MT: &str = "vendor_mt";
+pub const MODE_VENDOR_LLM: &str = "vendor_llm";
+pub const MODE_OPENAI: &str = "openai";
+
+/// 厂商取值。目前两家：百度、有道。
+pub const VENDOR_BAIDU: &str = "baidu";
+pub const VENDOR_YOUDAO: &str = "youdao";
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     // ---- 翻译引擎 ----
-    /// 引擎标识：`baidu` | `openai`。对应 `translate::engine_by_id`
-    #[serde(default = "d_engine")]
+    /// **老字段，只用于读旧配置**（会话 29 起不再由界面写入）。
+    ///
+    /// 以前它既是「选哪个引擎」又是「引擎种类」，拆成三模式 + 厂商之后它没法
+    /// 表达 `baidu-llm` 这种组合。`migrate_engine()` 会把它换算成
+    /// `engine_mode` + `vendor` 并清空；清空后不再序列化，配置文件里就不会留
+    /// 一个永远不更新的死字段。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub engine: String,
+    /// 翻译模式：`vendor_mt` 厂商机器翻译 | `vendor_llm` 厂商大模型 | `openai` OpenAI 兼容。
+    ///
+    /// 空串 = 老配置还没迁移，`migrate_engine()` 会按 `engine` 补上。
+    #[serde(default)]
+    pub engine_mode: String,
+    /// 厂商：`baidu` | `youdao`。只在 `vendor_mt` / `vendor_llm` 下有意义，
+    /// 切到 OpenAI 兼容时它保留原值（切回来还在），但界面上会藏起来。
+    #[serde(default)]
+    pub vendor: String,
     /// 百度翻译 APPID
     #[serde(default)]
     pub appid: String,
@@ -45,6 +68,14 @@ pub struct Config {
     /// 自定义 system prompt，空则用内置的翻译指令
     #[serde(default)]
     pub openai_prompt: String,
+
+    // ---- 有道智云（会话 29）----
+    /// 有道智云应用 ID。文本翻译与「大模型翻译」共用这一套凭据。
+    #[serde(default)]
+    pub youdao_app_key: String,
+    /// 有道智云应用密钥。**按敏感值处理**：不写日志、不回显。
+    #[serde(default)]
+    pub youdao_app_secret: String,
 
     // ---- 热键 ----
     /// 划词翻译热键，**永远存归一化形式**（`Ctrl+Alt+T`），
@@ -206,9 +237,6 @@ pub struct Config {
     pub version: u32,
 }
 
-fn d_engine() -> String {
-    "baidu".to_string()
-}
 fn d_from() -> String {
     "auto".to_string()
 }
@@ -289,7 +317,9 @@ fn d_version() -> u32 {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            engine: d_engine(),
+            engine: String::new(),
+            engine_mode: MODE_VENDOR_MT.to_string(),
+            vendor: VENDOR_BAIDU.to_string(),
             appid: String::new(),
             secret: String::new(),
             from: d_from(),
@@ -300,6 +330,8 @@ impl Default for Config {
             openai_model: d_openai_model(),
             openai_key: String::new(),
             openai_prompt: String::new(),
+            youdao_app_key: String::new(),
+            youdao_app_secret: String::new(),
             hotkey: d_hotkey(),
             hotkey_ocr: d_hotkey_ocr(),
             hotkey_download: d_hotkey_download(),
@@ -361,11 +393,43 @@ pub fn log_dir() -> PathBuf {
 
 /// 读配置。文件不存在、读不动、JSON 坏掉，一律回落到默认值——
 /// 配置坏了不该让程序起不来，用户重填一次即可。
+/// 把老的 `engine`（`baidu` / `openai`）换算成 `engine_mode` + `vendor`。
+///
+/// 只在 `engine_mode` 为空时读 `engine`——迁移过一次之后就不再回头看它，
+/// 否则用户把模式改成「厂商大模型」，下次启动又被旧字段扳回机器翻译。
+///
+/// 顺手做一次合法性兜底：`config.json` 是纯文本，用户手改成 `"vendor_x"` 或
+/// 空串时不该让整个翻译功能不可用，落回「百度机器翻译」。
+pub fn migrate_engine(cfg: &mut Config) {
+    if cfg.engine_mode.trim().is_empty() {
+        let legacy = cfg.engine.trim().to_ascii_lowercase();
+        cfg.engine_mode = if legacy == MODE_OPENAI {
+            MODE_OPENAI.to_string()
+        } else {
+            MODE_VENDOR_MT.to_string()
+        };
+    }
+    if !matches!(
+        cfg.engine_mode.as_str(),
+        MODE_VENDOR_MT | MODE_VENDOR_LLM | MODE_OPENAI
+    ) {
+        cfg.engine_mode = MODE_VENDOR_MT.to_string();
+    }
+    if !matches!(cfg.vendor.as_str(), VENDOR_BAIDU | VENDOR_YOUDAO) {
+        cfg.vendor = VENDOR_BAIDU.to_string();
+    }
+    // 迁移完成，旧字段清空 → 不再序列化（`skip_serializing_if`），配置文件里不
+    // 会留一个永远不更新的死字段。
+    cfg.engine.clear();
+}
+
 pub fn load() -> Config {
-    match std::fs::read_to_string(config_path()) {
+    let mut cfg = match std::fs::read_to_string(config_path()) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
         Err(_) => Config::default(),
-    }
+    };
+    migrate_engine(&mut cfg);
+    cfg
 }
 
 pub fn save(cfg: &Config) -> Result<(), String> {
@@ -379,7 +443,10 @@ pub fn save(cfg: &Config) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::Config;
+    use super::{
+        migrate_engine, Config, MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU,
+        VENDOR_YOUDAO,
+    };
 
     /// 老版本只有 appid，新版本加了字段也必须能读出来（ADR-013）。
     #[test]
@@ -397,8 +464,11 @@ mod tests {
     #[test]
     fn config_missing_new_fields_still_loads() {
         let json = r#"{"appid":"a","secret":"s","from":"auto","to":"zh","hotkey":"Ctrl+Alt+T"}"#;
-        let c: Config = serde_json::from_str(json).unwrap();
-        assert_eq!(c.engine, "baidu");
+        let mut c: Config = serde_json::from_str(json).unwrap();
+        // 会话 29 起老配置走迁移：没有 engine 字段 → 百度机器翻译
+        migrate_engine(&mut c);
+        assert_eq!(c.engine_mode, MODE_VENDOR_MT);
+        assert_eq!(c.vendor, VENDOR_BAIDU);
         assert_eq!(c.popup_timeout_ms, 15000);
         assert_eq!(c.hotkey_ocr, "Ctrl+Alt+S");
         assert_eq!(c.hotkey_download, "Ctrl+Alt+D");
@@ -436,7 +506,7 @@ mod tests {
     fn config_corrupt_json_falls_back_to_default() {
         let bad = "{ this is not json";
         let c: Config = serde_json::from_str(bad).unwrap_or_default();
-        assert_eq!(c.engine, "baidu");
+        assert_eq!(c.engine_mode, MODE_VENDOR_MT);
     }
 
     /// 关掉缓存时 `cache_enabled=false` 要能读出来（布尔字段最容易被漏 default）。
@@ -524,6 +594,62 @@ mod tests {
         let d: Config = serde_json::from_str(&s).unwrap();
         assert_eq!(d.max_speed_kb, 2048);
         assert_eq!(d.max_concurrent, 8);
-        assert_eq!(d.engine, "baidu");
+        assert_eq!(d.engine_mode, MODE_VENDOR_MT);
+    }
+
+    // ── 会话 29：三模式 + 厂商的迁移 ────────────────────────────
+
+    /// 老配置 `engine=openai` 必须换算成「OpenAI 兼容」，否则用户升级后
+    /// 会突然开始用百度翻译（而百度凭据可能是空的，直接报未配置）。
+    #[test]
+    fn migrate_engine_maps_legacy_openai() {
+        let mut c: Config = serde_json::from_str(r#"{"engine":"openai"}"#).unwrap();
+        migrate_engine(&mut c);
+        assert_eq!(c.engine_mode, MODE_OPENAI);
+        assert_eq!(c.vendor, VENDOR_BAIDU);
+        assert!(c.engine.is_empty(), "旧字段迁移后要清空，不再落盘");
+    }
+
+    #[test]
+    fn migrate_engine_maps_legacy_baidu_and_empty() {
+        for raw in [r#"{"engine":"baidu"}"#, r#"{}"#] {
+            let mut c: Config = serde_json::from_str(raw).unwrap();
+            migrate_engine(&mut c);
+            assert_eq!(c.engine_mode, MODE_VENDOR_MT, "输入 {raw}");
+            assert_eq!(c.vendor, VENDOR_BAIDU, "输入 {raw}");
+        }
+    }
+
+    /// 迁移过一次之后，旧字段不该再把模式扳回去——用户明确选了有道大模型，
+    /// 重启不能被 `engine:"baidu"` 改回机器翻译。
+    #[test]
+    fn migrate_engine_does_not_override_explicit_mode() {
+        let mut c: Config = serde_json::from_str(
+            r#"{"engine":"baidu","engine_mode":"vendor_llm","vendor":"youdao"}"#,
+        )
+        .unwrap();
+        migrate_engine(&mut c);
+        assert_eq!(c.engine_mode, MODE_VENDOR_LLM);
+        assert_eq!(c.vendor, VENDOR_YOUDAO);
+    }
+
+    /// 手改 config.json 写成不存在的值时兜底，不能让整个翻译不可用。
+    #[test]
+    fn migrate_engine_falls_back_on_garbage() {
+        let mut c: Config = serde_json::from_str(
+            r#"{"engine_mode":"vendor_x","vendor":"klingon"}"#,
+        )
+        .unwrap();
+        migrate_engine(&mut c);
+        assert_eq!(c.engine_mode, MODE_VENDOR_MT);
+        assert_eq!(c.vendor, VENDOR_BAIDU);
+    }
+
+    /// 空的 `engine` 不该被序列化：配置文件里留一个恒为空的对象没意义。
+    #[test]
+    fn empty_legacy_engine_is_not_serialized() {
+        let s = serde_json::to_string(&Config::default()).unwrap();
+        assert!(!s.contains("\"engine\":"), "实际：{s}");
+        assert!(s.contains("\"engine_mode\""));
     }
 }

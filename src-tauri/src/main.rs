@@ -125,14 +125,17 @@ fn with_timeout(mut payload: Value, cfg: &config::Config) -> Value {
 /// 不能等前端点开了再问一次 —— 那会让弹窗闪一下。
 fn with_engine(mut payload: Value, cfg: &config::Config) -> Value {
     if let Value::Object(m) = &mut payload {
-        m.insert("engine".to_string(), json!(cfg.engine));
+        // 会话 29 起配置里没有单一的 `engine` 字段了，实际引擎由「模式 + 厂商」
+        // 算出来。弹窗前端仍按 `engine`（引擎 id）比较，所以这里给算好的 id。
+        let engine_id = translate::engine_id_of(cfg);
+        m.insert("engine".to_string(), json!(engine_id));
         m.insert(
             "engineName".to_string(),
-            json!(translate::engine_by_id(&cfg.engine)
+            json!(translate::engine_by_id(&engine_id)
                 .map(|e| e.name())
                 .unwrap_or("未配置引擎")),
         );
-        let list: Vec<Value> = translate::ENGINE_OPTIONS
+        let list: Vec<Value> = translate::ENGINE_CHOICES
             .iter()
             .map(|(id, name)| json!({ "id": id, "name": name }))
             .collect();
@@ -903,14 +906,15 @@ fn start_dragging(win: tauri::WebviewWindow) -> Result<(), String> {
 /// 前端自己已经有源文本，所以这里只负责切引擎，重翻由前端再调一次 `translate_text`。
 #[tauri::command]
 fn switch_engine(engine_id: String) -> SimpleOut {
-    if translate::engine_by_id(&engine_id).is_none() {
+    let Some((mode, vendor)) = translate::engine_parts(&engine_id) else {
         return SimpleOut {
             ok: false,
             message: format!("未知的翻译引擎「{engine_id}」"),
         };
-    }
+    };
     let mut cfg = config::load();
-    cfg.engine = engine_id.clone();
+    cfg.engine_mode = mode.to_string();
+    cfg.vendor = vendor.to_string();
     if let Err(e) = config::save(&cfg) {
         return SimpleOut {
             ok: false,
@@ -1690,7 +1694,9 @@ mod tests {
     fn tool_value_keys_come_from_sections() {
         let keys = tool_value_keys("translate");
         assert!(keys.contains(&"hotkey"));
-        assert!(keys.contains(&"engine"));
+        // 会话 29 起引擎由「模式 + 厂商」两个字段决定，老的单一下拉不再进界面
+        assert!(keys.contains(&"engine_mode"));
+        assert!(keys.contains(&"vendor"));
         assert!(keys.contains(&"to"));
         // 通用工具的字段不该出现在翻译里
         assert!(!keys.contains(&"popup_timeout_ms"));

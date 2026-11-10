@@ -11,7 +11,10 @@
 
 use super::{Field, Section, Tool};
 use crate::config;
-use crate::translate::{engine_by_id, ENGINE_OPTIONS};
+use crate::config::{
+    MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
+};
+use crate::translate::{engine_by_id, engine_id_of, MODE_OPTIONS, VENDOR_OPTIONS};
 
 // `LANGS` 只在 `target_options_match_lang_table` 里用到（生产代码走的是下面的
 // `TO_STATIC` 静态表），所以 import 挂在测试模块上，否则会报 unused import。
@@ -97,7 +100,8 @@ impl Tool for Translate {
         if !cfg.enable_translate {
             return "已停用".to_string();
         }
-        match engine_by_id(&cfg.engine) {
+        let id = engine_id_of(&cfg);
+        match engine_by_id(&id) {
             Some(e) => {
                 if e.is_ready(&cfg) {
                     format!("{} · 已就绪", e.name())
@@ -105,34 +109,63 @@ impl Tool for Translate {
                     format!("{} · 未配置", e.name())
                 }
             }
-            None => format!("未知引擎「{}」", cfg.engine),
+            None => format!("未知引擎「{id}」"),
         }
     }
 
     fn sections(&self) -> Vec<Section> {
+        // 厂商模式下的「同时满足」条件：凭据字段既要看厂商，也要看模式不是 OpenAI。
+        // 单条件表达不了，所以用 show_if + and_if_any（见 tools::ShowIf 的注释）。
+        let vendor_modes: &[&'static str] = &[MODE_VENDOR_MT, MODE_VENDOR_LLM];
+
         vec![
             Section::new(
                 "engine",
                 "引擎",
                 vec![
-                    Field::select("engine", "翻译引擎", ENGINE_OPTIONS),
-                    Field::note("划词翻译和截图翻译共用这里的引擎配置。"),
-                    // ── 百度 ──
+                    Field::select("engine_mode", "翻译模式", MODE_OPTIONS),
+                    Field::note(
+                        "厂商机器翻译快、便宜；厂商大模型翻译质量更好但慢一些；\n\
+                         「OpenAI 兼容」可以接 DeepSeek / 硅基流动 / Ollama 等任何兼容接口。",
+                    ),
+                    Field::select("vendor", "厂商", VENDOR_OPTIONS)
+                        .show_if_any("engine_mode", vendor_modes),
+                    Field::note("百度与有道都要先在各自控制台创建应用，拿到「应用 ID / 密钥」。")
+                        .show_if_any("engine_mode", vendor_modes),
+                    // ── 百度（两种厂商模式共用同一套凭据）──
                     Field::text_hint("appid", "APPID", "百度翻译开放平台的 APPID")
-                        .show_if("engine", "baidu"),
-                    Field::password("secret", "密钥").show_if("engine", "baidu"),
+                        .show_if("vendor", VENDOR_BAIDU)
+                        .and_if_any("engine_mode", vendor_modes),
+                    Field::password("secret", "密钥")
+                        .show_if("vendor", VENDOR_BAIDU)
+                        .and_if_any("engine_mode", vendor_modes),
                     Field::note(
                         "百度 APPID / 密钥在 fanyi-api.baidu.com 控制台获取，标准版有免费额度。",
                     )
-                    .show_if("engine", "baidu"),
+                    .show_if("vendor", VENDOR_BAIDU)
+                    .and_if_any("engine_mode", vendor_modes),
+                    // ── 有道 ──
+                    Field::text_hint("youdao_app_key", "应用 ID", "有道智云的应用 ID")
+                        .show_if("vendor", VENDOR_YOUDAO)
+                        .and_if_any("engine_mode", vendor_modes),
+                    Field::password("youdao_app_secret", "应用密钥")
+                        .show_if("vendor", VENDOR_YOUDAO)
+                        .and_if_any("engine_mode", vendor_modes),
+                    Field::note(
+                        "有道在 ai.youdao.com 的「应用管理」里取应用 ID / 应用密钥；\n\
+                         文本翻译与大模型翻译共用这一套，不必建两个应用。",
+                    )
+                    .show_if("vendor", VENDOR_YOUDAO)
+                    .and_if_any("engine_mode", vendor_modes),
                     // ── OpenAI 兼容 ──
                     Field::text_hint("openai_base", "BaseURL", "https://api.deepseek.com")
-                        .show_if("engine", "openai"),
+                        .show_if("engine_mode", MODE_OPENAI),
                     Field::text_hint("openai_model", "模型", "deepseek-chat")
-                        .show_if("engine", "openai"),
-                    Field::password("openai_key", "API Key").show_if("engine", "openai"),
+                        .show_if("engine_mode", MODE_OPENAI),
+                    Field::password("openai_key", "API Key")
+                        .show_if("engine_mode", MODE_OPENAI),
                     Field::text_hint("openai_prompt", "自定义指令", "留空用内置翻译指令")
-                        .show_if("engine", "openai"),
+                        .show_if("engine_mode", MODE_OPENAI),
                     Field::button("test_translate", "测试一下"),
                 ],
             ),
@@ -243,5 +276,66 @@ mod tests {
         for k in ["to", "to2", "lang_detect", "from", "hotkey", "auto_copy"] {
             assert!(keys.contains(&k), "「翻译配置」里缺字段 {k}，实际：{keys:?}");
         }
+    }
+
+    // ── 会话 29：三模式 + 厂商 ──────────────────────────────
+
+    #[test]
+    fn engine_section_exposes_modes_and_both_vendors() {
+        let s = Translate.sections();
+        let keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
+        for k in [
+            "engine_mode",
+            "vendor",
+            "appid",
+            "secret",
+            "youdao_app_key",
+            "youdao_app_secret",
+            "openai_key",
+        ] {
+            assert!(keys.contains(&k), "引擎页缺字段 {k}，实际：{keys:?}");
+        }
+        assert!(
+            !keys.contains(&"engine"),
+            "老的单一下拉不该再出现（值只用于迁移）"
+        );
+    }
+
+    /// 凭据字段必须同时看「厂商」和「模式」：只看厂商的话，切到 OpenAI 兼容时
+    /// 百度/有道的输入框还会挂在页面上。
+    #[test]
+    fn vendor_credentials_require_both_conditions() {
+        let s = Translate.sections();
+        for key in ["youdao_app_secret", "secret"] {
+            let f = s[0]
+                .fields
+                .iter()
+                .find(|f| f.key == key)
+                .unwrap_or_else(|| panic!("找不到字段 {key}"));
+            let cond = f.show_if.as_ref().expect("凭据字段要有联动条件");
+            assert!(
+                matches!(cond.key, "vendor"),
+                "{key} 的第一条件是厂商，实际 {}",
+                cond.key
+            );
+            let also = cond.also.as_ref().expect("还要看模式，否则 OpenAI 模式下会露出");
+            assert_eq!(also.key, "engine_mode");
+            assert!(also.equals.contains(&MODE_VENDOR_MT));
+            assert!(also.equals.contains(&MODE_VENDOR_LLM));
+        }
+    }
+
+    /// 厂商下拉只在两种厂商模式下出现，OpenAI 兼容模式下藏起来。
+    #[test]
+    fn vendor_select_is_hidden_for_openai_mode() {
+        let s = Translate.sections();
+        let f = s[0]
+            .fields
+            .iter()
+            .find(|f| f.key == "vendor")
+            .expect("找不到厂商字段");
+        let cond = f.show_if.as_ref().expect("厂商字段要有联动条件");
+        assert_eq!(cond.key, "engine_mode");
+        assert!(!cond.equals.contains(&MODE_OPENAI), "OpenAI 模式不选厂商");
     }
 }

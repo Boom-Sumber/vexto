@@ -29,6 +29,9 @@ reqwest = { version = "0.13", default-features = false, features = [
     "native-tls",
 ] }
 md-5 = "0.11"
+# 有道智云 v3 签名要 sha256（`sha256(appKey+input+salt+curtime+密钥)`）。
+# 与 md-5 同属 RustCrypto，digest trait 已经在依赖树里，只是多一个小 crate。
+sha2 = "0.10"
 
 # 本地语种检测（S2.5 用）。MIT 许可（不是 GPL，符合 07-LICENSING）。
 # 选它而不是 lingua：whatlang 无外部数据文件、编译产物小，lingua 会带 ~50 MB 语料。
