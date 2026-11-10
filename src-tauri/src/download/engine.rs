@@ -145,6 +145,48 @@ pub fn ensure_running(cfg: &config::Config) -> Result<crate::download::rpc::Rpc,
     Ok(rpc)
 }
 
+/// 按新配置重启 sidecar（设置页那个「重启下载引擎」按钮）。
+///
+/// **有未完成任务时直接拒绝**：aria2 只有在 `--input-file` 指向 session 时才会
+/// 重新加载队列，我们没走那条路（conf 里只写了 `save-session`）。硬重启等于把
+/// 队列丢掉，用户会看到任务凭空消失。等队列空了再重启是唯一安全的做法。
+///
+/// 重启后会立刻拉起一个**空闲**的 sidecar：这样新配置（DNS / 证书校验 / 端口 /
+/// 限速）马上生效，不用等下一次下载。
+pub fn restart(cfg: &config::Config) -> Result<String, String> {
+    {
+        let mut g = lock();
+        let alive = g
+            .child
+            .as_mut()
+            .is_some_and(|ch| matches!(ch.try_wait(), Ok(None)));
+        if alive {
+            let rpc = crate::download::rpc::Rpc::new(g.port, &g.secret)?;
+            drop(g);
+            let pending = rpc.snapshot()?.tasks.iter().any(|t| {
+                matches!(t.status.as_str(), "active" | "waiting" | "paused")
+            });
+            if pending {
+                return Err("还有任务在队列里，重启引擎会丢掉它们。等下载结束或删掉任务后再重启。"
+                    .to_string());
+            }
+        }
+    }
+
+    shutdown_all()?;
+    let (child, _rpc, port, secret, conf) = spawn(cfg)?;
+    {
+        let mut g = lock();
+        g.child = Some(child);
+        g.port = port;
+        g.secret = secret;
+        g.conf_path = Some(conf);
+        g.message = format!("已按新配置重启（RPC 端口 {port}）");
+    }
+    crate::download::pump::notify();
+    Ok(format!("已重启下载引擎（RPC 端口 {port}）"))
+}
+
 /// 本进程已经分配出去的文件名（含还在排队、文件尚未落盘的）。
 ///
 /// 只增不减：一个名字被分配过就永远跳过。代价只是编号可能跳号（用户删了

@@ -218,9 +218,12 @@ impl Tool for Download {
                     ),
                     Field::group("下载引擎"),
                     Field::number_unit("rpc_port", "RPC 端口", 1024, 65535, ""),
+                    Field::button("download_engine_restart", "重启下载引擎"),
                     Field::note(
                         "aria2 的控制接口，只绑 127.0.0.1。被别的程序占用时会自动换一个可用端口，\n\
-                         状态行显示的是实际端口。改完等下一次启动下载引擎才生效。",
+                         状态行显示的是实际端口。\n\
+                         DNS / 证书校验 / RPC 端口 / 限速都是 aria2 的**启动参数**，改完点上面的\n\
+                         「重启下载引擎」立即生效。队列里还有任务时会被拒绝——重启会丢掉队列。",
                     ),
                     Field::group("维护"),
                     Field::button("open_download_dir", "打开下载目录"),

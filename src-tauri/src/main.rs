@@ -1378,6 +1378,17 @@ fn open_path(path: String) {
     let _ = std::process::Command::new("explorer.exe").arg(p).spawn();
 }
 
+/// 「重启下载引擎」按钮：按当前设置重新拉起 ariac2。
+///
+/// 设置页的 Button 字段都是无参命令，所以单独包一层；返回 `SimpleOut`
+/// 是为了复用设置页现成的结果框渲染（`renderResult`）。
+#[tauri::command]
+fn download_engine_restart() -> Result<SimpleOut, String> {
+    let cfg = config::load();
+    let message = crate::download::engine::restart(&cfg)?;
+    Ok(SimpleOut { ok: true, message })
+}
+
 /// 任务列表要的两条界面开关：要不要二次确认、删任务会不会连文件一起删。
 ///
 /// 单独一个命令而不是塞进 `snapshot`：后者是 aria2 的任务数据，
@@ -1498,6 +1509,7 @@ fn main() {
             download_task_defaults,
             notify_test,
             download_ui_flags,
+            download_engine_restart,
             open_download_dir,
             download_probe,
             disk_free,

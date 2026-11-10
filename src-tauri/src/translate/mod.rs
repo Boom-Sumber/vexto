@@ -235,45 +235,52 @@ fn cache_key(engine: &str, from: &str, to: &str, text: &str) -> String {
 
 // ───────────────────────── 语向解析 ─────────────────────────
 
-/// 本次翻译该往哪个方向走。
+/// 本次翻译该往哪个方向走：返回 `(请求里用的 from, 目标语言)`。
 ///
-/// 两条路：
-/// - `from` 指定了具体语言（不是 `auto`/空）→ 用户明确说了源语言，就走 `from → to`。
-///   这时**不套第二目标语言规则**，否则用户设了 `from=zh, to=ja` 却被译成 `to2`，太反直觉。
-/// - `from` 是 `auto` → 先检测：非中文译到 `to`，中文译到 `to2`。
-///   （「我看不懂的翻成中文，我写得出的翻成外语」——这才是用户日常的真实需求）
+/// 规则（会话 28 用户定，替换掉之前「中文特例」那一版）：
+/// 1. **一律检测**语种，跟 `from` 怎么设无关；
+/// 2. 检测结果 == 第一目标语言 → 译到第二目标语言，否则译到第一目标语言
+///    （「我看不懂的翻成中文，我写得出的翻成外语」的通用写法）；
+/// 3. 请求里的 `from` 用设置里的源语言值——**设成 auto 就发 auto**，
+///    让厂商自己再判一次，等于二次确认；
+/// 4. 但用户把源语言固定成某一种、检测结果却明显不同时，以**检测为准**：
+///    否则「源语言=en + 文本其实是中文」会发出 en→zh 这种自相矛盾的请求。
 ///
-/// 检测失败不算错误：退化成把 `auto` 交给引擎自己判，目标是 `to`。宁可少一层
-/// 智能，也不能因为没有网络就整个翻译功能不可用。
+/// 检测失败不算错误：`from` 用设置值、目标用第一目标语言。宁可少一层智能，
+/// 也不能因为探测失败就整个翻译不可用。
 pub fn resolve_direction(cfg: &Config, text: &str) -> (String, String) {
-    let from = cfg.from.trim();
-    let to = pick(&cfg.to, "zh");
+    let to1 = pick(&cfg.to, "zh");
     let to2 = pick(&cfg.to2, "en");
-
-    if !from.is_empty() && !from.eq_ignore_ascii_case("auto") {
-        return (from.to_string(), to);
-    }
+    let configured = cfg.from.trim();
+    let request_from = if configured.is_empty() {
+        "auto".to_string()
+    } else {
+        configured.to_string()
+    };
 
     let detected = match crate::lang::detect(cfg, text) {
         Ok(d) => d,
         Err(e) => {
-            crate::dlog::dlog(&format!("translate: 语种检测失败，交回引擎自己判（{e}）"));
-            return ("auto".to_string(), to);
+            crate::dlog::dlog(&format!("translate: 语种检测失败，交给引擎自己判（{e}）"));
+            return (request_from, to1);
         }
     };
 
-    let target = if crate::lang::is_chinese(&detected) {
-        to2
+    let target = if detected == to1 { to2 } else { to1 };
+    // auto 保持 auto（让厂商二次确认）；否则用检测结果——两者矛盾时检测更可信
+    let from = if request_from.eq_ignore_ascii_case("auto") {
+        request_from
     } else {
-        to
+        detected.clone()
     };
     crate::dlog::dlog(&format!(
-        "translate: 检测到 {}（{}）→ {}",
+        "translate: 检测到 {}（{}）→ {}（请求 from={}）",
         detected,
         crate::lang::name_of(&detected),
-        target
+        target,
+        from
     ));
-    (detected, target)
+    (from, target)
 }
 
 /// 空字符串用兜底值。用户把目标语言清空也不该让翻译发出一个非法请求。
@@ -498,10 +505,10 @@ mod tests {
         );
     }
 
-    // ── 语向解析（S2.5）────────────────────────────────────
+    // ── 语向解析（会话 28 改规则）────────────────────────────
+    /// 固定了源语言、且与检测一致：from 用它，目标用第一目标语言。
     #[test]
-    fn explicit_from_skips_detection_and_second_target() {
-        // 用户明确写了源语言，就走用户说的那一条，不套「中文→to2」规则
+    fn explicit_from_is_kept_when_it_matches_detection() {
         let cfg = Config {
             from: "zh".into(),
             to: "ja".into(),
@@ -512,6 +519,22 @@ mod tests {
         assert_eq!((from.as_str(), to.as_str()), ("zh", "ja"));
     }
 
+    /// 「源语言=en，文本其实是中文，第一目标=中文」——矛盾时以检测为准，
+    /// 否则会发出 en→en 这种自相矛盾的请求。
+    #[test]
+    fn contradictory_from_is_overridden_by_detection() {
+        let cfg = Config {
+            from: "en".into(),
+            to: "zh".into(),
+            to2: "en".into(),
+            ..Config::default()
+        };
+        let (from, to) = resolve_direction(&cfg, "这是一段明确的中文");
+        assert_eq!(from, "zh", "检测到中文就不能再发 en");
+        assert_eq!(to, "en", "检测结果等于第一目标（中文）→ 换第二目标");
+    }
+
+    /// auto 模式下 from 保持 auto：交给厂商再判一次，等于二次确认。
     #[test]
     fn non_chinese_text_goes_to_primary_target() {
         let cfg = Config {
@@ -521,11 +544,11 @@ mod tests {
             ..Config::default()
         };
         let (from, to) = resolve_direction(&cfg, "The quick brown fox jumps over the lazy dog");
-        assert_eq!(from, "en");
-        assert_eq!(to, "zh", "非中文应该译成第一目标语言");
+        assert_eq!(from, "auto", "auto 要原样发出去");
+        assert_eq!(to, "zh", "英文本该译成第一目标语言");
     }
 
-    /// 这是本功能的核心规则：中文译到第二目标语言。
+    /// 这是本功能的核心规则：检测结果等于第一目标语言时换第二目标。
     #[test]
     fn chinese_text_goes_to_second_target() {
         let cfg = Config {
@@ -535,8 +558,23 @@ mod tests {
             ..Config::default()
         };
         let (from, to) = resolve_direction(&cfg, "这是一段中文，应该翻译成英文");
-        assert_eq!(from, "zh");
-        assert_eq!(to, "en", "中文应该译成第二目标语言");
+        assert_eq!(from, "auto");
+        assert_eq!(to, "en", "检测到中文（=第一目标）→ 译成第二目标");
+    }
+
+    /// 规则不再写死「中文」：第一目标设成英语时，英文文本要换到第二目标。
+    #[test]
+    fn rule_is_general_not_chinese_specific() {
+        let cfg = Config {
+            from: "auto".into(),
+            to: "en".into(),
+            to2: "zh".into(),
+            ..Config::default()
+        };
+        let (_, to) = resolve_direction(&cfg, "This is clearly English text");
+        assert_eq!(to, "zh", "英文 = 第一目标 → 换第二目标（中文）");
+        let (_, to2) = resolve_direction(&cfg, "这是一段中文");
+        assert_eq!(to2, "en", "中文 ≠ 第一目标 → 译成第一目标（英文）");
     }
 
     #[test]
@@ -548,13 +586,13 @@ mod tests {
             ..Config::default()
         };
         let (from, to) = resolve_direction(&cfg, "hello world this is english text");
-        assert_eq!(from, "en");
+        assert_eq!(from, "auto");
         assert_eq!(to, "zh", "目标语言被清空时要兜底成中文，不能发出空 to 请求");
     }
 
-    /// 检测不出来时必须退化成 `auto` 交回引擎，而不是报错或瞎猜一个语言。
+    /// 检测不出来时：from 用设置值、目标用第一目标，不猜语言。
     #[test]
-    fn undetectable_text_falls_back_to_auto() {
+    fn undetectable_text_falls_back_to_first_target() {
         let cfg = Config {
             from: "auto".into(),
             to: "zh".into(),

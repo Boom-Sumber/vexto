@@ -490,6 +490,9 @@ async function runAction(f, btn, wrapEl) {
     const res = await invoke(f.key);
     showBanner("");
     renderResult(wrapEl, res);
+    // 动作可能改了引擎状态（「重启下载引擎」就会），状态行必须跟着刷新，
+    // 否则用户看到「aria2c 未启动」还以为按钮没生效。
+    await refreshAfterSave();
   } catch (e) {
     showBanner(errText(e));
   } finally {

@@ -24,7 +24,6 @@
 //! 之后判，因为日语里也有汉字。
 
 use crate::config::Config;
-use crate::translate::md5_hex;
 use std::time::Duration;
 
 /// 一个语言的三种写法。`LANGS` 是**唯一**的语言表，选项、检测映射都从它来。
@@ -138,14 +137,6 @@ pub fn name_of(baidu_code: &str) -> &str {
         .unwrap_or(c)
 }
 
-/// 是不是中文。繁体也算——「中文→第二目标语言」这条规则不该因为繁体而失效。
-///
-/// 大小写不敏感：配置是手写 JSON，用户可能填成 `ZH`。
-pub fn is_chinese(baidu_code: &str) -> bool {
-    let c = baidu_code.trim();
-    c.eq_ignore_ascii_case("zh") || c.eq_ignore_ascii_case("cht")
-}
-
 fn whatlang_to_baidu(code: &str) -> Option<&'static str> {
     LANGS
         .iter()
@@ -243,116 +234,109 @@ pub fn detect_local_lenient(text: &str) -> Option<String> {
     None
 }
 
-/// 百度语种检测接口。
+/// 网页接口会看 UA：非浏览器 UA 可能被直接拒。固定一条即可，版本号不重要。
+const WEB_UA: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/// 百度翻译**网页版**自己用的语种检测接口，免配置。
 ///
-/// 文档：<https://fanyi-api.baidu.com/doc/25>，返回的是**百度自己的代码**
-/// （`zh` / `en` / `jp` / `kor` / `th` / `vie` / `ru`），正好和翻译共用一套。
+/// `POST https://fanyi.baidu.com/langdetect`，表单只有一个 `query`，返回
+/// `{"error":0,"lan":"en"}`：不需要 appid / 密钥 / MD5 签名 / salt。
+/// （需要签名的是开放平台那条 `/api/trans/vip/language`，本会话之前用的就是它。）
 ///
-/// 实测局限（2026-11-08）：只支持 7 种语言，**法语/德语/西班牙语会被判成 `en`**。
-/// 对本项目的流程影响不大——它们都是「非中文」，同样走目标语言那一条路。
-pub fn detect_baidu(cfg: &Config, text: &str) -> Result<String, String> {
-    if cfg.appid.trim().is_empty() || cfg.secret.trim().is_empty() {
-        return Err("语种检测选了百度，但还没填百度翻译的 APPID / 密钥。\n右键托盘图标 → 设置… → 翻译 → 引擎。".to_string());
-    }
+/// **这是未公开的网页接口**，随时可能改协议或限流，所以 `detect()` 在它失败时
+/// 会自动回落本地检测——不能因为一个探测接口挂了就让整个翻译不可用。
+pub fn detect_baidu(_cfg: &Config, text: &str) -> Result<String, String> {
     let q = text.trim();
     if q.is_empty() {
         return Err("没有可检测的文本".to_string());
     }
-    // 接口限制单次 2000 bytes；这里按字符粗切（中文 3 字节/字）足够保守
+    // 网页接口没有明确长度上限，但整段贴上去只会拖慢；前 600 字足够判语种
     let q: String = q.chars().take(600).collect();
 
-    let salt = salt();
-    let sign = md5_hex(&format!("{}{}{}{}", cfg.appid, q, salt, cfg.secret));
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(8))
         .build()
         .map_err(|e| format!("网络请求失败：{e}"))?;
 
     let resp = client
-        .post("https://fanyi-api.baidu.com/api/trans/vip/language")
-        .form(&[
-            ("q", q.as_str()),
-            ("appid", cfg.appid.as_str()),
-            ("salt", salt.as_str()),
-            ("sign", sign.as_str()),
-        ])
+        .post("https://fanyi.baidu.com/langdetect")
+        .header("User-Agent", WEB_UA)
+        .form(&[("query", q.as_str())])
         .send()
         .map_err(|e| format!("语种检测请求失败：{e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("语种检测返回 HTTP {}", resp.status()));
+    }
 
     let v: serde_json::Value = resp
         .json()
         .map_err(|e| format!("语种检测返回了无法解析的内容：{e}"))?;
 
-    // error_code 有时是数字 0、有时是字符串 "54001"，两种都要认
-    let code_ok = match v.get("error_code") {
-        Some(serde_json::Value::Number(n)) => n.as_i64() == Some(0),
-        Some(serde_json::Value::String(s)) => s == "0",
-        None => true,
-        _ => false,
-    };
-    if !code_ok {
-        let code = v
-            .get("error_code")
-            .and_then(|c| {
-                c.as_str()
-                    .map(|s| s.to_string())
-                    .or_else(|| c.as_i64().map(|n| n.to_string()))
-            })
-            .unwrap_or_else(|| "未知".to_string());
+    // 成功: {"error":0,"msg":"success","lan":"en"}
+    // 失败: {"errno":1000,"errmsg":"未知错误",...}
+    let code = v.get("error").and_then(|e| e.as_i64()).unwrap_or(-1);
+    if code != 0 {
         let msg = v
-            .get("error_msg")
+            .get("errmsg")
             .and_then(|m| m.as_str())
             .unwrap_or("没有错误信息");
-        return Err(format!(
-            "百度语种检测返回 {code}：{msg}\n{}",
-            detect_error_hint(&code)
-        ));
+        return Err(format!("百度在线检测返回错误 {code}：{msg}"));
     }
-
-    v.pointer("/data/src")
-        .and_then(|s| s.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| "语种检测返回里没有 data.src".to_string())
+    let lan = v.get("lan").and_then(|l| l.as_str()).unwrap_or("");
+    if lan.is_empty() {
+        return Err("百度在线检测没返回语种".to_string());
+    }
+    baidu_web_to_code(lan)
+        .map(str::to_string)
+        .ok_or_else(|| format!("百度在线检测认出「{lan}」，但我们的语言表里没有这一项"))
 }
 
-/// 检测接口的错误码。和翻译接口不完全一样（多了 `54009` 语种检测失败）。
-fn detect_error_hint(code: &str) -> &'static str {
-    match code {
-        "52001" => "请求超时，重试一次。",
-        "52002" => "百度服务端出错，重试一次。",
-        "52003" => "未授权用户。检查 APPID 填错了，或服务没开通。",
-        "54000" => "必填参数为空。文本太短或为空时会出现。",
-        "54001" => "签名错误。检查密钥是否正确。",
-        "54003" => "访问频率受限（标准版 QPS=1），等一秒再试。",
-        "54004" => "账户余额不足，去百度翻译控制台充值。",
-        "54009" => "语种检测失败：这段文字不在百度支持的 7 种语言里。",
-        "58000" => "客户端 IP 非法。百度控制台里如果填了 IP 白名单，检查一下。",
-        "58002" => "服务当前已关闭，去百度翻译控制台开启。",
-        _ => "百度没有给出这个错误码的解释，去控制台的错误码表查一下。",
+/// 百度网页检测返回的 `lan` → 我们语言表里的代码。
+///
+/// 只收 `LANGS` 里有的那 16 种；其余（`tr`、`nor`、`yue`…）返回 `None`，
+/// 由调用方回落本地检测。**绝不静默当英语**：那会让「等于第一目标语言就换
+/// 第二目标」的规则误判。
+fn baidu_web_to_code(lan: &str) -> Option<&'static str> {
+    match lan {
+        "zh" => Some("zh"),
+        "cht" => Some("cht"),
+        "en" => Some("en"),
+        "jp" => Some("jp"),
+        "kor" => Some("kor"),
+        "fra" => Some("fra"),
+        "spa" => Some("spa"),
+        "ru" => Some("ru"),
+        "de" => Some("de"),
+        "it" => Some("it"),
+        "pt" => Some("pt"),
+        "vie" => Some("vie"),
+        "th" => Some("th"),
+        "ara" => Some("ara"),
+        "nl" => Some("nl"),
+        "pl" => Some("pl"),
+        // 文言文按中文处理：判成 zh 才能走「中文 → 第二目标」那条路
+        "wyw" => Some("zh"),
+        _ => None,
     }
-}
-
-fn salt() -> String {
-    let ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    (ms % 100_000_000_000).to_string()
 }
 
 /// 按配置选检测方式。`lang_detect` 只认 `baidu`，其余一律本地——
-/// 配置里就算写了不认识的值也不该让翻译挂掉。
+/// 配置里写了不认识的值也不该让翻译挂掉。
+///
+/// 在线检测失败时**回落本地**，不是直接报错：探测接口不可用不该等于翻译不可用。
 ///
 /// 本地检测用 `detect_local_lenient`：短句（"Hello LightBox"）在严格版里
 /// 判不出来，会让语种规则失效；宽松版把拉丁字母兜成英语，对
-/// 「非中文 → 目标语言」这条规则来说已经足够准。
+/// 「源语言等于第一目标就换第二目标」这条规则来说已经足够准。
 pub fn detect(cfg: &Config, text: &str) -> Result<String, String> {
     if cfg.lang_detect.trim().eq_ignore_ascii_case("baidu") {
-        detect_baidu(cfg, text)
-    } else {
-        detect_local_lenient(text)
-            .ok_or_else(|| "本地语种检测没认出这段文字是什么语言".to_string())
+        match detect_baidu(cfg, text) {
+            Ok(v) => return Ok(v),
+            Err(e) => crate::dlog::dlog(&format!("lang: 在线检测失败，回落本地（{e}）")),
+        }
     }
+    detect_local_lenient(text).ok_or_else(|| "本地语种检测没认出这段文字是什么语言".to_string())
 }
 
 #[cfg(test)]
@@ -405,16 +389,6 @@ mod tests {
                 "{wrong} 不是百度的有效代码，别加回表里"
             );
         }
-    }
-
-    #[test]
-    fn is_chinese_accepts_both_scripts() {
-        assert!(is_chinese("zh"));
-        assert!(is_chinese("cht"));
-        assert!(is_chinese("ZH"));
-        assert!(!is_chinese("en"));
-        assert!(!is_chinese("jp"));
-        assert!(!is_chinese(""));
     }
 
     #[test]
@@ -511,30 +485,42 @@ mod tests {
         assert_eq!(detect(&cfg, "你好").unwrap(), "zh");
     }
 
+    /// 空文本要就地拒绝，不能真去打网络。
     #[test]
-    fn baidu_detect_without_credentials_says_where_to_fill() {
+    fn baidu_detect_rejects_empty_text_without_network() {
         let cfg = Config {
             lang_detect: "baidu".into(),
-            appid: String::new(),
-            secret: String::new(),
             ..Config::default()
         };
-        let err = detect_baidu(&cfg, "hello").unwrap_err();
-        assert!(err.contains("APPID"), "要指出缺什么：{err}");
-        assert!(err.contains("设置"), "要指出去哪填：{err}");
+        let err = detect_baidu(&cfg, "   ").unwrap_err();
+        assert!(err.contains("没有可检测的文本"), "实际：{err}");
     }
 
+    /// 网页接口返回的码必须能落进我们自己的语言表——落不进去就没法参与
+    /// 「等于第一目标就换第二目标」的判断。
     #[test]
-    fn detect_error_hints_cover_documented_codes() {
-        for code in [
-            "52001", "52002", "52003", "54000", "54001", "54003", "54004", "54009", "58000",
-            "58002",
-        ] {
-            let h = detect_error_hint(code);
-            assert!(
-                !h.contains("没有给出这个错误码的解释"),
-                "{code} 还没有中文解释：{h}"
+    fn baidu_web_codes_map_into_our_table() {
+        for l in LANGS {
+            assert_eq!(
+                baidu_web_to_code(l.baidu),
+                Some(l.baidu),
+                "语言表里的 {} 没有对应的网页码映射",
+                l.baidu
             );
         }
+    }
+
+    /// 不认识的码必须返回 None 走回落，**不能兜底成英语**——
+    /// 那会让中文文本被判成 en，规则整个反过来。
+    #[test]
+    fn unknown_baidu_codes_are_not_guessed_as_english() {
+        for lan in ["tr", "nor", "yue", "xyz", "", " " ] {
+            assert!(
+                baidu_web_to_code(lan).is_none(),
+                "{lan:?} 不该被猜成某种语言"
+            );
+        }
+        // 文言文按中文处理（否则会走「非中文 → 第一目标」那条路）
+        assert_eq!(baidu_web_to_code("wyw"), Some("zh"));
     }
 }
