@@ -85,7 +85,7 @@
             <button id="tfRefresh" class="btn" type="button">
               <span data-icon="refresh" data-icon-size="14"></span>刷新
             </button>
-            <button id="tfPick" class="btn btn-primary" type="button">选择文件发送</button>
+            <button id="tfPick" class="btn btn-primary" type="button">选择文件</button>
           </div>
         </header>
 
@@ -95,8 +95,6 @@
           <button id="tfDropSend" class="btn btn-primary" type="button">发送</button>
           <button id="tfDropClear" class="btn" type="button">取消</button>
         </div>
-
-        <div id="tfNotice" class="notice hidden"></div>
 
         <div class="page-body">
           <div class="section-title">选择发送内容</div>
@@ -147,6 +145,9 @@
       </div>
     </div>
   </div>
+
+  <!-- 轻提示浮层：右下角堆叠，3 秒自动消失（见 main.js 的 tfNotice） -->
+  <div id="toastHost" class="toast-host" aria-live="polite"></div>
 </div>
 
 <script src="icons.js"></script>

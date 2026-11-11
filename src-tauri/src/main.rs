@@ -1640,6 +1640,13 @@ fn transfer_pending() -> Vec<transfer::IncomingRequest> {
     transfer::backend().pending_requests()
 }
 
+/// 主动刷新设备列表：重发 announce + 探测在线状态 + 剔除已离线设备。
+/// 立即返回，结果通过 `transfer:event` 的 `peers` 事件推给前端。
+#[tauri::command]
+fn transfer_refresh() -> Result<(), String> {
+    transfer::backend().refresh()
+}
+
 /// 接受 / 拒绝一条传入请求（§S4.7.2 确认框的两个按钮）。
 #[tauri::command]
 fn transfer_respond(session_id: String, accept: bool) -> Result<(), String> {
@@ -1797,6 +1804,7 @@ fn main() {
             // 局域网互传（S4a 设备列表 + S4b 收发）
             transfer_peers,
             transfer_pending,
+            transfer_refresh,
             transfer_respond,
             transfer_send,
             transfer_cancel_send,

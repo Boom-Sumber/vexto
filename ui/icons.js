@@ -44,6 +44,8 @@ window.Icons = (function () {
       'A1.5 1.5 0 0 1 17.5 18h-13A1.5 1.5 0 0 1 3 16.5z"/>',
     clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
     download: '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+    // 发送方向（与 download 镜像）；用在传输进度行的方向标识上
+    upload: '<path d="M12 20V9"/><path d="M7 13l5-5 5 5"/><path d="M5 4h14"/>',
     transfer:
       '<path d="M7 4v13"/><path d="M4 14l3 3 3-3"/>' +
       '<path d="M17 20V7"/><path d="M14 10l3-3 3 3"/>',

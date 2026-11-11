@@ -139,6 +139,9 @@ pub trait TransferBackend: Send + Sync {
     fn stop(&self) -> Result<(), String>;
     /// 当前发现的设备快照。
     fn peers(&self) -> Vec<Peer>;
+    /// 主动刷新设备列表：重发公告 + 探测在线状态 + 剔除已离线设备。
+    /// 立即返回，结果通过 `transfer:event` 的 `peers` 事件推给前端。
+    fn refresh(&self) -> Result<(), String>;
     /// 发送文件给一台设备（`peer_id` = 指纹或 `ip:port`）。
     /// `pin`：对方开了 PIN 时传；异步跑，进度走 `transfer:event`。
     fn send(

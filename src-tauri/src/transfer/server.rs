@@ -22,7 +22,7 @@ use lanflare_core::config::AppConfig;
 use lanflare_core::crypto::cert::{load_or_generate_identity, TlsIdentity};
 use lanflare_core::discovery::interface::InterfaceFilter;
 use lanflare_core::discovery::multicast::{
-    start_multicast_engine, MulticastConfig, MulticastDiscoveryEvent, MulticastNodeInfo,
+    start_multicast_engine, MulticastConfig, MulticastDiscoveryEvent, MulticastHandle, MulticastNodeInfo,
 };
 use lanflare_core::discovery::{DiscoveredPeer, PeerRegistry, PeerRegistryConfig};
 use lanflare_core::server::{
@@ -34,6 +34,10 @@ use tokio::sync::{mpsc, oneshot};
 use super::backend::{IncomingFile, IncomingRequest, Peer, TransferBackend, TransferConfig, TransferHandle};
 use super::events::{ProgressView, TransferEvent};
 use crate::config;
+
+/// 「刷新」时对单台设备做在线探测的超时。局域网内 TCP 握手正常在几十毫秒内，
+/// 1.5 秒足够覆盖手机省电时的慢应答，又不至于让刷新卡太久（并发探测，不累加）。
+const PROBE_TIMEOUT_MS: u64 = 1500;
 
 /// 服务状态快照（给设置页状态行 / IPC 的同步读取）。
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +66,15 @@ struct Globals {
     runtime: Mutex<Option<tokio::runtime::Handle>>,
     /// 自签身份：发送侧的 LsClient 要用同一套证书（fingerprint 一致）。
     identity: Mutex<Option<TlsIdentity>>,
+    /// 发现侧句柄（组播 + 注册表）：`refresh_peers_now()` 用它主动广播、
+    /// 探测在线状态并剔除已离线设备。服务停止时清空。
+    discovery: Mutex<Option<Arc<DiscoveryCtx>>>,
+}
+
+/// 发现侧的两件东西，只在服务运行期间有效。
+struct DiscoveryCtx {
+    mhandle: Arc<MulticastHandle>,
+    registry: Arc<PeerRegistry>,
 }
 
 static GLOBALS: OnceLock<Globals> = OnceLock::new();
@@ -79,6 +92,7 @@ fn globals() -> &'static Globals {
         thread: Mutex::new(None),
         runtime: Mutex::new(None),
         identity: Mutex::new(None),
+        discovery: Mutex::new(None),
     })
 }
 
@@ -113,6 +127,60 @@ pub fn state() -> ServiceState {
 /// 当前发现的设备快照。
 pub fn peers() -> Vec<Peer> {
     lock(&globals().peers).clone()
+}
+
+/// 主动刷新设备列表（互传页「刷新」按钮）。
+///
+/// 与旧行为（只重读本地快照、一个网络包都不发）不同，这里做两件事：
+///
+/// 1. 发一轮 announce burst —— 对端收到后会反向 register，**新上线的设备**才会出现；
+/// 2. 对已发现的每台设备做一次 TCP 连接探测（1.5 秒超时），连不上的直接从注册表
+///    移除。这样对方关掉 LocalSend / 离开 WiFi 时点一下刷新就消失，不必干等
+///    `transfer_peer_timeout_secs`（默认 90 秒）自然过期。
+///
+/// 异步执行、立即返回：结果通过既有的 `peers` 事件推给前端。
+pub fn refresh_peers_now() -> Result<(), String> {
+    let rt = runtime_handle().ok_or("请先启用局域网互传")?;
+    let ctx = lock(&globals().discovery)
+        .clone()
+        .ok_or("传输服务未就绪，请稍后重试")?;
+
+    rt.spawn(async move {
+        ctx.mhandle.announce_burst().await;
+
+        let current = ctx.registry.get_all().await;
+        let mut set = tokio::task::JoinSet::new();
+        for p in current {
+            let Some(ip) = p.primary_ip() else { continue };
+            let addr = std::net::SocketAddr::new(ip, p.port);
+            let fp = p.fingerprint.clone();
+            set.spawn(async move {
+                let alive = tokio::time::timeout(
+                    Duration::from_millis(PROBE_TIMEOUT_MS),
+                    tokio::net::TcpStream::connect(addr),
+                )
+                .await
+                .map(|r| r.is_ok())
+                .unwrap_or(false);
+                (fp, alive)
+            });
+        }
+
+        let mut gone = 0usize;
+        while let Some(joined) = set.join_next().await {
+            let Ok((fp, alive)) = joined else { continue };
+            if !alive {
+                ctx.registry.remove(&fp).await;
+                gone += 1;
+            }
+        }
+        if gone > 0 {
+            crate::dlog::dlog(&format!("transfer: 刷新剔除 {gone} 台已离线设备"));
+        }
+        refresh_peers(&ctx.registry).await;
+    });
+
+    Ok(())
 }
 
 /// 当前待确认的传入请求（最旧在前）。
@@ -259,6 +327,10 @@ impl TransferBackend for LanflareBackend {
 
     fn peers(&self) -> Vec<Peer> {
         peers()
+    }
+
+    fn refresh(&self) -> Result<(), String> {
+        refresh_peers_now()
     }
 
     fn send(
@@ -530,6 +602,12 @@ async fn service_main(
         return;
     }
 
+    // 把发现侧句柄挂到全局：`refresh_peers_now()` 要用它主动广播 / 探测。
+    *lock(&globals().discovery) = Some(Arc::new(DiscoveryCtx {
+        mhandle: mhandle.clone(),
+        registry: registry.clone(),
+    }));
+
     // announce burst（100ms/500ms/2000ms，各带抖动）后台发，不阻塞事件循环。
     {
         let h = mhandle.clone();
@@ -602,6 +680,7 @@ async fn service_main(
     mhandle.stop().await;
     server.stop();
     registry.shutdown();
+    *lock(&globals().discovery) = None;
     *lock(&globals().state) = ServiceState::Stopped;
     crate::dlog::dlog("transfer: 服务已停止");
 }

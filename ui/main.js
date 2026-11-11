@@ -413,12 +413,38 @@ async function refreshLocalInfo() {
   }
 }
 
+// 轻提示（toast）：浮在窗口右下角，3 秒自动消失，错误类 6 秒；悬停暂停计时、点击立即关。
+// 取代原先把消息写进页面顶部常驻 div 的做法（S4 复测：常驻通知一直挂着，还挤占内容区）。
 function tfNotice(msg, danger) {
-  const n = el("tfNotice");
-  if (!msg) { n.classList.add("hidden"); return; }
-  n.textContent = msg;
-  n.classList.remove("hidden");
-  n.classList.toggle("notice-danger", !!danger);
+  if (!msg) return;
+  const host = el("toastHost");
+  if (!host) return;
+  const t = document.createElement("div");
+  t.className = "toast" + (danger ? " toast-danger" : "");
+  t.innerHTML = Icons.svg(danger ? "alert" : "info", 16);
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = msg;
+  t.appendChild(text);
+  host.appendChild(t);
+  // 最多同时 3 条，超出丢最早的一条
+  while (host.children.length > 3) host.removeChild(host.firstElementChild);
+  requestAnimationFrame(() => t.classList.add("in"));
+
+  let timer = null;
+  const close = () => {
+    clearTimeout(timer);
+    t.classList.remove("in");
+    setTimeout(() => t.remove(), 200);
+  };
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(close, danger ? 6000 : 3000);
+  };
+  t.addEventListener("mouseenter", () => clearTimeout(timer));
+  t.addEventListener("mouseleave", arm);
+  t.addEventListener("click", close);
+  arm();
 }
 
 function renderPeers() {
@@ -450,7 +476,7 @@ function renderPeers() {
     btn.type = "button";
     btn.className = "btn";
     btn.textContent = "发送文件";
-    btn.addEventListener("click", () => pickAndSend(p));
+    btn.addEventListener("click", () => stageForPeer(p));
 
     d.append(av, meta, btn);
     box.appendChild(d);
@@ -527,7 +553,7 @@ function upsertRow(view) {
     row = document.createElement("div");
     row.className = "tf-row";
     row.innerHTML =
-      '<div class="line"><span class="fname"></span><span class="fstat"></span></div>' +
+      '<div class="line"><span class="tf-dir"></span><span class="fname"></span><span class="fstat"></span></div>' +
       '<div class="bar"><i></i></div>';
     el("tfList").appendChild(row);
     tfView.rows.set(key, row);
@@ -535,8 +561,15 @@ function upsertRow(view) {
   }
   row.classList.toggle("done", view.status === "done");
   row.classList.toggle("failed", view.status === "failed" || view.status === "cancelled");
-  row.querySelector(".fname").textContent =
-    (view.direction === "send" ? "↑ " : "↓ ") + (view.file_name || "(会话)");
+  // 方向用图标，不用 ↑ / ↓ 字符（13-UI §13.5：可用图形的地方不拿符号凑）
+  const dir = row.querySelector(".tf-dir");
+  if (!dir.dataset.set) {
+    const sending = view.direction === "send";
+    dir.innerHTML = Icons.svg(sending ? "upload" : "download", 14);
+    dir.title = sending ? "发送" : "接收";
+    dir.dataset.set = "1";
+  }
+  row.querySelector(".fname").textContent = view.file_name || "(会话)";
   const pct = view.total > 0 ? Math.min(100, Math.round((view.bytes / view.total) * 100)) : (view.status === "done" ? 100 : 0);
   let stat = pct + "%";
   if (view.speed_bps) stat += " · " + fmtBytes(view.speed_bps) + "/s";
@@ -566,13 +599,21 @@ function upsertRow(view) {
   }
 }
 
-async function pickAndSend(peer) {
+// 选文件 → 进「待发送」条，由用户再点「发送」。
+// S4 复测里的第 2 条缺陷：单设备时选完文件立刻发出去，误触没有任何确认机会。
+async function stageForPeer(peer) {
   try {
     const paths = await invoke("transfer_pick_files");
     if (!paths || !paths.length) return;
-    await doSend(peer.fingerprint || (peer.ip + ":" + peer.port), paths, peer);
+    tfView.dropPaths.push(...paths);
+    showDropBar();
+    if (peer) {
+      const sel = el("tfDropTarget");
+      const v = peer.fingerprint || (peer.ip + ":" + peer.port);
+      if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+    }
   } catch (e) {
-    tfNotice("发送失败：" + errText(e), true);
+    tfNotice("选择文件失败：" + errText(e), true);
   }
 }
 
@@ -588,7 +629,15 @@ async function doSend(target, paths, peer) {
   }
 }
 
-el("tfRefresh").addEventListener("click", () => { refreshPeers(); refreshPending(); });
+el("tfRefresh").addEventListener("click", async () => {
+  try {
+    await invoke("transfer_refresh");
+    tfNotice("正在刷新设备…");
+    await refreshPeers();
+  } catch (e) {
+    tfNotice("刷新失败：" + errText(e), true);
+  }
+});
 el("tfRefreshRecv").addEventListener("click", () => { refreshPending(); refreshLocalInfo(); });
 el("tfActionFile").addEventListener("click", () => el("tfPick").click());
 el("tfOpenDir").addEventListener("click", () => {
@@ -597,20 +646,7 @@ el("tfOpenDir").addEventListener("click", () => {
 });
 el("tfPick").addEventListener("click", async () => {
   if (!tfView.peers.length) { tfNotice("没有发现设备，先点「刷新」", true); return; }
-  try {
-    const paths = await invoke("transfer_pick_files");
-    if (!paths || !paths.length) return;
-    if (tfView.peers.length === 1) {
-      const p = tfView.peers[0];
-      await doSend(p.fingerprint || (p.ip + ":" + p.port), paths, p);
-    } else {
-      // 多设备：落到目标选择条，用户挑一台再发
-      tfView.dropPaths.push(...paths);
-      showDropBar();
-    }
-  } catch (e) {
-    tfNotice("发送失败：" + errText(e), true);
-  }
+  await stageForPeer(null);
 });
 
 // 拖放文件：收集 → 选目标 → 发送
