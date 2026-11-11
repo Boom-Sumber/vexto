@@ -417,7 +417,7 @@ async fn service_main(
         } else {
             None
         },
-        auto_accept: false,
+        auto_accept: cfg.auto_accept,
         ..Default::default()
     };
 

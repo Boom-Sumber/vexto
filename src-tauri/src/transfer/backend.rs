@@ -25,6 +25,8 @@ pub struct TransferConfig {
     pub require_pin: bool,
     /// PIN（4–6 位数字）。
     pub pin: String,
+    /// 收到请求时是否跳过确认框、直接接受。
+    pub auto_accept: bool,
 }
 
 impl TransferConfig {
@@ -41,6 +43,7 @@ impl TransferConfig {
             receive_dir: crate::transfer::server::resolve_receive_dir(cfg),
             require_pin: cfg.require_pin,
             pin: cfg.pin.trim().to_string(),
+            auto_accept: cfg.transfer_auto_accept,
         }
     }
 }
@@ -126,10 +129,12 @@ mod tests {
         cfg.device_alias = "  我的电脑  ".to_string();
         cfg.require_pin = true;
         cfg.pin = " 123456 ".to_string();
+        cfg.transfer_auto_accept = true;
         let tc = TransferConfig::from_app(&cfg);
         assert_eq!(tc.alias, "我的电脑");
         assert!(tc.require_pin);
         assert_eq!(tc.pin, "123456");
+        assert!(tc.auto_accept);
         assert_eq!(tc.port, crate::transfer::TRANSFER_PORT);
     }
 

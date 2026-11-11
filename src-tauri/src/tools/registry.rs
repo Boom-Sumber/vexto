@@ -124,7 +124,7 @@ mod tests {
     /// 翻译三个标签、下载三个标签（会话 25 起），其余三个工具都只有一个 Section，
     /// 这样前端不会给它们画一层没意义的标签栏。
     #[test]
-    fn only_translate_and_download_have_multiple_sections() {
+    fn multi_section_tools_are_the_expected_ones() {
         for t in all() {
             let id = t.id();
             let n = t.sections().len();
@@ -132,6 +132,7 @@ mod tests {
                 "translate" | "download" => {
                     assert_eq!(n, 3, "工具 {id} 应该是三个标签")
                 }
+                "transfer" => assert_eq!(n, 2, "工具 transfer 应该是两个标签"),
                 _ => assert_eq!(n, 1, "工具 {id} 不该有多个 Section"),
             }
         }

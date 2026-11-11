@@ -699,7 +699,7 @@ fn save_tool_config(
     // 12) 传输服务的对外身份 / 落盘参数都在启动时烘焙进 announce 与 /info，
     //     改完必须重启才生效——否则用户改完设备名，对方看到的还是旧名字。
     //     进行中的传输会被打断，这是改这些字段的代价。
-    if ["device_alias", "receive_dir", "require_pin", "pin"]
+    if ["device_alias", "receive_dir", "require_pin", "pin", "transfer_auto_accept"]
         .iter()
         .any(|k| patch.contains_key(*k))
         && cfg.enable_transfer
@@ -1660,6 +1660,38 @@ fn transfer_local_info() -> TransferLocalOut {
     }
 }
 
+/// 设置页「重启传输服务」：端口被占 / 服务异常时手动恢复。
+#[tauri::command]
+fn transfer_restart() -> Result<SimpleOut, String> {
+    let cfg = config::load();
+    if !cfg.enable_transfer {
+        return Err("互传未启用，先打开上方的启用开关".to_string());
+    }
+    let tc = transfer::TransferConfig::from_app(&cfg);
+    transfer::backend().stop()?;
+    transfer::backend().start(&tc)?;
+    Ok(SimpleOut {
+        ok: true,
+        message: "传输服务已重启".to_string(),
+    })
+}
+
+/// 设置页「打开接收目录」：和下载页的「打开下载目录」同义。
+#[tauri::command]
+fn transfer_open_dir() -> Result<SimpleOut, String> {
+    let cfg = config::load();
+    let dir = transfer::server::resolve_receive_dir(&cfg);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建接收目录：{e}"))?;
+    std::process::Command::new("explorer.exe")
+        .arg(&dir)
+        .spawn()
+        .map_err(|e| format!("打开接收目录失败：{e}"))?;
+    Ok(SimpleOut {
+        ok: true,
+        message: dir.display().to_string(),
+    })
+}
+
 // ---------- 入口 ----------
 
 fn main() {
@@ -1722,6 +1754,8 @@ fn main() {
             transfer_take_view,
             transfer_take_drop,
             transfer_local_info,
+            transfer_restart,
+            transfer_open_dir,
             open_path,
             take_new_task_prefill,
             new_task_done,

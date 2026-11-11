@@ -202,6 +202,9 @@ pub struct Config {
     /// PIN（4–6 位数字）。仅 require_pin 开启时有意义。
     #[serde(default)]
     pub pin: String,
+    /// 收到传输请求时是否自动接受（跳过确认框）。默认关：确认弹窗才是主门。
+    #[serde(default)]
+    pub transfer_auto_accept: bool,
 
     // ---- 下载（S3a）----
     /// 全局限速，单位 KB/s，0 = 不限。作为 aria2 的启动参数读取，
@@ -435,6 +438,7 @@ impl Default for Config {
             device_alias: String::new(),
             require_pin: false,
             pin: String::new(),
+            transfer_auto_accept: false,
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
             max_connection_per_server: d_connections(),
