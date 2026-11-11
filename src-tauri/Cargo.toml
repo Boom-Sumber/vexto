@@ -33,6 +33,16 @@ md-5 = "0.11"
 # 与 md-5 同属 RustCrypto，digest trait 已经在依赖树里，只是多一个小 crate。
 sha2 = "0.10"
 
+# S4 局域网互传（LocalSend v2.2 互操作，ADR-010）：协议实现用 lanflare-core，
+# 外面按 ADR-010 包一层 transfer::backend::TransferBackend trait，将来换自研
+# 实现只改 transfer/server.rs。两个 crate 均为 Apache-2.0，TLS 走 rustls（纯
+# Rust 自签证书 rcgen），不引 openssl（03 §3.2 禁 CMake/NASM -sys，07-LICENSING）。
+lanflare-core = "0.5"
+lanflare-proto = "0.5"
+# transfer/server.rs 自建一个 2 worker 的 tokio 运行时跑发现与 HTTP 服务，
+# 不占用 Tauri 的 async_runtime；lanflare-core 内部就是 tokio 生态。
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+
 # 本地语种检测（S2.5 用）。MIT 许可（不是 GPL，符合 07-LICENSING）。
 # 选它而不是 lingua：whatlang 无外部数据文件、编译产物小，lingua 会带 ~50 MB 语料。
 whatlang = "0.18"

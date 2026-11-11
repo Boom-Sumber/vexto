@@ -21,6 +21,7 @@ mod lang;
 mod mem;
 mod popup;
 mod tools;
+mod transfer;
 mod tray;
 mod translate;
 
@@ -1546,6 +1547,15 @@ fn window_action(window: tauri::WebviewWindow, action: String) -> Result<(), Str
     }
 }
 
+// ---------- 命令：局域网互传（S4a）----------
+
+/// 设备列表数据接口：S4a 的「设备列表有数据可查」。
+/// 正式列表 UI 在 S4b，这里先把数据面放出来（设置页状态行也读同一份快照）。
+#[tauri::command]
+fn transfer_peers() -> Vec<transfer::Peer> {
+    transfer::backend().peers()
+}
+
 // ---------- 入口 ----------
 
 fn main() {
@@ -1595,6 +1605,8 @@ fn main() {
             open_download_dir,
             download_probe,
             disk_free,
+            // 局域网互传（S4a：设备列表数据接口）
+            transfer_peers,
             open_path,
             take_new_task_prefill,
             new_task_done,
@@ -1671,6 +1683,16 @@ fn main() {
             // 端口占用等失败只写状态行与日志，不阻断启动。
             extension_bridge::start(handle.clone());
 
+            // S4：局域网互传自启。发现类服务必须随进程常驻才有人找得到
+            // （对方随时可能来连）；失败只记日志与状态行，不阻断启动。
+            if cfg.enable_transfer {
+                let tc = transfer::TransferConfig::from_app(&cfg);
+                match transfer::backend().start(&tc) {
+                    Ok(()) => dlog::dlog("setup: 传输服务已启动"),
+                    Err(e) => dlog::dlog(&format!("setup: 传输服务启动失败：{e}")),
+                }
+            }
+
             dlog::dlog("setup: 托盘已创建");
             Ok(())
         })
@@ -1696,6 +1718,10 @@ fn main() {
                     download::pump::stop();
                     if let Err(e) = download::engine::shutdown_all() {
                         dlog::dlog(&format!("exit: 关闭 aria2c 失败：{e}"));
+                    }
+                    // 传输服务同理：主动停才能关掉 53317 的 TCP/UDP 监听。
+                    if let Err(e) = transfer::backend().stop() {
+                        dlog::dlog(&format!("exit: 关闭传输服务失败：{e}"));
                     }
                     // 「退出时清空已完成记录」：只清终态，出错的任务留着
                     // （用户可能正想排查它为什么失败）。

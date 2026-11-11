@@ -186,8 +186,22 @@ pub struct Config {
     // ---- 路径 ----
     #[serde(default)]
     pub download_dir: String,
+    /// 局域网互传的接收目录。**留空 = 系统「下载」下的 LightBox 子目录**
+    /// （解析在 transfer/server.rs::resolve_receive_dir，不在保存时回填）。
     #[serde(default)]
     pub receive_dir: String,
+
+    // ---- 局域网互传（S4）----
+    /// 本机对其他设备显示的名字。空 = 计算机名。
+    #[serde(default)]
+    pub device_alias: String,
+    /// 接收传输是否要求对方输入 PIN。默认关（门 1 决定：确认弹窗才是主门，
+    /// 强制 PIN 在家庭局域网是纯摩擦）。校验链路在 S4b 接。
+    #[serde(default)]
+    pub require_pin: bool,
+    /// PIN（4–6 位数字）。仅 require_pin 开启时有意义。
+    #[serde(default)]
+    pub pin: String,
 
     // ---- 下载（S3a）----
     /// 全局限速，单位 KB/s，0 = 不限。作为 aria2 的启动参数读取，
@@ -418,6 +432,9 @@ impl Default for Config {
             cache_enabled: true,
             download_dir: String::new(),
             receive_dir: String::new(),
+            device_alias: String::new(),
+            require_pin: false,
+            pin: String::new(),
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
             max_connection_per_server: d_connections(),
