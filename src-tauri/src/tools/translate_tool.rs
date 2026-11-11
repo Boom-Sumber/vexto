@@ -144,20 +144,16 @@ impl Tool for Translate {
                 "翻译配置",
                 vec![
                     Field::group("翻译方向"),
-                    Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS)
-                        .help("百度在线检测不需要 APPID / 密钥，失败时自动回落到本地检测。"),
-                    Field::select("from", "源语言", FROM_STATIC)
-                        .help("选「自动检测」就把 auto 发给厂商，让它再判一次；选具体语言时如果和检测结果冲突，以检测结果为准。"),
+                    Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS),
+                    Field::select("from", "源语言", FROM_STATIC),
                     Field::select("to", "目标语言", TO_STATIC),
                     Field::select("to2", "第二目标语言", TO_STATIC)
                         .help("检测出的语言等于「目标语言」时译到「第二目标语言」，否则译到「目标语言」。常用：目标=中文、第二目标=英语，中英双向免切。"),
                     Field::group("交互"),
-                    Field::hotkey("hotkey", "划词热键")
-                        .help("选中文字后按这个组合键，光标旁弹出译文。"),
+                    Field::hotkey("hotkey", "划词热键"),
                     Field::hotkey("hotkey_input", "输入翻译热键")
                         .help("按这个组合键唤出输入翻译框，打完字回车即翻译；和划词共用弹窗，只是不会自动取词。"),
-                    Field::switch("auto_copy", "译完自动复制译文")
-                        .help("翻译完成后自动把译文写入剪贴板。"),
+                    Field::switch("auto_copy", "译完自动复制译文"),
                 ],
             ),
             Section::new(
@@ -167,8 +163,7 @@ impl Tool for Translate {
                     Field::group("截图翻译"),
                     Field::switch("enable_ocr", "启用截图翻译")
                         .help("截图翻译的框选与 OCR 在 S5 实现，这里先把开关和热键配好。"),
-                    Field::hotkey("hotkey_ocr", "截图热键")
-                        .help("选中区域后按这个组合键开始识别与翻译；功能在 S5 实现。"),
+                    Field::hotkey("hotkey_ocr", "截图热键"),
                 ],
             ),
         ]

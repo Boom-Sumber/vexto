@@ -86,33 +86,25 @@ impl Tool for Download {
                 "通用",
                 vec![
                     Field::group("下载路径"),
-                    Field::dir("download_dir", "下载目录")
-                        .help("下载文件保存到这里。"),
-                    Field::switch("remember_last_dir", "记住上次保存位置")
-                        .help("打开时先用上次实际用过的目录；那个目录不在了就退回上面的下载目录。"),
+                    Field::dir("download_dir", "下载目录"),
+                    Field::switch("remember_last_dir", "记住上次保存位置"),
                     Field::group("速度与并发"),
-                    Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个")
-                        .help("同时进行的下载任务数。"),
-                    Field::number_unit("max_connection_per_server", "单文件连接数", 1, 16, "个")
-                        .help("一个大文件被切成几条连接拉。"),
+                    Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
+                    Field::number_unit("max_connection_per_server", "单文件连接数", 1, 16, "个"),
                     Field::number_unit("max_speed_kb", "下载限速", 0, 102_400, "KB/s")
                         .help("填 0 表示不限；单位 KB/s。"),
                     Field::switch("auto_limit", "自动限速")
                         .help("按实测速度把上限收到「峰值 × 1.3」，只降不升，避免上限虚高时 aria2 开满连接空转。"),
                     Field::group("通知"),
-                    Field::switch("notify_download", "启用系统通知")
-                        .help("总开关；下面两项只在它打开时生效。"),
-                    Field::switch("notify_on_start", "下载开始时通知")
-                        .help("一次贴十条链接会连弹十条，默认关。"),
+                    Field::switch("notify_download", "启用系统通知"),
+                    Field::switch("notify_on_start", "下载开始时通知"),
                     Field::switch("notify_on_done", "下载完成时通知"),
                     Field::select(
                         "notify_click_action",
                         "点击通知时",
                         &[("folder", "在文件夹中显示"), ("list", "打开下载列表")],
-                    )
-                    .help("Windows 只在通知还停在屏幕上时上报点击，已收进操作中心的点了没反应。"),
-                    Field::button("notify_test", "发送测试通知")
-                        .help("发一条测试通知，检查系统通知是否可用。"),
+                    ),
+                    Field::button("notify_test", "发送测试通知"),
                     Field::group("完成后"),
                     Field::select(
                         "after_all_done",
@@ -126,32 +118,24 @@ impl Tool for Download {
                     )
                     .help("只在「本轮真的下过东西、队列连续空 10 秒」后触发一次；启动后 3 分钟内的空闲不算。"),
                     Field::text_hint("after_all_done_cmd", "要运行的程序", r"D:\tools\done.exe")
-                        .show_if("after_all_done", "run")
-                        .help("要运行的程序完整路径。"),
+                        .show_if("after_all_done", "run"),
                     Field::group("删除与清理"),
                     Field::select(
                         "delete_mode",
                         "文件删除方式",
                         &[("recycle", "移入回收站"), ("permanent", "彻底删除")],
-                    )
-                    .help("回收站可还原；彻底删除不可恢复。"),
-                    Field::switch("delete_file_with_task", "删除任务时同时删文件")
-                        .help("默认关；删文件不可撤销，必须显式打开。"),
-                    Field::switch("confirm_remove", "删除前确认")
-                        .help("删除任务前先点一次「确认删除」。"),
-                    Field::switch("remove_missing_records", "文件丢失时移除记录")
-                        .help("已完成但文件已不在磁盘上时，把记录从列表移除。"),
-                    Field::switch("clear_finished_on_exit", "退出时清空已完成记录")
-                        .help("退出时清空已完成记录。"),
+                    ),
+                    Field::switch("delete_file_with_task", "删除任务时同时删文件"),
+                    Field::switch("confirm_remove", "删除前确认"),
+                    Field::switch("remove_missing_records", "文件丢失时移除记录"),
+                    Field::switch("clear_finished_on_exit", "退出时清空已完成记录"),
                     Field::select(
                         "history_keep",
                         "已完成记录保留",
                         &[("100", "最近 100 条"), ("300", "最近 300 条"), ("forever", "永久保留")],
-                    )
-                    .help("历史记录最多保留多少条。"),
+                    ),
                     Field::group("快捷键"),
-                    Field::hotkey("hotkey_download", "打开新建下载任务")
-                        .help("按这个组合键打开新建下载任务。"),
+                    Field::hotkey("hotkey_download", "打开新建下载任务"),
                 ],
             ),
             // ── 网络 ──────────────────────────────────────────────────
@@ -168,26 +152,22 @@ impl Tool for Download {
                             ("system", "跟随系统代理"),
                             ("manual", "手动指定"),
                         ],
-                    )
-                    .help("aria2 自己不读 Windows 系统代理；「跟随系统」由本程序读注册表再翻译。改完立即切换，回环地址与局域网始终直连。"),
+                    ),
                     Field::text_hint("proxy_url", "代理地址", "http://127.0.0.1:7890")
-                        .show_if("proxy_mode", "manual")
-                        .help("HTTP 代理地址，例如 http://127.0.0.1:7890。"),
+                        .show_if("proxy_mode", "manual"),
                     Field::group("请求"),
                     Field::text_presets(
                         "default_user_agent",
                         "默认 User-Agent",
                         "留空 = 用 aria2 自带 UA",
                         UA_PRESETS,
-                    )
-                    .help("新建任务页的 UA 框默认填这个值；浏览器接管时会被网页真实 UA 覆盖。"),
+                    ),
                     Field::group("DNS"),
                     Field::text_hint(
                         "dns_servers",
                         "DNS 服务器",
                         "223.5.5.5,119.29.29.29（留空 = 用系统）",
-                    )
-                    .help("只支持普通 DNS（明文），最多两个地址；改完等下一次启动下载引擎才生效。"),
+                    ),
                     Field::group("TLS"),
                     Field::switch("check_certificate", "校验证书")
                         .help("关掉可以下载自签名证书的站点，但会失去对中间人攻击的防护。"),
@@ -201,18 +181,14 @@ impl Tool for Download {
                     Field::group("浏览器插件接管"),
                     Field::switch("extension_bridge_enabled", "启用接管")
                         .help("启动一个只监听 127.0.0.1 的接口，供 Rayburst-Connect 扩展把网页下载交过来。"),
-                    Field::number_unit("extension_bridge_port", "插件端口", 1024, 65535, "")
-                        .help("端口要和扩展 Options 页里填的一致。"),
-                    Field::password("extension_bridge_secret", "插件密钥")
-                        .help("密钥要和扩展里填的一致；留空 = 不校验。"),
+                    Field::number_unit("extension_bridge_port", "插件端口", 1024, 65535, ""),
+                    Field::password("extension_bridge_secret", "插件密钥"),
                     Field::group("下载引擎"),
                     Field::number_unit("rpc_port", "RPC 端口", 1024, 65535, "")
                         .help("aria2 的控制接口，只绑 127.0.0.1；被占用时会自动换一个可用端口。"),
-                    Field::button("download_engine_restart", "重启下载引擎")
-                        .help("DNS / 证书校验 / RPC 端口 / 限速是 aria2 启动参数，改完点这里立即生效；队列有任务时会被拒绝。"),
+                    Field::button("download_engine_restart", "重启下载引擎"),
                     Field::group("维护"),
-                    Field::button("open_download_dir", "打开下载目录")
-                        .help("在资源管理器里打开下载目录。"),
+                    Field::button("open_download_dir", "打开下载目录"),
                 ],
             ),
         ]

@@ -72,13 +72,10 @@ impl Tool for Transfer {
                     Field::group("接收"),
                     Field::switch("transfer_auto_accept", "自动保存")
                         .help("打开后收到的文件不再弹确认框，直接写入保存目录。"),
-                    Field::switch("require_pin", "需要一个 PIN")
-                        .help("开启后对方发文件前要输入下面的 PIN。"),
+                    Field::switch("require_pin", "需要一个 PIN"),
                     Field::text_hint("pin", "PIN（4–6 位数字）", "4–6 位数字")
-                        .show_if("require_pin", "true")
-                        .help("4–6 位数字；对方发送时输入。"),
-                    Field::dir("receive_dir", "保存目录")
-                        .help("接收到的文件保存到这个目录。"),
+                        .show_if("require_pin", "true"),
+                    Field::dir("receive_dir", "保存目录"),
                     Field::group("设备"),
                     Field::text_hint("device_alias", "别名", "不填用计算机名")
                         .help("对方在设备列表 / 确认框里看到的就是这个名字。"),
@@ -106,10 +103,8 @@ impl Tool for Transfer {
                             ("headless", "无头"),
                             ("server", "服务器"),
                         ],
-                    )
-                    .help("只影响组播公告；lanflare 的 /info 固定返回 desktop。"),
-                    Field::text_hint("transfer_device_model", "设备型号", "Windows")
-                        .help("只影响组播公告；lanflare 的 /info 固定返回 OS 名。"),
+                    ),
+                    Field::text_hint("transfer_device_model", "设备型号", "Windows"),
                     Field::text_hint(
                         "transfer_interface_whitelist",
                         "网络接口白名单",
@@ -119,10 +114,8 @@ impl Tool for Transfer {
                     Field::number_unit("transfer_peer_timeout_secs", "设备保留时长", 5, 3600, "秒")
                         .help("超过这个时间没收到公告就从设备列表移除；不是扫描超时。"),
                     Field::group("维护"),
-                    Field::button("transfer_restart", "重启传输服务")
-                        .help("改别名 / 目录 / PIN 等保存后会自动重启；此按钮用于端口被占或服务异常时手动恢复。"),
-                    Field::button("transfer_open_dir", "打开接收目录")
-                        .help("在资源管理器里打开接收目录。"),
+                    Field::button("transfer_restart", "重启传输服务"),
+                    Field::button("transfer_open_dir", "打开接收目录"),
                 ],
             ),
         ]

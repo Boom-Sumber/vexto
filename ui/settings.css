@@ -214,7 +214,7 @@ h1 {
   margin-left: var(--sp-1);
   color: var(--text-disabled);
   vertical-align: middle;
-  cursor: help;
+  cursor: default;
   border-radius: 50%;
 }
 .field-help:hover,
