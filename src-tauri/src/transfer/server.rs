@@ -4,22 +4,21 @@
 //! 本文件是 lanflare-core 0.5 的实现体。全部 lanflare 依赖都关在这里，
 //! 其余模块只看 `TransferBackend` 与 [`ServiceState`]。
 //!
-//! 会话 39（S4a）职责：
-//! - 启用 → 独立线程 + 2 worker tokio 运行时上起 HTTP 服务（TCP 53317，
-//!   HTTPS + 持久化自签证书）与 UDP 组播发现（`224.0.0.167:53317`）
-//! - announce burst 能被官方 LocalSend 收到；对方 register / 组播 announce
-//!   都会进 `PeerRegistry`，经快照给 `peers()` / 状态行
-//! - 停用 → 组播停、端口关、线程收干净（幂等）
+//! 会话 39（S4a）：绑定 53317（TCP+UDP，HTTPS + 持久化自签证书）、
+//! 组播 announce、设备发现与快照。
 //!
-//! **S4a 不做收发链路**：外部 prepare-upload 一律回 403 拒绝（接收确认 UI
-//! 与流式落盘在 S4b）。`send` / `pending_requests` / `respond` 占位报错。
+//! 会话 40（S4b）：接收确认（PrepareUpload → [`respond`]）、进度事件汇聚、
+//! 落盘由 lanflare 的 `StreamingFileWriter` 完成（128 KB 分块、边写边算
+//! SHA-256、同目录临时文件原子 rename、失败删 `.lanflare-part`），
+//! 启动时清超过 24 小时的残留临时文件（任务书 §S4.10 坑 3）。
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 use lanflare_core::config::AppConfig;
-use lanflare_core::crypto::cert::load_or_generate_identity;
+use lanflare_core::crypto::cert::{load_or_generate_identity, TlsIdentity};
 use lanflare_core::discovery::multicast::{
     start_multicast_engine, MulticastConfig, MulticastDiscoveryEvent, MulticastNodeInfo,
 };
@@ -30,7 +29,8 @@ use lanflare_core::server::{
 use lanflare_proto::discovery::{DeviceType, ProtocolType};
 use tokio::sync::{mpsc, oneshot};
 
-use super::backend::{Peer, TransferBackend, TransferConfig, TransferHandle, IncomingRequest};
+use super::backend::{IncomingFile, IncomingRequest, Peer, TransferBackend, TransferConfig, TransferHandle};
+use super::events::{ProgressView, TransferEvent};
 use crate::config;
 
 /// 服务状态快照（给设置页状态行 / IPC 的同步读取）。
@@ -44,30 +44,64 @@ pub enum ServiceState {
     Failed(String),
 }
 
+/// 一条待确认的传入请求。`decision_tx` 一发就废（oneshot），所以只能 move 出去。
+struct PendingIncoming {
+    view: IncomingRequest,
+    decision_tx: oneshot::Sender<PrepareUploadDecision>,
+}
+
 struct Globals {
     state: Mutex<ServiceState>,
     peers: Mutex<Vec<Peer>>,
+    pending: Mutex<Vec<PendingIncoming>>,
     stop_tx: Mutex<Option<oneshot::Sender<()>>>,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// 服务线程的 tokio 句柄：发送任务（send.rs）借它 spawn。
+    runtime: Mutex<Option<tokio::runtime::Handle>>,
+    /// 自签身份：发送侧的 LsClient 要用同一套证书（fingerprint 一致）。
+    identity: Mutex<Option<TlsIdentity>>,
 }
+
+static GLOBALS: OnceLock<Globals> = OnceLock::new();
+
+/// 后端 → 前端的事件出口（main.rs 在 setup 里接上 `app.emit`）。
+type EventSink = Arc<dyn Fn(TransferEvent) + Send + Sync>;
+static EVENT_SINK: Mutex<Option<EventSink>> = Mutex::new(None);
 
 fn globals() -> &'static Globals {
     GLOBALS.get_or_init(|| Globals {
         state: Mutex::new(ServiceState::Stopped),
         peers: Mutex::new(Vec::new()),
+        pending: Mutex::new(Vec::new()),
         stop_tx: Mutex::new(None),
         thread: Mutex::new(None),
+        runtime: Mutex::new(None),
+        identity: Mutex::new(None),
     })
 }
-
-static GLOBALS: OnceLock<Globals> = OnceLock::new();
 
 /// Mutex 被 panic 毒化时仍取到数据：快照类状态不值得为此整个挂掉。
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-// ---------- 对外接口（tools/transfer.rs、main.rs 用） ----------
+// ---------- 事件出口 ----------
+
+/// 注册事件出口。main.rs 在 setup 里调一次（闭包里 `app.emit("transfer:event", …)`）。
+pub fn set_event_sink(f: impl Fn(TransferEvent) + Send + Sync + 'static) {
+    *lock(&EVENT_SINK) = Some(Arc::new(f));
+}
+
+/// 发事件。没人听就丢（与 pump 同策略，只记日志）。`send.rs` 也用它。
+pub(crate) fn emit(evt: TransferEvent) {
+    let sink = lock(&EVENT_SINK).clone();
+    match sink {
+        Some(f) => f(evt),
+        None => crate::dlog::dlog("transfer: 事件被丢弃（前端未接入）"),
+    }
+}
+
+// ---------- 对外接口（tools/transfer.rs、main.rs、send.rs 用） ----------
 
 /// 当前服务状态。
 pub fn state() -> ServiceState {
@@ -77,6 +111,55 @@ pub fn state() -> ServiceState {
 /// 当前发现的设备快照。
 pub fn peers() -> Vec<Peer> {
     lock(&globals().peers).clone()
+}
+
+/// 当前待确认的传入请求（最旧在前）。
+pub fn pending_list() -> Vec<IncomingRequest> {
+    lock(&globals().pending)
+        .iter()
+        .map(|p| p.view.clone())
+        .collect()
+}
+
+/// 接受 / 拒绝一条待确认请求（S4.7.2 确认框的两个按钮）。
+///
+/// 接受 = 全部文件放行（对方一次发的是一组）；拒绝 = 403，对方收到「用户拒绝」。
+/// 找不到 session_id（已过期 / 已处理）返回 Err，前端提示即可。
+pub fn respond(session_id: &str, accept: bool) -> Result<(), String> {
+    let mut pending = lock(&globals().pending);
+    let Some(idx) = pending.iter().position(|p| p.view.session_id == session_id) else {
+        return Err("该传输请求已过期或已处理".to_string());
+    };
+    let item = pending.remove(idx);
+    drop(pending);
+    let decision = if accept {
+        PrepareUploadDecision::Accept(item.view.files.iter().map(|f| f.id.clone()).collect())
+    } else {
+        PrepareUploadDecision::Decline
+    };
+    let sender = item.view.sender_alias.clone();
+    if item.decision_tx.send(decision).is_err() {
+        crate::dlog::dlog("transfer: 应答失败（对端已断开）");
+        return Err("对方已取消传输".to_string());
+    }
+    let msg = if accept {
+        format!("已接受 {sender} 的传输")
+    } else {
+        format!("已拒绝 {sender} 的传输")
+    };
+    crate::dlog::dlog(&format!("transfer: {msg}"));
+    emit(TransferEvent::Notice { message: msg });
+    Ok(())
+}
+
+/// 服务线程的 tokio 句柄（发送任务用）。未启动时 None。
+pub(crate) fn runtime_handle() -> Option<tokio::runtime::Handle> {
+    lock(&globals().runtime).clone()
+}
+
+/// 自签身份（发送侧 LsClient 用同一套证书）。
+pub(crate) fn identity() -> Option<TlsIdentity> {
+    lock(&globals().identity).clone()
 }
 
 /// 启动传输服务。已在运行时幂等返回 Ok。
@@ -127,8 +210,12 @@ pub fn start_service(cfg: &TransferConfig) -> Result<(), String> {
 pub fn stop_service() -> Result<(), String> {
     let g = globals();
     let handle = lock(&g.thread).take();
+    // 未决请求先全部拒绝：服务都没了，不许把对方晾在 409/超时上。
+    let pending: Vec<PendingIncoming> = lock(&g.pending).drain(..).collect();
+    for p in pending {
+        let _ = p.decision_tx.send(PrepareUploadDecision::Decline);
+    }
     let Some(handle) = handle else {
-        // 没线程也要把状态收干净（启动失败后重试的场景会看到 Failed）
         *lock(&g.state) = ServiceState::Stopped;
         return Ok(());
     };
@@ -146,6 +233,8 @@ pub fn stop_service() -> Result<(), String> {
         crate::dlog::dlog("transfer: 停止超时（5 秒），放弃等待线程收尾");
     }
     *lock(&g.state) = ServiceState::Stopped;
+    *lock(&g.runtime) = None;
+    *lock(&g.identity) = None;
     lock(&g.peers).clear();
     Ok(())
 }
@@ -170,17 +259,21 @@ impl TransferBackend for LanflareBackend {
         peers()
     }
 
-    fn send(&self, _peer_id: &str, _files: &[PathBuf]) -> Result<TransferHandle, String> {
-        Err("发送功能在 S4b 实现".to_string())
+    fn send(
+        &self,
+        peer_id: &str,
+        files: &[PathBuf],
+        pin: Option<String>,
+    ) -> Result<TransferHandle, String> {
+        super::send::send_files(peer_id, files, pin)
     }
 
     fn pending_requests(&self) -> Vec<IncomingRequest> {
-        // S4a 的事件循环对 prepare-upload 即时拒绝，不会留下待确认请求。
-        Vec::new()
+        pending_list()
     }
 
-    fn respond(&self, _session_id: &str, _accept: bool) -> Result<(), String> {
-        Err("接收确认在 S4b 实现".to_string())
+    fn respond(&self, session_id: &str, accept: bool) -> Result<(), String> {
+        respond(session_id, accept)
     }
 }
 
@@ -260,7 +353,39 @@ fn service_thread(
             return;
         }
     };
+    // 发送任务（send.rs）借这个句柄 spawn，不另起运行时。
+    *lock(&globals().runtime) = Some(rt.handle().clone());
     rt.block_on(service_main(cfg, result_tx, stop_rx));
+}
+
+/// 启动时清理接收目录里超过 24 小时的临时文件（任务书 §S4.10 坑 3）。
+/// 崩溃 / 强杀会留 `*.part` / `*.lanflare-part`，不清理会越积越多。
+fn cleanup_stale_parts(dir: &std::path::Path) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let day = Duration::from_secs(24 * 3600);
+    let now = SystemTime::now();
+    let mut removed = 0u32;
+    for entry in rd.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_part = name.ends_with(".part") || name.ends_with(".lanflare-part");
+        if !is_part {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|age| age > day);
+        if stale && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        crate::dlog::dlog(&format!("transfer: 清理 {removed} 个超过 24 小时的临时文件"));
+    }
 }
 
 async fn service_main(
@@ -271,9 +396,7 @@ async fn service_main(
     let registry = PeerRegistry::new();
     registry.start_eviction_task();
 
-    // HTTPS + 持久化自签证书（用户会话 39 选定；偏离任务书 §S4.6「第一版 HTTP」
-    // 的理由见台账：lanflare 的 /info 在 HTTP 模式下指纹空、protocol 硬编码
-    // https，自相矛盾；HTTPS 模式协议字段全部自洽）。
+    // HTTPS + 持久化自签证书（ADR-035）。fingerprint = 证书 SHA-256。
     let identity = match load_or_generate_identity(&identity_path()) {
         Ok(id) => id,
         Err(e) => {
@@ -281,12 +404,14 @@ async fn service_main(
             return;
         }
     };
+    *lock(&globals().identity) = Some(identity.clone());
 
     let app_cfg = AppConfig {
         alias: cfg.alias.clone(),
         port: cfg.port,
         download_dir: cfg.receive_dir.clone(),
-        // 未开 PIN 时传 None；开了也只在 prepare-upload 校验（那条路 S4a 拒绝）。
+        // 未开 PIN 时传 None；开了由 lanflare 的 PinTracker 在 prepare-upload 校验
+        // （401 在事件之前返回，确认框只处理过了 PIN 的请求）。
         pin: if cfg.require_pin && !cfg.pin.is_empty() {
             Some(cfg.pin.clone())
         } else {
@@ -296,7 +421,11 @@ async fn service_main(
         ..Default::default()
     };
 
-    let (stx, mut srx) = mpsc::channel::<ServerTransferEvent>(64);
+    // 落盘目录建好 + 清残留临时文件（坑 3）。
+    let _ = std::fs::create_dir_all(&cfg.receive_dir);
+    cleanup_stale_parts(&cfg.receive_dir);
+
+    let (stx, mut srx) = mpsc::channel::<ServerTransferEvent>(256);
     let server = match start_server(app_cfg, Some(identity.clone()), registry.clone(), Some(stx))
         .await
     {
@@ -315,7 +444,7 @@ async fn service_main(
     let node_info = MulticastNodeInfo {
         alias: cfg.alias.clone(),
         // 任务书 §S4.3.2 的示例值。与 /info 应答（lanflare 内部写死 "2.0"）
-        // 不一致是已知偏差，官方 LocalSend 不按 version 串做兼容判断。
+        // 不一致是已知偏差（RISKS 91.），官方 LocalSend 不按 version 串做兼容判断。
         version: "2.2".to_string(),
         device_model: Some("Windows".to_string()),
         device_type: Some(DeviceType::Desktop),
@@ -391,24 +520,13 @@ async fn service_main(
                     session_id,
                     sender_ip,
                     sender_info,
+                    files,
                     decision_tx,
                     ..
                 }) => {
-                    // S4a 没有接收确认 UI：统一拒绝（403），不许会话悬挂。
-                    // S4b 改成进 pending_requests() 等用户确认。
-                    crate::dlog::dlog(&format!(
-                        "transfer: 收到 {session_id} 来自 {} ({sender_ip}) 的传输请求，S4a 统一拒绝",
-                        sender_info.alias
-                    ));
-                    if decision_tx.send(PrepareUploadDecision::Decline).is_err() {
-                        crate::dlog::dlog("transfer: 拒绝传输请求失败（对端已断开）");
-                    }
+                    on_prepare_upload(session_id, sender_ip, sender_info, files, decision_tx);
                 }
-                // 传输进度 / 完成 / 失败等事件属于 S4b 的收发链路：
-                // S4a 所有传输请求都被拒绝，正常走不到这里，来了只记日志。
-                Some(other) => {
-                    crate::dlog::dlog(&format!("transfer: 未处理事件（S4b）：{other:?}"));
-                }
+                Some(other) => on_transfer_progress(other),
                 None => break,
             },
             ev = snapshot_rx.recv() => match ev {
@@ -423,6 +541,11 @@ async fn service_main(
     }
 
     crate::dlog::dlog("transfer: 服务停止中");
+    // 未决请求全部拒绝（stop_service 已经清过一遍，这里是兜底）。
+    let leftover: Vec<PendingIncoming> = lock(&globals().pending).drain(..).collect();
+    for p in leftover {
+        let _ = p.decision_tx.send(PrepareUploadDecision::Decline);
+    }
     mhandle.stop().await;
     server.stop();
     registry.shutdown();
@@ -430,10 +553,147 @@ async fn service_main(
     crate::dlog::dlog("transfer: 服务已停止");
 }
 
+/// prepare-upload 到达：登记进确认队列并弹确认（S4a 的统一拒绝在此退役）。
+fn on_prepare_upload(
+    session_id: String,
+    sender_ip: std::net::IpAddr,
+    sender_info: lanflare_proto::discovery::RegisterDtoV2,
+    files: HashMap<String, lanflare_proto::transfer::FileDto>,
+    decision_tx: oneshot::Sender<PrepareUploadDecision>,
+) {
+    let mut views: Vec<IncomingFile> = files
+        .values()
+        .map(|f| IncomingFile {
+            id: f.id.clone(),
+            name: super::sanitize::sanitize_filename(&f.file_name),
+            size: f.size,
+        })
+        .collect();
+    views.sort_by(|a, b| a.name.cmp(&b.name));
+    let total_bytes = views.iter().map(|f| f.size).sum();
+    let view = IncomingRequest {
+        session_id: session_id.clone(),
+        sender_alias: sender_info.alias.clone(),
+        sender_ip: sender_ip.to_string(),
+        total_bytes,
+        files: views,
+    };
+    crate::dlog::dlog(&format!(
+        "transfer: 收到 {session_id} 来自 {} ({sender_ip}) 的传输请求（{} 个文件）",
+        sender_info.alias,
+        view.files.len()
+    ));
+    lock(&globals().pending).push(PendingIncoming {
+        view: view.clone(),
+        decision_tx,
+    });
+    emit(TransferEvent::Incoming { req: view });
+}
+
+/// 收方向的进度 / 终态 → 前端事件。
+fn on_transfer_progress(ev: ServerTransferEvent) {
+    match ev {
+        ServerTransferEvent::FileStarted {
+            session_id,
+            file_name,
+            total_bytes,
+            ..
+        } => {
+            emit(TransferEvent::Progress {
+                view: ProgressView {
+                    session_id,
+                    direction: "recv".into(),
+                    file_name,
+                    bytes: 0,
+                    total: total_bytes,
+                    speed_bps: None,
+                    status: "active".into(),
+                    message: None,
+                },
+            });
+        }
+        ServerTransferEvent::FileProgress {
+            session_id,
+            file_name,
+            bytes_received,
+            total_bytes,
+            ..
+        } => {
+            emit(TransferEvent::Progress {
+                view: ProgressView {
+                    session_id,
+                    direction: "recv".into(),
+                    file_name,
+                    bytes: bytes_received,
+                    total: total_bytes,
+                    speed_bps: None,
+                    status: "active".into(),
+                    message: None,
+                },
+            });
+        }
+        ServerTransferEvent::FileCompleted {
+            session_id,
+            result,
+            ..
+        } => {
+            crate::dlog::dlog(&format!(
+                "transfer: 接收完成 {} ({} 字节) → {:?}",
+                result.sha256, result.bytes_written, result.target_path
+            ));
+            emit(TransferEvent::Progress {
+                view: ProgressView {
+                    session_id,
+                    direction: "recv".into(),
+                    file_name: result
+                        .target_path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                    bytes: result.bytes_written,
+                    total: result.bytes_written,
+                    speed_bps: None,
+                    status: "done".into(),
+                    message: Some(result.target_path.to_string_lossy().to_string()),
+                },
+            });
+        }
+        ServerTransferEvent::FileFailed {
+            session_id,
+            file_id,
+            error,
+        } => {
+            crate::dlog::dlog(&format!("transfer: 接收失败 {file_id}: {error}"));
+            emit(TransferEvent::Progress {
+                view: ProgressView {
+                    session_id,
+                    direction: "recv".into(),
+                    file_name: file_id,
+                    bytes: 0,
+                    total: 0,
+                    speed_bps: None,
+                    status: "failed".into(),
+                    message: Some(error),
+                },
+            });
+        }
+        ServerTransferEvent::SessionEnded { session_id, reason } => {
+            crate::dlog::dlog(&format!("transfer: 会话 {session_id} 结束：{reason:?}"));
+        }
+        // 其余事件（注册等）在 select 里已处理；Debug 兜底不刷屏。
+        other => {
+            crate::dlog::dlog(&format!("transfer: 其他事件：{other:?}"));
+        }
+    }
+}
+
 /// 全量刷新设备快照（registry → `Globals::peers`）。
 async fn refresh_peers(registry: &PeerRegistry) {
     let mapped: Vec<Peer> = registry.get_all().await.iter().map(map_peer).collect();
     crate::dlog::dlog(&format!("transfer: 设备快照 {} 台", mapped.len()));
+    emit(TransferEvent::Peers {
+        peers: mapped.clone(),
+    });
     *lock(&globals().peers) = mapped;
 }
 
@@ -468,5 +728,50 @@ mod tests {
     #[test]
     fn identity_path_lives_next_to_config() {
         assert_eq!(identity_path().file_name().unwrap(), "transfer-identity.json");
+    }
+
+    /// respond 的决策语义：accept 全收、decline 全拒；一次性 oneshot 用后即废。
+    #[test]
+    fn respond_semantics() {
+        let (tx, mut rx) = oneshot::channel::<PrepareUploadDecision>();
+        let view = IncomingRequest {
+            session_id: "s1".into(),
+            sender_alias: "phone".into(),
+            sender_ip: "192.168.1.2".into(),
+            total_bytes: 3,
+            files: vec![
+                IncomingFile { id: "a".into(), name: "a".into(), size: 1 },
+                IncomingFile { id: "b".into(), name: "b".into(), size: 2 },
+            ],
+        };
+        lock(&globals().pending).push(PendingIncoming { view: view.clone(), decision_tx: tx });
+
+        assert!(respond("s1", true).is_ok());
+        let d = rx.try_recv().unwrap();
+        match d {
+            PrepareUploadDecision::Accept(ids) => {
+                assert_eq!(ids.len(), 2);
+                assert!(ids.contains(&"a".to_string()) && ids.contains(&"b".to_string()));
+            }
+            _ => panic!("accept 应该全收"),
+        }
+        // 已处理 → 报错
+        assert!(respond("s1", true).is_err());
+    }
+
+    #[test]
+    fn respond_decline_and_unknown_session() {
+        let (tx, mut rx) = oneshot::channel::<PrepareUploadDecision>();
+        let view = IncomingRequest {
+            session_id: "s2".into(),
+            sender_alias: "phone".into(),
+            sender_ip: "192.168.1.2".into(),
+            total_bytes: 0,
+            files: vec![],
+        };
+        lock(&globals().pending).push(PendingIncoming { view, decision_tx: tx });
+        assert!(respond("s2", false).is_ok());
+        assert!(matches!(rx.try_recv().unwrap(), PrepareUploadDecision::Decline));
+        assert!(respond("nope", true).is_err());
     }
 }

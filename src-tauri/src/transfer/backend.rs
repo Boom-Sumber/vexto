@@ -1,13 +1,11 @@
 //! `TransferBackend` trait：传输实现的契约面（ADR-010）。
 //!
-//! 任务书 §S4.2 定的形状。当前唯一实现是 `server::LanflareBackend`
-//! （lanflare-core 0.5）；将来若按 ADR-010 的触发条件换自研实现，
-//! 只需要在 `server.rs` 里换掉实现体，调用方（tools/transfer.rs、
-//! main.rs 的 IPC）不动。
+//! 任务书 §S4.2 定的形状，按实现微调过两处（会话 39 记录在案）：
+//! `stop` 等返回 `Result<(), String>`；`send` 带 `pin` 参数（对方开了 PIN 时用）。
 //!
-//! 会话 39（S4a）只落地 `start` / `stop` / `peers` 三个方法；
-//! `send` / `pending_requests` / `respond` 是 S4b 的收发链路，先占位报错，
-//! 不许在 S4a 顺手实现（铁律 1）。
+//! 当前唯一实现是 `server::LanflareBackend`（lanflare-core 0.5）；将来若按
+//! ADR-010 的触发条件换自研实现，只需要在 `server.rs` 换掉实现体，
+//! 调用方（main.rs 的 IPC 命令）不动。
 
 use std::path::PathBuf;
 
@@ -66,38 +64,32 @@ pub struct Peer {
     pub protocol: String,
 }
 
-/// S4b：一个待确认的传入文件。
-/// （S4a 只做发现，收发链路在 S4b 才构造这些类型。）
-#[allow(dead_code)]
-#[derive(Debug)]
+/// 一条待确认请求里的文件（名字已过 `sanitize`）。
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct IncomingFile {
     pub id: String,
     pub name: String,
     pub size: u64,
 }
 
-/// S4b：一条待确认的传输请求（prepare-upload）。
-#[allow(dead_code)]
-#[derive(Debug)]
+/// 一条待确认的传入请求（prepare-upload）。确认框（§S4.7.2）与
+/// `transfer:event` 的 `Incoming` 事件共用这个形状。
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct IncomingRequest {
     pub session_id: String,
     pub sender_alias: String,
     pub sender_ip: String,
+    pub total_bytes: u64,
     pub files: Vec<IncomingFile>,
 }
 
-/// S4b：一次发送的句柄（进度查询 / 取消）。
-#[allow(dead_code)]
+/// 一次发送的句柄（取消用）。
 #[derive(Debug)]
 pub struct TransferHandle {
     pub session_id: String,
 }
 
-/// 传输实现的契约。实现体在 `server.rs`。
-///
-/// `send` / `pending_requests` / `respond` 是 S4b 的收发链路，
-/// S4a 没有调用方（只做发现）——保留是契约面，不是死代码。
-#[allow(dead_code)]
+/// 传输实现的契约。实现体在 `server.rs`（接收/发现）与 `send.rs`（发送）。
 pub trait TransferBackend: Send + Sync {
     /// 启动传输服务（绑端口 + 起发现）。失败必须把原因说清楚
     /// （端口被占 / 无网络 / 组播不可用），调用方会展示给用户。
@@ -106,11 +98,17 @@ pub trait TransferBackend: Send + Sync {
     fn stop(&self) -> Result<(), String>;
     /// 当前发现的设备快照。
     fn peers(&self) -> Vec<Peer>;
-    /// 发送文件。**S4b 实现**，S4a 返回 Err。
-    fn send(&self, peer_id: &str, files: &[PathBuf]) -> Result<TransferHandle, String>;
-    /// 待确认的传入请求。**S4b 实现**，S4a 恒空（请求到达即拒绝）。
+    /// 发送文件给一台设备（`peer_id` = 指纹或 `ip:port`）。
+    /// `pin`：对方开了 PIN 时传；异步跑，进度走 `transfer:event`。
+    fn send(
+        &self,
+        peer_id: &str,
+        files: &[PathBuf],
+        pin: Option<String>,
+    ) -> Result<TransferHandle, String>;
+    /// 待确认的传入请求（最旧在前）。
     fn pending_requests(&self) -> Vec<IncomingRequest>;
-    /// 接受 / 拒绝一条传入请求。**S4b 实现**，S4a 返回 Err。
+    /// 接受 / 拒绝一条传入请求。
     fn respond(&self, session_id: &str, accept: bool) -> Result<(), String>;
 }
 

@@ -22,6 +22,11 @@
 
   <div class="app">
     <aside class="side">
+      <!-- 视图切换：下载任务列表 / 局域网互传（S4b）。互传停用时隐藏「互传」。 -->
+      <div class="view-switch">
+        <button class="vbtn active" type="button" data-view="download">下载</button>
+        <button class="vbtn" type="button" data-view="transfer">互传</button>
+      </div>
       <div class="side-title">分类</div>
       <nav class="cats">
         <button class="cat active" type="button" data-cat="all">全部 <span id="c-all">0</span></button>
@@ -52,6 +57,43 @@
         <span id="global" class="num">↓ 0 B/s　↑ 0 B/s</span>
         <span id="counts" class="num">0 个任务 · 0 个活动</span>
       </footer>
+    </div>
+
+    <!-- 局域网互传视图（S4b）：设备列表 + 待确认请求 + 传输进度 -->
+    <div id="transferView" class="main hidden">
+      <header class="head">
+        <h1>局域网互传</h1>
+        <div class="tools">
+          <button id="tfRefresh" class="btn" type="button">刷新</button>
+          <button id="tfPick" class="btn btn-primary" type="button">选择文件发送</button>
+        </div>
+      </header>
+
+      <div id="tfDropBar" class="tf-dropbar hidden">
+        <span id="tfDropInfo"></span>
+        <select id="tfDropTarget" class="input"></select>
+        <button id="tfDropSend" class="btn btn-primary" type="button">发送</button>
+        <button id="tfDropClear" class="btn" type="button">取消</button>
+      </div>
+
+      <div id="tfNotice" class="notice hidden"></div>
+
+      <section class="tf-sec">
+        <h2 class="tf-h">设备</h2>
+        <div id="peerList" class="tf-peers"></div>
+        <div id="peerEmpty" class="empty">没有发现设备。确认对方也开着 LocalSend / LightBox，且在同一 WiFi。</div>
+      </section>
+
+      <section class="tf-sec" id="tfReqSec">
+        <h2 class="tf-h">待确认的接收请求</h2>
+        <div id="reqList" class="tf-reqs"></div>
+      </section>
+
+      <section class="tf-sec">
+        <h2 class="tf-h">传输进度</h2>
+        <div id="tfList" class="tf-rows"></div>
+        <div id="tfEmpty" class="empty">还没有传输。</div>
+      </section>
     </div>
   </div>
 </div>

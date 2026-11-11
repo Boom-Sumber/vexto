@@ -331,3 +331,278 @@ for (const b of document.querySelectorAll("button.cat")) {
   // 所以不需要前端额外轮询文件系统。
   window.TitleBar?.reveal?.();
 })();
+
+// ── 局域网互传（S4b）────────────────────────────────────────────────────
+//
+// 数据面：transfer_peers / transfer_pending 拉全量，transfer:event 推增量
+// （风险 71：事件只是通知，丢了不影响正确性）。发送走 transfer_pick_files
+// （系统对话框）或拖放（transfer:dropped → transfer_take_drop）。
+
+const tfView = {
+  peers: [],
+  rows: new Map(),   // `${sessionId}|${fileName}` → row 元素
+  dropPaths: [],
+};
+
+const downloadMain = document.querySelector(".app > .main");
+
+function setView(v) {
+  tfView.view = v;
+  const isT = v === "transfer";
+  for (const b of document.querySelectorAll(".vbtn")) {
+    b.classList.toggle("active", b.dataset.view === v);
+  }
+  downloadMain.classList.toggle("hidden", isT);
+  document.querySelector(".cats").style.display = isT ? "none" : "";
+  document.querySelector(".side-title").style.display = isT ? "none" : "";
+  el("transferView").classList.toggle("hidden", !isT);
+  if (isT) {
+    refreshPeers();
+    refreshPending();
+  }
+}
+
+function tfNotice(msg, danger) {
+  const n = el("tfNotice");
+  if (!msg) { n.classList.add("hidden"); return; }
+  n.textContent = msg;
+  n.classList.remove("hidden");
+  n.classList.toggle("notice-danger", !!danger);
+}
+
+function renderPeers() {
+  const box = el("peerList");
+  box.innerHTML = "";
+  el("peerEmpty").classList.toggle("hidden", tfView.peers.length > 0);
+  for (const p of tfView.peers) {
+    const d = document.createElement("div");
+    d.className = "tf-peer";
+    const icon = p.device_type === "mobile" ? "📱" : p.device_type === "desktop" ? "💻" : "🖥️";
+    d.innerHTML =
+      '<span class="ic"></span><div class="meta"><div class="name"></div>' +
+      '<div class="sub"></div></div>' +
+      '<button class="btn" type="button">发送文件</button>';
+    d.querySelector(".ic").textContent = icon;
+    d.querySelector(".name").textContent = p.alias + (p.device_model ? " · " + p.device_model : "");
+    d.querySelector(".sub").textContent = p.ip + ":" + p.port + " · " + (p.protocol || "http");
+    d.querySelector("button").addEventListener("click", () => pickAndSend(p));
+    box.appendChild(d);
+  }
+  // 拖放目标下拉跟着刷新
+  const sel = el("tfDropTarget");
+  sel.innerHTML = "";
+  for (const p of tfView.peers) {
+    const o = document.createElement("option");
+    o.value = p.fingerprint || (p.ip + ":" + p.port);
+    o.textContent = p.alias + " (" + p.ip + ")";
+    sel.appendChild(o);
+  }
+}
+
+async function refreshPeers() {
+  try {
+    tfView.peers = (await invoke("transfer_peers")) || [];
+    renderPeers();
+  } catch (e) {
+    tfNotice("读取设备列表失败：" + errText(e), true);
+  }
+}
+
+function fmtTfBytes(n) { return fmtBytes(n); }
+
+function renderPending() {
+  const box = el("reqList");
+  box.innerHTML = "";
+  for (const r of tfView.pending || []) {
+    const d = document.createElement("div");
+    d.className = "tf-req";
+    const names = r.files.map((f) => f.name).join("、");
+    d.innerHTML =
+      '<div class="rhead"><span class="who"></span><span class="num"></span></div>' +
+      '<div class="rfiles"></div>' +
+      '<div class="racts"><button class="btn" type="button">拒绝</button>' +
+      '<button class="btn btn-primary" type="button">接受</button></div>';
+    d.querySelector(".who").textContent = r.sender_alias + " (" + r.sender_ip + ")";
+    d.querySelector(".num").textContent = fmtTfBytes(r.total_bytes);
+    d.querySelector(".rfiles").textContent = names;
+    const [rej, acc] = d.querySelectorAll("button");
+    rej.addEventListener("click", () => respond(r.session_id, false));
+    acc.addEventListener("click", () => respond(r.session_id, true));
+    box.appendChild(d);
+  }
+}
+
+async function refreshPending() {
+  try {
+    tfView.pending = (await invoke("transfer_pending")) || [];
+    renderPending();
+  } catch (e) {
+    /* 确认窗是主路径，这里失败只记提示 */
+    tfNotice("读取待确认请求失败：" + errText(e), true);
+  }
+}
+
+async function respond(sessionId, accept) {
+  try {
+    await invoke("transfer_respond", { sessionId, accept });
+    await refreshPending();
+  } catch (e) {
+    tfNotice(errText(e), true);
+  }
+}
+
+function upsertRow(view) {
+  const key = view.session_id + "|" + view.file_name;
+  let row = tfView.rows.get(key);
+  if (!row) {
+    row = document.createElement("div");
+    row.className = "tf-row";
+    row.innerHTML =
+      '<div class="line"><span class="fname"></span><span class="fstat"></span></div>' +
+      '<div class="bar"><i></i></div>';
+    el("tfList").appendChild(row);
+    tfView.rows.set(key, row);
+    el("tfEmpty").classList.add("hidden");
+  }
+  row.classList.toggle("done", view.status === "done");
+  row.classList.toggle("failed", view.status === "failed" || view.status === "cancelled");
+  row.querySelector(".fname").textContent =
+    (view.direction === "send" ? "↑ " : "↓ ") + (view.file_name || "(会话)");
+  const pct = view.total > 0 ? Math.min(100, Math.round((view.bytes / view.total) * 100)) : (view.status === "done" ? 100 : 0);
+  let stat = pct + "%";
+  if (view.speed_bps) stat += " · " + fmtBytes(view.speed_bps) + "/s";
+  if (view.status === "preparing") stat = view.message || "准备中…";
+  else if (view.status === "done" && view.message) stat = "完成 · " + view.message;
+  else if (view.status === "failed") stat = "失败 · " + (view.message || "");
+  else if (view.status === "cancelled") stat = "已取消";
+  row.querySelector(".fstat").textContent = stat;
+  row.querySelector(".bar i").style.width = pct + "%";
+  // 发送中的行给一个取消按钮
+  if (view.direction === "send" && view.status === "active") {
+    if (!row.querySelector("[data-cancel]")) {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.dataset.cancel = "1";
+      b.textContent = "取消";
+      b.addEventListener("click", () =>
+        invoke("transfer_cancel_send", { sessionId: view.session_id }).catch((e) =>
+          tfNotice(errText(e), true)
+        )
+      );
+      row.querySelector(".line").appendChild(b);
+    }
+  } else {
+    const b = row.querySelector("[data-cancel]");
+    if (b) b.remove();
+  }
+}
+
+async function pickAndSend(peer) {
+  try {
+    const paths = await invoke("transfer_pick_files");
+    if (!paths || !paths.length) return;
+    await doSend(peer.fingerprint || (peer.ip + ":" + peer.port), paths, peer);
+  } catch (e) {
+    tfNotice("发送失败：" + errText(e), true);
+  }
+}
+
+async function doSend(target, paths, peer) {
+  if (!paths || !paths.length) return;
+  const pin = peer && peer.pin ? peer.pin : undefined;
+  try {
+    tfNotice("正在发送 " + paths.length + " 个文件…");
+    await invoke("transfer_send", { target, paths, pin });
+  } catch (e) {
+    // 对方开了 PIN 时这里会失败——提示用户在对方处关闭 PIN 或线下告知
+    tfNotice("发送失败：" + errText(e), true);
+  }
+}
+
+el("tfRefresh").addEventListener("click", () => { refreshPeers(); refreshPending(); });
+el("tfPick").addEventListener("click", async () => {
+  if (!tfView.peers.length) { tfNotice("没有发现设备，先点「刷新」", true); return; }
+  try {
+    const paths = await invoke("transfer_pick_files");
+    if (!paths || !paths.length) return;
+    if (tfView.peers.length === 1) {
+      const p = tfView.peers[0];
+      await doSend(p.fingerprint || (p.ip + ":" + p.port), paths, p);
+    } else {
+      // 多设备：落到目标选择条，用户挑一台再发
+      tfView.dropPaths.push(...paths);
+      showDropBar();
+    }
+  } catch (e) {
+    tfNotice("发送失败：" + errText(e), true);
+  }
+});
+
+// 拖放文件：收集 → 选目标 → 发送
+function showDropBar() {
+  el("tfDropBar").classList.remove("hidden");
+  el("tfDropInfo").textContent = "将发送 " + tfView.dropPaths.length + " 个文件到：";
+}
+el("tfDropClear").addEventListener("click", () => {
+  tfView.dropPaths = [];
+  el("tfDropBar").classList.add("hidden");
+});
+el("tfDropSend").addEventListener("click", () => {
+  const target = el("tfDropTarget").value;
+  if (!target) { tfNotice("没有目标设备", true); return; }
+  const paths = tfView.dropPaths.slice();
+  tfView.dropPaths = [];
+  el("tfDropBar").classList.add("hidden");
+  doSend(target, paths);
+});
+
+for (const b of document.querySelectorAll(".vbtn")) {
+  b.addEventListener("click", () => setView(b.dataset.view));
+}
+
+(async function initTransfer() {
+  // 模块停用时隐藏「互传」入口（S4.8）
+  try {
+    const tools = await invoke("list_tools");
+    const t = (tools || []).find((x) => x.id === "transfer");
+    if (t && !t.enabled) {
+      for (const b of document.querySelectorAll('.vbtn[data-view="transfer"]')) {
+        b.style.display = "none";
+      }
+    }
+  } catch (e) { /* 拿不到就照常显示 */ }
+
+  // 托盘「局域网互传…」预选视图
+  try {
+    const v = await invoke("transfer_take_view");
+    if (v === "transfer") setView("transfer");
+  } catch (e) { /* 无预选 */ }
+
+  try {
+    await listen("transfer:event", (ev) => {
+      const e = ev.payload || {};
+      if (e.type === "peers") {
+        tfView.peers = e.peers || [];
+        renderPeers();
+      } else if (e.type === "incoming") {
+        refreshPending();
+      } else if (e.type === "progress") {
+        upsertRow(e.view);
+      } else if (e.type === "notice") {
+        tfNotice(e.message, false);
+      }
+    });
+    await listen("transfer:dropped", async () => {
+      const paths = await invoke("transfer_take_drop");
+      if (!paths || !paths.length) return;
+      if (tfView.view !== "transfer") setView("transfer");
+      tfView.dropPaths.push(...paths);
+      showDropBar();
+    });
+    await listen("main:switch-view", (ev) => {
+      if (ev.payload === "transfer") setView("transfer");
+    });
+  } catch (e) {
+    tfNotice("订阅传输事件失败：" + errText(e), true);
+  }
+})();

@@ -125,3 +125,62 @@ mod tests {
         assert!(delete(r"C:\definitely\not\here\nope.bin", false).is_ok());
     }
 }
+
+/// 系统原生「打开文件」对话框（多选）。S4b 发送文件用。
+///
+/// 走 `GetOpenFileNameW` + `OFN_ALLOWMULTISELECT|OFN_EXPLORER`：不引
+/// tauri-plugin-dialog（少一个依赖），`windows` crate 本来就在树上。
+/// 不设 owner 句柄——从工作线程调用也安全（模态到桌面）。
+pub fn pick_files() -> Result<Vec<String>, String> {
+    use windows::core::{PCWSTR, PWSTR};
+    // windows 0.62 里 commdlg 在 `UI::Controls::Dialogs`（不在 Shell）。
+    use windows::Win32::UI::Controls::Dialogs::{
+        GetOpenFileNameW, OPENFILENAMEW, OFN_ALLOWMULTISELECT, OFN_EXPLORER, OFN_FILEMUSTEXIST,
+        OFN_PATHMUSTEXIST,
+    };
+
+    // 多选结果是「目录\0文件\0文件\0\0」，64K 缓冲够几千个文件。
+    let mut buffer = vec![0u16; 64 * 1024];
+    // 过滤串：显示名\0模式\0，以两个 \0 结束。
+    let filter: Vec<u16> = "所有文件\0*.*\0\0".encode_utf16().collect();
+
+    let mut ofn = OPENFILENAMEW {
+        lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
+        lpstrFile: PWSTR(buffer.as_mut_ptr()),
+        nMaxFile: buffer.len() as u32,
+        lpstrFilter: PCWSTR(filter.as_ptr()),
+        Flags: OFN_ALLOWMULTISELECT
+            | OFN_EXPLORER
+            | OFN_FILEMUSTEXIST
+            | OFN_PATHMUSTEXIST,
+        ..Default::default()
+    };
+
+    let ok = unsafe { GetOpenFileNameW(&mut ofn) };
+    if !ok.as_bool() {
+        // 用户取消也是常态，不报错——返回空列表让调用方当「没选」处理。
+        return Ok(Vec::new());
+    }
+
+    // 解析双 \0 结尾的缓冲：单选 = 一个完整路径；多选 = 目录 + 文件名列表。
+    let strings: Vec<String> = buffer
+        .split(|&c| c == 0)
+        .filter(|s| !s.is_empty())
+        .map(String::from_utf16_lossy)
+        .collect();
+    match strings.len() {
+        0 => Ok(Vec::new()),
+        1 => Ok(strings),
+        _ => {
+            let dir = &strings[0];
+            Ok(strings[1..]
+                .iter()
+                .map(|f| {
+                    let mut p = std::path::PathBuf::from(dir);
+                    p.push(f);
+                    p.to_string_lossy().to_string()
+                })
+                .collect())
+        }
+    }
+}

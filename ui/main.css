@@ -226,3 +226,112 @@
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── 视图切换（下载 / 互传，S4b）───────────────────────────────────────── */
+
+.view-switch {
+  display: flex;
+  gap: 4px;
+  padding: var(--sp-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.vbtn {
+  flex: 1;
+  height: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.vbtn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* ── 局域网互传视图 ───────────────────────────────────────────────────── */
+
+#transferView {
+  overflow: auto;
+  padding: 0 var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.tf-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.tf-h {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.tf-peers { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.tf-peer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+}
+
+.tf-peer .meta { flex: 1; min-width: 0; }
+.tf-peer .name { font-size: var(--fs-sm); color: var(--text-primary); }
+.tf-peer .sub { font-size: var(--fs-xs); color: var(--text-muted); }
+
+.tf-req {
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  padding: var(--sp-2) var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.tf-req .rhead { display: flex; justify-content: space-between; font-size: var(--fs-sm); color: var(--text-primary); }
+.tf-req .rfiles { font-size: var(--fs-xs); color: var(--text-secondary); }
+.tf-req .racts { display: flex; gap: var(--sp-2); justify-content: flex-end; }
+
+.tf-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--fs-xs);
+}
+
+.tf-row .line { display: flex; justify-content: space-between; gap: var(--sp-2); }
+.tf-row .fname { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-row .fstat { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tf-row .bar { height: 4px; border-radius: 2px; background: var(--bg-input); overflow: hidden; }
+.tf-row .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width var(--dur-fast) linear; }
+.tf-row.failed .bar i { background: var(--c-red-500, #f87171); }
+.tf-row.done .bar i { width: 100%; }
+
+.tf-dropbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+}
+
+.tf-dropbar .input { max-width: 180px; }
+
+#transferView.hidden { display: none; }

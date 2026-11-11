@@ -2443,6 +2443,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tokio",
+ "tokio-util",
  "uiautomation",
  "whatlang",
  "windows",

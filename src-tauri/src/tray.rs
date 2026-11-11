@@ -40,12 +40,20 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate_item.clone());
     items.push(Box::new(translate_item));
 
-    // 「查看下载…」是固定项，不是注册表里的工具项：`tool:download` 按 ADR-015
-    // 仍然负责打开设置页的下载分区，主窗口单独给一个入口，两不冲突。
+    // 「查看下载…」与「局域网互传…」是固定项，不是注册表里的工具项：
+    // `tool:download` / `tool:transfer` 按 ADR-015 仍然负责打开设置页对应分区，
+    // 主窗口 / 互传视图单独给入口，两不冲突。
     items.push(Box::new(MenuItem::with_id(
         app,
         "downloads",
         "查看下载…",
+        true,
+        None::<&str>,
+    )?));
+    items.push(Box::new(MenuItem::with_id(
+        app,
+        "transfer",
+        "局域网互传…",
         true,
         None::<&str>,
     )?));
@@ -97,6 +105,7 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
             match id.as_str() {
                 "translate" => crate::translate_selection(app.clone()),
                 "downloads" => crate::open_download_window(app),
+                "transfer" => crate::open_transfer_window(app),
                 "settings" => crate::open_settings(app),
                 "quit" => {
                     // 顺序不能反：先置位、再 exit，否则 prevent_exit 会把这次退出也挡掉。

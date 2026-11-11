@@ -22,6 +22,8 @@ pub const SETTINGS_LABEL: &str = "settings";
 pub const MAIN_LABEL: &str = "main";
 /// 新建下载任务窗口。列表页点「+」时与主窗口**同时存在**。
 pub const NEW_TASK_LABEL: &str = "new-task";
+/// 收到传输请求的确认小窗（S4b，§S4.7.2）。
+pub const CONFIRM_LABEL: &str = "transfer_confirm";
 
 /// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
 /// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
@@ -58,6 +60,31 @@ impl NewTaskPrefill {
 /// 窗口再被聚焦不该覆盖回原链接。用 `Vec` 而不是单个值，是因为浏览器里连续
 /// 点两个下载时，两条都要进同一个新建页（用户选「合并进同一窗口」）。
 static NEW_TASK_PREFILL: std::sync::Mutex<Vec<NewTaskPrefill>> = std::sync::Mutex::new(Vec::new());
+
+/// 主窗口打开后要停在哪个视图（`"transfer"` = 互传页）。托盘「局域网互传…」
+/// 用。同样用「取走」语义：只影响第一次加载，之后用户切走不拉回。
+static PENDING_MAIN_VIEW: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 前端取走待显示的主窗口视图（可能为 `None`）。
+pub fn take_pending_main_view() -> Option<String> {
+    PENDING_MAIN_VIEW
+        .lock()
+        .ok()
+        .and_then(|mut g| g.take())
+}
+
+/// 拖放到主窗口的文件路径（S4b 发送入口之一，§PRD F4.4）。事件只是通知，
+/// 路径用「取走」语义交给前端（风险 71 同款）。
+static TRANSFER_DROP: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// 前端取走拖放进来的文件路径。
+pub fn take_transfer_drop() -> Vec<String> {
+    TRANSFER_DROP
+        .lock()
+        .ok()
+        .map(|mut g| g.drain(..).collect())
+        .unwrap_or_default()
+}
 
 /// 卡片（可见部分）的左右内边距，即 CSS `#card` 的 `margin` 左右值。
 ///
@@ -688,14 +715,91 @@ pub fn open_main_window(app: &AppHandle) {
             // 落在其它窗口后面，用户以为「没反应」（会话 14 实机取证）。
             // 只有已存在的分支会走上面的 set_focus，新建分支必须自己补。
             let _ = win.set_focus();
-            win.on_window_event(|ev| {
-                if matches!(ev, tauri::WindowEvent::Destroyed) {
+            let emit_win = win.clone();
+            win.on_window_event(move |ev| match ev {
+                // 拖放文件进来 = 发送到局域网设备（PRD F4.4）。路径存队列、
+                // 发通知，前端只在互传视图里取（下载视图拖放静默丢弃）。
+                tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) => {
+                    let list: Vec<String> = paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect();
+                    if !list.is_empty() {
+                        if let Ok(mut g) = TRANSFER_DROP.lock() {
+                            g.extend(list);
+                        }
+                        let _ = emit_win.emit("transfer:dropped", ());
+                    }
+                }
+                tauri::WindowEvent::Destroyed => {
                     crate::dlog::dlog("popup: 下载主窗口已销毁，1.2s 后收缩工作集");
                     crate::mem::trim_soon(1200);
                 }
+                _ => {}
             });
         }
         Err(e) => crate::dlog::dlog(&format!("create main window failed: {e}")),
+    }
+}
+
+/// 打开主窗口并预选视图（`view` 目前只有 `"transfer"`）。
+pub fn open_main_window_with_view(app: &AppHandle, view: &str) {
+    if let Ok(mut g) = PENDING_MAIN_VIEW.lock() {
+        *g = Some(view.to_string());
+    }
+    // 已有窗口时页面已加载，预选不会自动生效——发个通知让前端自己切。
+    if let Some(w) = app.get_webview_window(MAIN_LABEL) {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        let _ = w.emit("main:switch-view", view);
+        return;
+    }
+    open_main_window(app);
+}
+
+/// 打开「收到传输请求」确认小窗（§S4.7.2）。已存在则刷新内容并聚焦。
+///
+/// 可以抢焦点（用户需要点按钮），但不阻塞主程序。数据由前端加载时调
+/// `transfer_take_confirm` 拉（事件只是叫醒）。
+pub fn open_transfer_confirm(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(CONFIRM_LABEL) {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        // 页面已加载时重拉一遍数据（可能有多条待确认）。
+        let _ = w.eval("window.__confirmReload && window.__confirmReload()");
+        return;
+    }
+
+    let r = WebviewWindowBuilder::new(
+        app,
+        CONFIRM_LABEL,
+        WebviewUrl::App("transfer_confirm.html".into()),
+    )
+    .title("收到传输请求")
+    .decorations(false)
+    .shadow(true)
+    .inner_size(380.0, 420.0)
+    .min_inner_size(380.0, 320.0)
+    .resizable(true)
+    .center()
+    // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
+    .visible(false)
+    .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
+    .additional_browser_args(WEBVIEW_ARGS)
+    .build();
+
+    match r {
+        Ok(win) => {
+            let _ = win.set_focus();
+            win.on_window_event(|ev| {
+                if matches!(ev, tauri::WindowEvent::Destroyed) {
+                    crate::dlog::dlog("popup: 传输确认窗已销毁");
+                }
+            });
+        }
+        Err(e) => crate::dlog::dlog(&format!("create transfer confirm failed: {e}")),
     }
 }
 

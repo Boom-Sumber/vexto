@@ -42,6 +42,8 @@ lanflare-proto = "0.5"
 # transfer/server.rs 自建一个 2 worker 的 tokio 运行时跑发现与 HTTP 服务，
 # 不占用 Tauri 的 async_runtime；lanflare-core 内部就是 tokio 生态。
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+# 发送侧取消令牌（TransferOptions::cancel_token 的类型），lanflare 同款。
+tokio-util = "0.7"
 
 # 本地语种检测（S2.5 用）。MIT 许可（不是 GPL，符合 07-LICENSING）。
 # 选它而不是 lingua：whatlang 无外部数据文件、编译产物小，lingua 会带 ~50 MB 语料。
@@ -63,6 +65,8 @@ windows = { version = "0.62", features = [
     # SHGetKnownFolderPath(FOLDERID_Downloads)：取系统真实的「下载」文件夹。
     # 不能直接拼 %USERPROFILE%\Downloads —— 用户可能把下载文件夹重定向到 D 盘。
     "Win32_UI_Shell",
+    # GetOpenFileNameW：发送文件的系统文件选择框（S4b），commdlg 在 Controls::Dialogs。
+    "Win32_UI_Controls_Dialogs",
     # GetDiskFreeSpaceExW：新建任务页显示「可用 153.3 GB」。
     "Win32_Storage_FileSystem",
     # RegGetValueW：读 WinINET 的系统代理设置（代理模式选「跟随系统」时用）。

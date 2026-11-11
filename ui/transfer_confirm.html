@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>收到传输请求</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="theme-dark.css" />
+<link rel="stylesheet" href="base.css" />
+<style>
+  .body { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .from { color: var(--text-secondary); font-size: 12px; }
+  .from b { color: var(--text-primary); font-size: 14px; }
+  .files { flex: 1; overflow: auto; border: 1px solid var(--border-default); border-radius: 8px; padding: 6px 10px; }
+  .files .f { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border-subtle); }
+  .files .f:last-child { border-bottom: none; }
+  .files .f .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .total { font-size: 12px; color: var(--text-secondary); text-align: right; }
+  .acts { display: flex; gap: 8px; justify-content: flex-end; }
+  .empty { color: var(--text-muted); text-align: center; padding: 24px 0; font-size: 12px; }
+</style>
+</head>
+<body data-theme="dark">
+<div class="win">
+  <!-- 固定尺寸对话框：只留关闭（风险 64：不装缩放热区） -->
+  <header class="tb" data-tauri-drag-region>
+    <span class="tb-title" data-tauri-drag-region>收到传输请求</span>
+    <div class="tb-actions">
+      <button class="tb-btn close" type="button" data-win="close"></button>
+    </div>
+  </header>
+
+  <main class="body">
+    <div id="empty" class="empty hidden">没有待确认的传输请求。</div>
+    <div id="content">
+      <div class="from">来自：<b id="sender">—</b> <span id="ip"></span></div>
+      <div id="files" class="files"></div>
+      <div id="total" class="total"></div>
+    </div>
+    <div id="error" class="notice notice-danger error hidden"></div>
+    <div class="acts">
+      <button id="reject" class="btn" type="button">拒绝</button>
+      <button id="accept" class="btn btn-primary" type="button">接受</button>
+    </div>
+  </main>
+</div>
+
+<script src="titlebar.js"></script>
+<script>
+const invoke = window.__TAURI__.core.invoke;
+const el = (id) => document.getElementById(id);
+let current = null;
+
+function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  const u = ["KB", "MB", "GB", "TB"];
+  let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return n.toFixed(1) + " " + u[i];
+}
+
+function render(req) {
+  current = req;
+  if (!req) {
+    el("empty").classList.remove("hidden");
+    el("content").classList.add("hidden");
+    el("accept").disabled = true;
+    el("reject").disabled = true;
+    return;
+  }
+  el("empty").classList.add("hidden");
+  el("content").classList.remove("hidden");
+  el("accept").disabled = false;
+  el("reject").disabled = false;
+  el("sender").textContent = req.sender_alias || "未知设备";
+  el("ip").textContent = "(" + req.sender_ip + ")";
+  const box = el("files");
+  box.innerHTML = "";
+  for (const f of req.files) {
+    const d = document.createElement("div");
+    d.className = "f";
+    d.innerHTML = '<span class="n"></span><span class="num">' + fmtBytes(f.size) + "</span>";
+    d.querySelector(".n").textContent = f.name;
+    box.appendChild(d);
+  }
+  el("total").textContent = "共 " + req.files.length + " 个文件，" + fmtBytes(req.total_bytes);
+}
+
+async function reload() {
+  try {
+    render(await invoke("transfer_take_confirm"));
+  } catch (e) {
+    el("error").textContent = String(e);
+    el("error").classList.remove("hidden");
+  }
+}
+
+async function decide(accept) {
+  if (!current) return;
+  el("accept").disabled = true;
+  el("reject").disabled = true;
+  try {
+    await invoke("transfer_respond", { sessionId: current.session_id, accept });
+    // 可能还有下一条：刷新取下一条，没有就关窗。
+    const next = await invoke("transfer_take_confirm");
+    if (next) {
+      render(next);
+    } else {
+      invoke("window_action", { action: "close" }).catch(() => {});
+    }
+  } catch (e) {
+    el("error").textContent = String(e);
+    el("error").classList.remove("hidden");
+    el("accept").disabled = false;
+    el("reject").disabled = false;
+  }
+}
+
+el("accept").addEventListener("click", () => decide(true));
+el("reject").addEventListener("click", () => decide(false));
+
+// 窗口已存在又被叫醒时，后端会 eval 调它重拉数据。
+window.__confirmReload = reload;
+
+reload().finally(() => {
+  window.__TAURI__.core.invoke("window_ready").catch(() => {});
+});
+</script>
+<script>TitleBar.mount({ resize: false, maximize: false });</script>
+</body>
+</html>

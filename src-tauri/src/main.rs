@@ -103,6 +103,12 @@ pub fn open_download_window(app: &AppHandle) {
     let _ = app.run_on_main_thread(move || popup::open_main_window(&a));
 }
 
+/// 打开主窗口并停在互传视图（托盘「局域网互传…」）。
+pub fn open_transfer_window(app: &AppHandle) {
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || popup::open_main_window_with_view(&a, "transfer"));
+}
+
 fn show_popup(app: &AppHandle, payload: Value) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || popup::show(&a, payload));
@@ -1547,7 +1553,7 @@ fn window_action(window: tauri::WebviewWindow, action: String) -> Result<(), Str
     }
 }
 
-// ---------- 命令：局域网互传（S4a）----------
+// ---------- 命令：局域网互传（S4a/S4b）----------
 
 /// 设备列表数据接口：S4a 的「设备列表有数据可查」。
 /// 正式列表 UI 在 S4b，这里先把数据面放出来（设置页状态行也读同一份快照）。
@@ -1556,9 +1562,62 @@ fn transfer_peers() -> Vec<transfer::Peer> {
     transfer::backend().peers()
 }
 
+/// 待确认的传入请求（最旧在前）。确认窗与互传视图都从这里拉。
+#[tauri::command]
+fn transfer_pending() -> Vec<transfer::IncomingRequest> {
+    transfer::backend().pending_requests()
+}
+
+/// 接受 / 拒绝一条传入请求（§S4.7.2 确认框的两个按钮）。
+#[tauri::command]
+fn transfer_respond(session_id: String, accept: bool) -> Result<(), String> {
+    transfer::backend().respond(&session_id, accept)
+}
+
+/// 发送文件给一台设备。`target` = 设备指纹或 `ip:port`；异步跑，进度走事件。
+#[tauri::command]
+fn transfer_send(target: String, paths: Vec<String>, pin: Option<String>) -> Result<String, String> {
+    let files: Vec<std::path::PathBuf> = paths.into_iter().map(Into::into).collect();
+    transfer::backend()
+        .send(&target, &files, pin)
+        .map(|h| h.session_id)
+}
+
+/// 取消一次发送（接收侧取消是对方在自己界面上点）。
+#[tauri::command]
+fn transfer_cancel_send(session_id: String) -> Result<(), String> {
+    transfer::send::cancel_send(&session_id)
+}
+
+/// 系统文件选择对话框（多选）。发送入口。
+#[tauri::command]
+fn transfer_pick_files() -> Result<Vec<String>, String> {
+    fileops::pick_files()
+}
+
+/// 确认窗拉数据：取最早一条待确认请求。
+#[tauri::command]
+fn transfer_take_confirm() -> Option<transfer::IncomingRequest> {
+    transfer::server::pending_list().into_iter().next()
+}
+
+/// 主窗口加载时取预选视图（托盘「局域网互传…」用）。
+#[tauri::command]
+fn transfer_take_view() -> Option<String> {
+    popup::take_pending_main_view()
+}
+
+/// 取走拖放到主窗口的文件路径（事件只是叫醒，数据用「取走」语义）。
+#[tauri::command]
+fn transfer_take_drop() -> Vec<String> {
+    popup::take_transfer_drop()
+}
+
 // ---------- 入口 ----------
 
 fn main() {
+    // 必须在任何 HTTP 客户端构建之前：局域网传输目标豁免代理（风险 55/62 同类坑）。
+    transfer::send::ensure_lan_no_proxy();
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
@@ -1605,8 +1664,16 @@ fn main() {
             open_download_dir,
             download_probe,
             disk_free,
-            // 局域网互传（S4a：设备列表数据接口）
+            // 局域网互传（S4a 设备列表 + S4b 收发）
             transfer_peers,
+            transfer_pending,
+            transfer_respond,
+            transfer_send,
+            transfer_cancel_send,
+            transfer_pick_files,
+            transfer_take_confirm,
+            transfer_take_view,
+            transfer_take_drop,
             open_path,
             take_new_task_prefill,
             new_task_done,
@@ -1691,6 +1758,32 @@ fn main() {
                     Ok(()) => dlog::dlog("setup: 传输服务已启动"),
                     Err(e) => dlog::dlog(&format!("setup: 传输服务启动失败：{e}")),
                 }
+            }
+
+            // 传输事件出口：一律转发给前端（transfer:event）；
+            // 收到传输请求时另开确认小窗（S4b，§S4.7.2）。
+            {
+                let for_emit = handle.clone();
+                transfer::server::set_event_sink(move |evt| {
+                    if matches!(
+                        evt,
+                        transfer::events::TransferEvent::Incoming { .. }
+                    ) {
+                        // 建窗必须在主线程，且避开 IPC 回调同 tick（风险 58）：
+                        // 这里本来就在传输服务线程，跨个短 sleep 再丢回主线程。
+                        let h = for_emit.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(300));
+                            let h2 = h.clone();
+                            let _ = h.run_on_main_thread(move || {
+                                popup::open_transfer_confirm(&h2);
+                            });
+                        });
+                    }
+                    if let Err(e) = for_emit.emit("transfer:event", &evt) {
+                        dlog::dlog(&format!("transfer: 事件推送失败：{e}"));
+                    }
+                });
             }
 
             dlog::dlog("setup: 托盘已创建");
