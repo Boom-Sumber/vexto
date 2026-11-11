@@ -510,7 +510,9 @@ function fieldList(f) {
     sums.set(it.id, sum);
     head.append(sum);
 
-    // 「测试」在「删除」左侧：先用这套配置实测一句，不写入配置
+    // 「测试」在「删除」左侧：先用这套配置实测一句，不写入配置。
+    // 状态球单独留到最后 append：会话 34 起它要在「删除」**右侧**。
+    let dot = null;
     if (f.test_action) {
       const test = document.createElement("button");
       test.type = "button";
@@ -528,13 +530,12 @@ function fieldList(f) {
       });
       head.append(test);
 
-      // 状态球紧挨「删除」左侧：绿=通过 / 红=失败 / 灰=未测试。
-      // 卡片里不再插结果文本框，测完只看这颗球。
-      const dot = document.createElement("span");
+      // 绿=通过 / 红=失败 / 灰=未测试。卡片里不再插结果文本框，
+      // 测完只看这颗球；直径按 CSS 跟按钮外框对齐，别在这里写死尺寸。
+      dot = document.createElement("span");
       dot.className = "li-status";
       markStatus(dot, getProfileStatus(f.key, it));
       dots.set(it.id, dot);
-      head.append(dot);
     }
 
     const del = document.createElement("button");
@@ -544,6 +545,8 @@ function fieldList(f) {
     del.title = "只删这套配置，不动任何账号";
     del.addEventListener("click", () => removeItem(it.id));
     head.append(del);
+    // 卡片头最终顺序：箭头 → 摘要 → 测试 → 删除 → 状态球
+    if (dot) head.append(dot);
 
     c.append(head);
 

@@ -370,24 +370,28 @@ input.capturing {
 /* 弹窗里的实测结论框（复用 .result 的绿 / 红配色，只写「测试通过 / 失败」） */
 .fm-body .result { margin-top: var(--sp-4); }
 
-/* 卡片头状态发光小球：绿=通过 / 红=失败 / 灰=未测试，紧挨「删除」左侧。
- * 会话 33 起卡片里不再插结果文本框，测试结论全靠这颗球。 */
+/* 卡片头状态发光小球：绿=通过 / 红=失败 / 灰=未测试，位于「删除」**右侧**
+ * （会话 34 从删除左侧挪过来，DOM 顺序见 fieldList().card()）。
+ * 会话 33 起卡片里不再插结果文本框，测试结论全靠这颗球。
+ *
+ * 直径跟着按钮走：--h-control = 32px，这里 28px，比按钮外框「略小一点」，
+ * 和 32px 的「测试 / 删除」按钮同一排不会显得头重脚轻。别写死 9px。
+ * 光晕 6px + 1px spread 刚好小于 .li-head 右侧的 8px padding，不会被裁。 */
 .li-status {
   flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
+  width: calc(var(--h-control) - 4px);
+  height: calc(var(--h-control) - 4px);
   border-radius: 50%;
-  margin-right: var(--sp-1);
   background: #7a8290;
 }
 .li-status[data-status="idle"] { background: #7a8290; box-shadow: none; }
 .li-status[data-status="ok"] {
   background: #34d399;
-  box-shadow: 0 0 8px 1px rgba(52, 211, 153, .7);
+  box-shadow: 0 0 6px 1px rgba(52, 211, 153, .7);
 }
 .li-status[data-status="bad"] {
   background: #f87171;
-  box-shadow: 0 0 8px 1px rgba(248, 113, 113, .7);
+  box-shadow: 0 0 6px 1px rgba(248, 113, 113, .7);
 }
 
 /* ── 表单弹窗（新建一条配置）──────────────────────────────────────────── */
