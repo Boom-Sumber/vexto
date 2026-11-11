@@ -696,6 +696,27 @@ fn save_tool_config(
         crate::popup::prune_hidden_windows(&app);
     }
 
+    // 12) 传输服务的对外身份 / 落盘参数都在启动时烘焙进 announce 与 /info，
+    //     改完必须重启才生效——否则用户改完设备名，对方看到的还是旧名字。
+    //     进行中的传输会被打断，这是改这些字段的代价。
+    if ["device_alias", "receive_dir", "require_pin", "pin"]
+        .iter()
+        .any(|k| patch.contains_key(*k))
+        && cfg.enable_transfer
+        && !matches!(
+            transfer::server::state(),
+            transfer::server::ServiceState::Stopped
+        )
+    {
+        let tc = transfer::TransferConfig::from_app(&cfg);
+        if let Err(e) = transfer::backend()
+            .stop()
+            .and_then(|_| transfer::backend().start(&tc))
+        {
+            warnings.push(format!("传输服务重启失败，新设置要等下次启动才生效：{e}"));
+        }
+    }
+
     SaveOut {
         ok: true,
         message: "已保存".to_string(),
@@ -1613,6 +1634,32 @@ fn transfer_take_drop() -> Vec<String> {
     popup::take_transfer_drop()
 }
 
+/// 互传「接收」页要展示的本机信息：对外显示名、接收目录、服务状态。
+#[derive(Serialize)]
+struct TransferLocalOut {
+    alias: String,
+    receive_dir: String,
+    enabled: bool,
+    status: String,
+}
+
+#[tauri::command]
+fn transfer_local_info() -> TransferLocalOut {
+    let cfg = config::load();
+    let tc = transfer::TransferConfig::from_app(&cfg);
+    let status = match transfer::server::state() {
+        transfer::server::ServiceState::Listening { port } => format!("正在监听 · 端口 {port}"),
+        transfer::server::ServiceState::Failed(e) => format!("启动失败：{e}"),
+        transfer::server::ServiceState::Stopped => "服务未运行".to_string(),
+    };
+    TransferLocalOut {
+        alias: tc.alias,
+        receive_dir: tc.receive_dir.to_string_lossy().to_string(),
+        enabled: cfg.enable_transfer,
+        status,
+    }
+}
+
 // ---------- 入口 ----------
 
 fn main() {
@@ -1674,6 +1721,7 @@ fn main() {
             transfer_take_confirm,
             transfer_take_view,
             transfer_take_drop,
+            transfer_local_info,
             open_path,
             take_new_task_prefill,
             new_task_done,

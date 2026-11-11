@@ -40,9 +40,30 @@ window.Icons = (function () {
       'A1.5 1.5 0 0 1 17.5 18h-13A1.5 1.5 0 0 1 3 16.5z"/>',
     clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
     download: '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+    transfer:
+      '<path d="M7 4v13"/><path d="M4 14l3 3 3-3"/>' +
+      '<path d="M17 20V7"/><path d="M14 10l3-3 3 3"/>',
     file:
       '<path d="M6 3h7l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>' +
       '<path d="M13 3v5h5"/>',
+
+    // 设备类型（接收确认框 / 设备列表）
+    "device-phone":
+      '<rect x="6" y="3" width="12" height="18" rx="2"/>' +
+      '<path d="M12 17.5h.01"/>',
+    "device-desktop":
+      '<rect x="3" y="4" width="18" height="12" rx="2"/>' +
+      '<path d="M8 20h8M12 16v4"/>',
+    "device-web":
+      '<circle cx="12" cy="12" r="8"/>' +
+      '<path d="M4 12h16"/>' +
+      '<path d="M12 4a12 12 0 0 1 3 8 12 12 0 0 1-3 8 12 12 0 0 1-3-8 12 12 0 0 1 3-8z"/>',
+    "device-server":
+      '<rect x="3" y="4" width="18" height="6" rx="2"/>' +
+      '<rect x="3" y="14" width="18" height="6" rx="2"/>' +
+      '<path d="M7 7h.01M7 17h.01"/>',
+    "device-headless":
+      '<path d="M4 17l6-6-6-6"/><path d="M12 19h8"/>',
 
     // 播放控制
     pause:

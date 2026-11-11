@@ -12,6 +12,12 @@ const invoke = T.core.invoke;
 const listen = T.event.listen;
 const el = (id) => document.getElementById(id);
 
+// 所有 data-icon 占位统一由图标库填充（§13.5：页面里不许写内联 <svg>）。
+for (const n of document.querySelectorAll("[data-icon]")) {
+  Icons.fill(n, n.dataset.icon, Number(n.dataset.iconSize) || 16);
+}
+Icons.fill(el("tfOpenDir"), "folder", 16);
+
 // gid -> 行节点。重建窗口时为空，由 download_snapshot() 一次性填满。
 const rows = new Map();
 let lastError = "";
@@ -339,26 +345,71 @@ for (const b of document.querySelectorAll("button.cat")) {
 // （系统对话框）或拖放（transfer:dropped → transfer_take_drop）。
 
 const tfView = {
+  view: "download",
+  sub: "send",
   peers: [],
   rows: new Map(),   // `${sessionId}|${fileName}` → row 元素
   dropPaths: [],
+  receiveDir: "",
 };
 
-const downloadMain = document.querySelector(".app > .main");
+const downloadView = el("downloadView");
+const tbTitle = document.querySelector(".tb-title");
+
+const DEVICE_ICON = {
+  mobile: "device-phone",
+  desktop: "device-desktop",
+  web: "device-web",
+  server: "device-server",
+  headless: "device-headless",
+};
+
+function deviceIcon(type) {
+  return DEVICE_ICON[type] || "device-desktop";
+}
 
 function setView(v) {
   tfView.view = v;
   const isT = v === "transfer";
-  for (const b of document.querySelectorAll(".vbtn")) {
+  for (const b of document.querySelectorAll(".nav-item[data-view]")) {
     b.classList.toggle("active", b.dataset.view === v);
   }
-  downloadMain.classList.toggle("hidden", isT);
-  document.querySelector(".cats").style.display = isT ? "none" : "";
-  document.querySelector(".side-title").style.display = isT ? "none" : "";
+  downloadView.classList.toggle("hidden", isT);
+  el("catsWrap").classList.toggle("hidden", isT);
+  el("subTransfer").classList.toggle("hidden", !isT);
   el("transferView").classList.toggle("hidden", !isT);
+  if (tbTitle) tbTitle.textContent = isT ? "局域网互传" : "任务列表";
   if (isT) {
+    setSub(tfView.sub || "send");
     refreshPeers();
     refreshPending();
+    refreshLocalInfo();
+  }
+}
+
+function setSub(sub) {
+  tfView.sub = sub;
+  for (const b of document.querySelectorAll(".sub-item[data-sub]")) {
+    b.classList.toggle("active", b.dataset.sub === sub);
+  }
+  el("paneSend").classList.toggle("hidden", sub !== "send");
+  el("paneReceive").classList.toggle("hidden", sub !== "receive");
+  if (sub === "receive") {
+    refreshPending();
+    refreshLocalInfo();
+  }
+}
+
+async function refreshLocalInfo() {
+  try {
+    const info = await invoke("transfer_local_info");
+    tfView.receiveDir = info.receive_dir || "";
+    el("localAlias").textContent = info.alias || "—";
+    el("localStatus").textContent = info.enabled ? info.status : "模块已停用";
+    el("localDir").textContent = info.receive_dir || "—";
+    el("localDir").title = info.receive_dir || "";
+  } catch (e) {
+    el("localStatus").textContent = "读取本机信息失败：" + errText(e);
   }
 }
 
@@ -376,16 +427,32 @@ function renderPeers() {
   el("peerEmpty").classList.toggle("hidden", tfView.peers.length > 0);
   for (const p of tfView.peers) {
     const d = document.createElement("div");
-    d.className = "tf-peer";
-    const icon = p.device_type === "mobile" ? "📱" : p.device_type === "desktop" ? "💻" : "🖥️";
-    d.innerHTML =
-      '<span class="ic"></span><div class="meta"><div class="name"></div>' +
-      '<div class="sub"></div></div>' +
-      '<button class="btn" type="button">发送文件</button>';
-    d.querySelector(".ic").textContent = icon;
-    d.querySelector(".name").textContent = p.alias + (p.device_model ? " · " + p.device_model : "");
-    d.querySelector(".sub").textContent = p.ip + ":" + p.port + " · " + (p.protocol || "http");
-    d.querySelector("button").addEventListener("click", () => pickAndSend(p));
+    d.className = "device-item";
+
+    const av = document.createElement("span");
+    av.className = "device-avatar";
+    av.innerHTML = Icons.svg(deviceIcon(p.device_type), 20);
+
+    const meta = document.createElement("div");
+    meta.className = "device-meta";
+    const name = document.createElement("div");
+    name.className = "device-name";
+    name.textContent = p.alias || "未知设备";
+    const sub = document.createElement("div");
+    sub.className = "device-sub";
+    const bits = [p.ip + ":" + p.port];
+    if (p.device_model) bits.push(p.device_model);
+    if (p.protocol) bits.push(p.protocol);
+    sub.textContent = bits.join(" · ");
+    meta.append(name, sub);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn";
+    btn.textContent = "发送文件";
+    btn.addEventListener("click", () => pickAndSend(p));
+
+    d.append(av, meta, btn);
     box.appendChild(d);
   }
   // 拖放目标下拉跟着刷新
@@ -413,7 +480,9 @@ function fmtTfBytes(n) { return fmtBytes(n); }
 function renderPending() {
   const box = el("reqList");
   box.innerHTML = "";
-  for (const r of tfView.pending || []) {
+  const list = tfView.pending || [];
+  el("reqEmpty").classList.toggle("hidden", list.length > 0);
+  for (const r of list) {
     const d = document.createElement("div");
     d.className = "tf-req";
     const names = r.files.map((f) => f.name).join("、");
@@ -520,6 +589,12 @@ async function doSend(target, paths, peer) {
 }
 
 el("tfRefresh").addEventListener("click", () => { refreshPeers(); refreshPending(); });
+el("tfRefreshRecv").addEventListener("click", () => { refreshPending(); refreshLocalInfo(); });
+el("tfActionFile").addEventListener("click", () => el("tfPick").click());
+el("tfOpenDir").addEventListener("click", () => {
+  if (!tfView.receiveDir) { tfNotice("还没有读取到接收目录", true); return; }
+  invoke("open_path", { path: tfView.receiveDir }).catch((e) => tfNotice(errText(e), true));
+});
 el("tfPick").addEventListener("click", async () => {
   if (!tfView.peers.length) { tfNotice("没有发现设备，先点「刷新」", true); return; }
   try {
@@ -556,8 +631,11 @@ el("tfDropSend").addEventListener("click", () => {
   doSend(target, paths);
 });
 
-for (const b of document.querySelectorAll(".vbtn")) {
+for (const b of document.querySelectorAll(".nav-item[data-view]")) {
   b.addEventListener("click", () => setView(b.dataset.view));
+}
+for (const b of document.querySelectorAll(".sub-item[data-sub]")) {
+  b.addEventListener("click", () => setSub(b.dataset.sub));
 }
 
 (async function initTransfer() {
@@ -566,9 +644,10 @@ for (const b of document.querySelectorAll(".vbtn")) {
     const tools = await invoke("list_tools");
     const t = (tools || []).find((x) => x.id === "transfer");
     if (t && !t.enabled) {
-      for (const b of document.querySelectorAll('.vbtn[data-view="transfer"]')) {
+      for (const b of document.querySelectorAll('.nav-item[data-view="transfer"]')) {
         b.style.display = "none";
       }
+      el("subTransfer").classList.add("hidden");
     }
   } catch (e) { /* 拿不到就照常显示 */ }
 
@@ -596,11 +675,12 @@ for (const b of document.querySelectorAll(".vbtn")) {
       const paths = await invoke("transfer_take_drop");
       if (!paths || !paths.length) return;
       if (tfView.view !== "transfer") setView("transfer");
+      setSub("send");
       tfView.dropPaths.push(...paths);
       showDropBar();
     });
     await listen("main:switch-view", (ev) => {
-      if (ev.payload === "transfer") setView("transfer");
+      if (ev.payload === "transfer") { setView("transfer"); setSub("send"); }
     });
   } catch (e) {
     tfNotice("订阅传输事件失败：" + errText(e), true);

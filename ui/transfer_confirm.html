@@ -7,48 +7,273 @@
 <link rel="stylesheet" href="theme-dark.css" />
 <link rel="stylesheet" href="base.css" />
 <style>
-  .body { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
-  .from { color: var(--text-secondary); font-size: 12px; }
-  .from b { color: var(--text-primary); font-size: 14px; }
-  .files { flex: 1; overflow: auto; border: 1px solid var(--border-default); border-radius: 8px; padding: 6px 10px; }
-  .files .f { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border-subtle); }
-  .files .f:last-child { border-bottom: none; }
-  .files .f .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .total { font-size: 12px; color: var(--text-secondary); text-align: right; }
-  .acts { display: flex; gap: 8px; justify-content: flex-end; }
-  .empty { color: var(--text-muted); text-align: center; padding: 24px 0; font-size: 12px; }
+  /* 模态对话框：透明窗口里只画一张卡片（用户参考稿）。 */
+  html, body { background: transparent; }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-3);
+  }
+
+  .dialog {
+    position: relative;
+    width: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-6);
+    background: var(--bg-panel);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-xl);
+    box-shadow: var(--shadow-popup);
+  }
+
+  .close-btn {
+    position: absolute;
+    top: var(--sp-2);
+    right: var(--sp-2);
+  }
+
+  .device-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(var(--h-control) + var(--sp-6));
+    height: calc(var(--h-control) + var(--sp-6));
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .device-alias {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-xl);
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: .02em;
+  }
+
+  .device-tags { display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: center; }
+
+  .tag {
+    padding: var(--sp-1) var(--sp-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-md);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+  }
+  .tag-ip { cursor: default; }
+  .tag-ip:hover { color: var(--accent); border-color: var(--accent); }
+
+  .prompt-text {
+    font-size: var(--fs-md);
+    color: var(--text-primary);
+    text-align: center;
+  }
+  .prompt-text b { color: var(--accent); }
+
+  .file-info { position: relative; display: flex; justify-content: center; width: 100%; }
+
+  .file-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    max-width: 100%;
+    padding: var(--sp-1) var(--sp-3);
+    border: 1px solid transparent;
+    border-radius: var(--r-pill);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+    cursor: default;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background var(--dur-fast) var(--ease-out);
+  }
+  .file-preview:hover { border-color: var(--border-default); background: var(--bg-app); }
+  .file-preview .fname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    z-index: var(--z-float);
+    width: max-content;
+    max-width: 280px;
+    margin-bottom: var(--sp-2);
+    padding: var(--sp-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-md);
+    background: var(--bg-input);
+    box-shadow: var(--shadow-float);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(var(--sp-1));
+    transition: opacity var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
+  }
+  .file-info:hover .file-tooltip,
+  .file-info:focus-within .file-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .file-tooltip ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+  .file-tooltip li {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    max-width: 250px;
+    overflow: hidden;
+    font-size: var(--fs-xs);
+    color: var(--text-primary);
+  }
+  .file-tooltip li .n {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-tooltip li .ico { color: var(--text-muted); }
+  .file-tooltip li.more { justify-content: center; color: var(--text-muted); }
+
+  .total { font-size: var(--fs-xs); color: var(--text-muted); }
+
+  .path-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    width: 100%;
+  }
+  .path-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--h-control);
+    line-height: var(--h-control);
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-md);
+    background: var(--bg-input);
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .btn-folder {
+    flex: 0 0 auto;
+    width: var(--h-control);
+    height: var(--h-control);
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-md);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background var(--dur-fast) var(--ease-out),
+                color var(--dur-fast) var(--ease-out);
+  }
+  .btn-folder:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
+
+  .actions { display: flex; gap: var(--sp-3); width: 100%; }
+
+  .actions .btn {
+    flex: 1 1 0;
+    height: calc(var(--h-control) + var(--sp-1));
+    border-radius: var(--r-pill);
+    font-weight: 600;
+  }
+
+  .btn-reject {
+    border-color: var(--danger-border);
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+  .btn-reject:hover {
+    border-color: var(--danger);
+    background: var(--danger-bg);
+    color: var(--danger);
+  }
+  .btn-reject:active { background: var(--bg-active); }
+
+  .empty { color: var(--text-muted); font-size: var(--fs-sm); padding: var(--sp-5) 0; }
 </style>
 </head>
 <body data-theme="dark">
-<div class="win">
-  <!-- 固定尺寸对话框：只留关闭（风险 64：不装缩放热区） -->
-  <header class="tb" data-tauri-drag-region>
-    <span class="tb-title" data-tauri-drag-region>收到传输请求</span>
-    <div class="tb-actions">
-      <button class="tb-btn close" type="button" data-win="close"></button>
-    </div>
-  </header>
+<!-- 无标题栏的模态卡片；拖动靠卡片上的 data-tauri-drag-region。 -->
+<div class="dialog" data-tauri-drag-region>
+  <button id="close" class="icon-btn close-btn" type="button" title="拒绝并关闭"
+          aria-label="拒绝并关闭"></button>
 
-  <main class="body">
-    <div id="empty" class="empty hidden">没有待确认的传输请求。</div>
-    <div id="content">
-      <div class="from">来自：<b id="sender">—</b> <span id="ip"></span></div>
-      <div id="files" class="files"></div>
-      <div id="total" class="total"></div>
+  <div class="device-icon" id="deviceIcon" data-tauri-drag-region></div>
+  <div class="device-alias" id="sender" data-tauri-drag-region>—</div>
+
+  <div class="device-tags">
+    <div class="tag tag-ip" id="ipTag">#—</div>
+    <div class="tag" id="senderModel">—</div>
+  </div>
+
+  <div class="prompt-text">想要发送给你 <b id="countText">一个文件</b></div>
+
+  <div class="file-info">
+    <div class="file-preview" id="filePreview">
+      <span id="previewIcon"></span>
+      <span class="fname" id="previewText">查看接收文件列表</span>
     </div>
-    <div id="error" class="notice notice-danger error hidden"></div>
-    <div class="acts">
-      <button id="reject" class="btn" type="button">拒绝</button>
-      <button id="accept" class="btn btn-primary" type="button">接受</button>
+    <div class="file-tooltip">
+      <ul id="fileList"></ul>
     </div>
-  </main>
+  </div>
+  <div class="total" id="total"></div>
+
+  <div class="path-row">
+    <div class="path-text" id="savePath" title="">—</div>
+    <button id="openDir" class="btn-folder" type="button" title="打开接收目录"
+            aria-label="打开接收目录"></button>
+  </div>
+
+  <div id="error" class="notice notice-danger hidden"></div>
+
+  <div class="actions">
+    <button id="reject" class="btn btn-reject" type="button">拒绝</button>
+    <button id="accept" class="btn btn-primary" type="button">接收</button>
+  </div>
+
+  <div id="empty" class="empty hidden">没有待确认的传输请求。</div>
 </div>
 
-<script src="titlebar.js"></script>
+<script src="icons.js"></script>
 <script>
 const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
 let current = null;
+let receiveDir = "";
+
+const DEVICE_ICON = {
+  mobile: "device-phone",
+  desktop: "device-desktop",
+  web: "device-web",
+  server: "device-server",
+  headless: "device-headless",
+};
 
 function fmtBytes(n) {
   if (n < 1024) return n + " B";
@@ -58,39 +283,89 @@ function fmtBytes(n) {
   return n.toFixed(1) + " " + u[i];
 }
 
+function shortIp(ip) {
+  if (!ip) return "#—";
+  const parts = String(ip).split(".");
+  return "#" + (parts.length > 1 ? parts[parts.length - 1] : ip);
+}
+
+function showError(msg) {
+  el("error").textContent = msg || "";
+  el("error").classList.toggle("hidden", !msg);
+}
+
+function renderFiles(files) {
+  const ul = el("fileList");
+  ul.innerHTML = "";
+  const shown = files.slice(0, 4);
+  for (const f of shown) {
+    const li = document.createElement("li");
+    const ico = document.createElement("span");
+    ico.className = "ico";
+    ico.innerHTML = Icons.svg("file", 14);
+    const n = document.createElement("span");
+    n.className = "n";
+    n.textContent = f.name;
+    n.title = f.name;
+    li.append(ico, n);
+    ul.appendChild(li);
+  }
+  if (files.length > shown.length) {
+    const li = document.createElement("li");
+    li.className = "more";
+    li.textContent = "……";
+    ul.appendChild(li);
+  }
+}
+
 function render(req) {
   current = req;
   if (!req) {
     el("empty").classList.remove("hidden");
-    el("content").classList.add("hidden");
     el("accept").disabled = true;
     el("reject").disabled = true;
+    el("close").disabled = true;
     return;
   }
   el("empty").classList.add("hidden");
-  el("content").classList.remove("hidden");
   el("accept").disabled = false;
   el("reject").disabled = false;
+  el("close").disabled = false;
+
+  el("deviceIcon").innerHTML = Icons.svg(DEVICE_ICON[req.sender_type] || "device-desktop", 20);
   el("sender").textContent = req.sender_alias || "未知设备";
-  el("ip").textContent = "(" + req.sender_ip + ")";
-  const box = el("files");
-  box.innerHTML = "";
-  for (const f of req.files) {
-    const d = document.createElement("div");
-    d.className = "f";
-    d.innerHTML = '<span class="n"></span><span class="num">' + fmtBytes(f.size) + "</span>";
-    d.querySelector(".n").textContent = f.name;
-    box.appendChild(d);
+  el("ipTag").textContent = shortIp(req.sender_ip);
+  el("ipTag").title = req.sender_ip || "";
+  el("senderModel").textContent = req.sender_model || "未知型号";
+
+  const count = req.files.length;
+  el("countText").textContent = count === 1 ? "一个文件" : count + " 个文件";
+  el("previewText").textContent =
+    count === 1 ? req.files[0].name : "查看接收文件列表 (" + count + ")";
+  el("previewText").title = count === 1 ? req.files[0].name : "";
+  renderFiles(req.files);
+  el("total").textContent = "共 " + fmtBytes(req.total_bytes);
+  el("savePath").textContent = receiveDir || "—";
+  el("savePath").title = receiveDir || "";
+}
+
+async function loadLocalInfo() {
+  try {
+    const info = await invoke("transfer_local_info");
+    receiveDir = info.receive_dir || "";
+    el("savePath").textContent = receiveDir || "—";
+    el("savePath").title = receiveDir || "";
+  } catch (e) {
+    /* 目录读取失败不影响接受 / 拒绝 */
   }
-  el("total").textContent = "共 " + req.files.length + " 个文件，" + fmtBytes(req.total_bytes);
 }
 
 async function reload() {
   try {
+    showError("");
     render(await invoke("transfer_take_confirm"));
   } catch (e) {
-    el("error").textContent = String(e);
-    el("error").classList.remove("hidden");
+    showError(String(e));
   }
 }
 
@@ -108,8 +383,7 @@ async function decide(accept) {
       invoke("window_action", { action: "close" }).catch(() => {});
     }
   } catch (e) {
-    el("error").textContent = String(e);
-    el("error").classList.remove("hidden");
+    showError(String(e));
     el("accept").disabled = false;
     el("reject").disabled = false;
   }
@@ -117,14 +391,24 @@ async function decide(accept) {
 
 el("accept").addEventListener("click", () => decide(true));
 el("reject").addEventListener("click", () => decide(false));
+el("close").addEventListener("click", () => decide(false));
+el("openDir").addEventListener("click", () => {
+  if (!receiveDir) return;
+  invoke("open_path", { path: receiveDir }).catch((e) => showError(String(e)));
+});
+
+Icons.fill(el("close"), "close", 14);
+Icons.fill(el("openDir"), "folder", 16);
+el("previewIcon").innerHTML = Icons.svg("file", 14);
+el("previewIcon").className = "ico";
 
 // 窗口已存在又被叫醒时，后端会 eval 调它重拉数据。
 window.__confirmReload = reload;
 
 reload().finally(() => {
-  window.__TAURI__.core.invoke("window_ready").catch(() => {});
+  loadLocalInfo();
+  invoke("window_ready").catch(() => {});
 });
 </script>
-<script>TitleBar.mount({ resize: false, maximize: false });</script>
 </body>
 </html>

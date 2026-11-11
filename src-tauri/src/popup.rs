@@ -698,8 +698,8 @@ pub fn open_main_window(app: &AppHandle) {
         // 文件名长短拉宽，所以保留 resizable，边缘缩放由 titlebar.js 接管。
         .decorations(false)
         .shadow(true)
-        .inner_size(760.0, 520.0)
-        .min_inner_size(560.0, 360.0)
+        .inner_size(900.0, 600.0)
+        .min_inner_size(720.0, 480.0)
         .resizable(true)
         .center()
         // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
@@ -780,13 +780,16 @@ pub fn open_transfer_confirm(app: &AppHandle) {
     .title("收到传输请求")
     .decorations(false)
     .shadow(true)
-    .inner_size(380.0, 420.0)
-    .min_inner_size(380.0, 320.0)
-    .resizable(true)
+    // 模态对话框形态（用户参考稿）：透明窗口只画居中卡片，无系统边框。
+    // 窗口自己盖在其他窗口之上，用户处理完（接受 / 拒绝）才消失。
+    .transparent(true)
+    .always_on_top(true)
+    .inner_size(400.0, 560.0)
+    .min_inner_size(400.0, 480.0)
+    .resizable(false)
     .center()
     // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
     .visible(false)
-    .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
     .additional_browser_args(WEBVIEW_ARGS)
     .build();
 

@@ -79,6 +79,10 @@ pub struct IncomingRequest {
     pub session_id: String,
     pub sender_alias: String,
     pub sender_ip: String,
+    /// 对方自报的设备型号（可能为空）。
+    pub sender_model: String,
+    /// 对方设备类型：`mobile` / `desktop` / `web` / `headless` / `server`。
+    pub sender_type: String,
     pub total_bytes: u64,
     pub files: Vec<IncomingFile>,
 }

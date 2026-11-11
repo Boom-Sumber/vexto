@@ -575,6 +575,8 @@ fn on_prepare_upload(
         session_id: session_id.clone(),
         sender_alias: sender_info.alias.clone(),
         sender_ip: sender_ip.to_string(),
+        sender_model: sender_info.device_model.clone().unwrap_or_default(),
+        sender_type: device_type_str(sender_info.device_type).to_string(),
         total_bytes,
         files: views,
     };
@@ -738,6 +740,8 @@ mod tests {
             session_id: "s1".into(),
             sender_alias: "phone".into(),
             sender_ip: "192.168.1.2".into(),
+            sender_model: String::new(),
+            sender_type: "mobile".into(),
             total_bytes: 3,
             files: vec![
                 IncomingFile { id: "a".into(), name: "a".into(), size: 1 },
@@ -766,6 +770,8 @@ mod tests {
             session_id: "s2".into(),
             sender_alias: "phone".into(),
             sender_ip: "192.168.1.2".into(),
+            sender_model: String::new(),
+            sender_type: "desktop".into(),
             total_bytes: 0,
             files: vec![],
         };
