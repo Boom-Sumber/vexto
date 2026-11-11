@@ -204,6 +204,51 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+/* 字段旁的「?」：说明不再单独占一行，悬停 / 聚焦时显示全局浮层 */
+.field-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: var(--sp-1);
+  color: var(--text-disabled);
+  vertical-align: middle;
+  cursor: help;
+  border-radius: 50%;
+}
+.field-help:hover,
+.field-help:focus-visible {
+  color: var(--accent);
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+#help-tip {
+  position: fixed;
+  z-index: var(--z-toast);
+  max-width: 300px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-float);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+#help-tip.on { opacity: 1; }
+
 /* 控件列：除标签外的所有子元素都落在第 2 列 */
 .field > *:not(.field-label) {
   grid-column: 2;

@@ -123,8 +123,8 @@ impl Tool for Translate {
                 vec![
                     // ── 翻译：选一个已配置的实例 ──
                     Field::group("翻译"),
-                    Field::select_dynamic("active_engine", "翻译模式", "engines"),
-                    Field::note("从下面两个列表里选一个已配置的实例。"),
+                    Field::select_dynamic("active_engine", "翻译模式", "engines")
+                        .help("从下面两个列表里选一个已配置的实例。"),
                     // ── 厂商：卡片列表 + 弹窗新建 ──
                     Field::group("厂商管理"),
                     Field::list("vendor_profiles", "已配置的厂商", vendor_item_fields())
@@ -144,28 +144,20 @@ impl Tool for Translate {
                 "翻译配置",
                 vec![
                     Field::group("翻译方向"),
-                    Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS),
-                    Field::note("「百度在线检测」不需要 APPID / 密钥，失败时自动回落到本地检测。"),
-                    Field::select("from", "源语言", FROM_STATIC),
-                    Field::note(
-                        "选「自动检测」就把 auto 发给厂商，让它再判一次（二次确认）；\n\
-                         选具体语言时如果和检测结果冲突，以检测结果为准。",
-                    ),
+                    Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS)
+                        .help("百度在线检测不需要 APPID / 密钥，失败时自动回落到本地检测。"),
+                    Field::select("from", "源语言", FROM_STATIC)
+                        .help("选「自动检测」就把 auto 发给厂商，让它再判一次；选具体语言时如果和检测结果冲突，以检测结果为准。"),
                     Field::select("to", "目标语言", TO_STATIC),
-                    Field::select("to2", "第二目标语言", TO_STATIC),
-                    Field::note(
-                        "规则：检测出的语言**等于「目标语言」**时译到「第二目标语言」，否则译到「目标语言」。\n\
-                         常用：目标=中文、第二目标=英语，中英双向免切。",
-                    ),
+                    Field::select("to2", "第二目标语言", TO_STATIC)
+                        .help("检测出的语言等于「目标语言」时译到「第二目标语言」，否则译到「目标语言」。常用：目标=中文、第二目标=英语，中英双向免切。"),
                     Field::group("交互"),
-                    Field::hotkey("hotkey", "划词热键"),
-                    Field::note("选中文字后按这个组合键，光标旁弹出译文。"),
-                    Field::hotkey("hotkey_input", "输入翻译热键"),
-                    Field::note(
-                        "按这个组合键唤出一个可输入的翻译框，打完字回车即翻译。\n\
-                         它和划词翻译共用一个弹窗，只是不会自动取词。",
-                    ),
-                    Field::switch("auto_copy", "译完自动复制译文"),
+                    Field::hotkey("hotkey", "划词热键")
+                        .help("选中文字后按这个组合键，光标旁弹出译文。"),
+                    Field::hotkey("hotkey_input", "输入翻译热键")
+                        .help("按这个组合键唤出输入翻译框，打完字回车即翻译；和划词共用弹窗，只是不会自动取词。"),
+                    Field::switch("auto_copy", "译完自动复制译文")
+                        .help("翻译完成后自动把译文写入剪贴板。"),
                 ],
             ),
             Section::new(
@@ -173,9 +165,10 @@ impl Tool for Translate {
                 "截图翻译",
                 vec![
                     Field::group("截图翻译"),
-                    Field::switch("enable_ocr", "启用截图翻译"),
-                    Field::hotkey("hotkey_ocr", "截图热键"),
-                    Field::note("截图翻译的框选与 OCR 在 S5 实现，这里先把热键配好。"),
+                    Field::switch("enable_ocr", "启用截图翻译")
+                        .help("截图翻译的框选与 OCR 在 S5 实现，这里先把开关和热键配好。"),
+                    Field::hotkey("hotkey_ocr", "截图热键")
+                        .help("选中区域后按这个组合键开始识别与翻译；功能在 S5 实现。"),
                 ],
             ),
         ]
@@ -330,6 +323,7 @@ mod tests {
 
     /// 会话 32：底部那个「测试一下」和两张列表下面的长说明都删了，
     /// 测试改挂到每张卡片 / 新建弹窗上。
+    /// 会话 42：说明不再单独占一行，改挂到字段的 help 上。
     #[test]
     fn engine_section_has_no_standalone_test_or_long_notes() {
         let s = Translate.sections();
@@ -340,7 +334,13 @@ mod tests {
             .iter()
             .filter(|f| matches!(f.kind, crate::tools::FieldKind::Note { .. }))
             .count();
-        assert_eq!(notes, 1, "引擎页只留「翻译模式」下的一行说明");
+        assert_eq!(notes, 0, "设置页不再画说明行，说明改挂到字段的 help 上");
+        let f = s[0]
+            .fields
+            .iter()
+            .find(|f| f.key == "active_engine")
+            .expect("找不到翻译模式字段");
+        assert!(f.help.is_some(), "翻译模式应该有 ? 说明");
     }
 
     /// 厂商卡片：折叠摘要取「名称 · 厂商 · 机翻/大模型」，新建走弹窗。

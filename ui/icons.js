@@ -28,6 +28,10 @@ window.Icons = (function () {
       '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/>' +
       '<path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
+    help:
+      '<circle cx="12" cy="12" r="9"/>' +
+      '<path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-.8.4-1.2 1-1.2 1.8v.5"/>' +
+      '<path d="M12 17h.01"/>',
     alert: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
     gear:
       '<circle cx="12" cy="12" r="3"/>' +

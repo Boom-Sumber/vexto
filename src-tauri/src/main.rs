@@ -516,6 +516,18 @@ fn get_tool_config(tool_id: String) -> ToolConfigOut {
                     }
                 }
             }
+            // 互传接收目录同理：输入框里直接显示完整路径，不留空。
+            if k == "receive_dir" {
+                if let Some(s) = v.as_str() {
+                    if s.trim().is_empty() {
+                        v = Value::String(
+                            crate::transfer::server::resolve_receive_dir(&cfg)
+                                .to_string_lossy()
+                                .to_string(),
+                        );
+                    }
+                }
+            }
             out.insert(k.to_string(), v);
         }
     }
@@ -597,6 +609,20 @@ fn save_tool_config(
             "download_dir".to_string(),
             Value::String(crate::download::engine::default_download_dir()),
         );
+    }
+
+    // 互传接收目录清空时同样回写成默认完整路径（用户要求框里始终是具体路径）。
+    if patch
+        .get("receive_dir")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.trim().is_empty())
+    {
+        let mut base = config::load();
+        base.receive_dir.clear();
+        let default = crate::transfer::server::resolve_receive_dir(&base)
+            .to_string_lossy()
+            .to_string();
+        patch.insert("receive_dir".to_string(), Value::String(default));
     }
 
     // 3) 目录字段：不存在就提示（不阻塞保存，用户可能马上就要去建）

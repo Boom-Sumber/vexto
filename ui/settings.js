@@ -199,6 +199,9 @@ function currentSection() {
 
 function renderFields() {
   const box = el("fields");
+  // 切工具 / 切页签时字段 DOM 会被换掉，悬停的 ? 收不到 mouseout；
+  // 不主动收起的话上一页的说明会一直挂在屏幕上。
+  hideHelp();
   box.textContent = "";
   // 字段 DOM 全换了，旧的下拉节点不再有效（isConnected=false），别留着
   engineSelectNodes = [];
@@ -263,12 +266,76 @@ function wrapField(f, extraClass) {
   return w;
 }
 
-function labelNode(text) {
+function labelNode(text, help) {
   const l = document.createElement("span");
   l.className = "field-label";
-  l.textContent = text;
+  l.append(document.createTextNode(text));
+  if (help) l.append(helpIcon(help));
   return l;
 }
+
+/// 「?」图标：鼠标悬停 / 键盘聚焦时在全局浮层里显示说明。
+/// 说明不再单独占一行（用户要求设置页不放说明文本）。
+function helpIcon(text) {
+  const h = document.createElement("span");
+  h.className = "field-help";
+  h.tabIndex = 0;
+  h.setAttribute("role", "note");
+  h.setAttribute("aria-label", "说明");
+  h.dataset.help = text;
+  h.innerHTML = Icons.svg("help", 14);
+  // 开关行的标题点击会切换开关；点问号只弹说明，不要顺手切换。
+  h.addEventListener("click", (e) => e.stopPropagation());
+  return h;
+}
+
+let helpTipEl = null;
+function ensureHelpTip() {
+  if (!helpTipEl) {
+    helpTipEl = document.createElement("div");
+    helpTipEl.id = "help-tip";
+    document.body.append(helpTipEl);
+  }
+  return helpTipEl;
+}
+
+function showHelp(el) {
+  const text = el.dataset.help || "";
+  if (!text) return;
+  const tip = ensureHelpTip();
+  tip.textContent = text;
+  tip.classList.add("on");
+  const r = el.getBoundingClientRect();
+  const tw = tip.offsetWidth;
+  const th = tip.offsetHeight;
+  let left = Math.max(8, Math.min(r.left, window.innerWidth - tw - 8));
+  let top = r.bottom + 6;
+  if (top + th > window.innerHeight - 8) top = r.top - th - 6;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
+
+function hideHelp() {
+  if (helpTipEl) helpTipEl.classList.remove("on");
+}
+
+document.addEventListener("mouseover", (e) => {
+  const h = e.target.closest?.(".field-help");
+  if (h) showHelp(h);
+});
+document.addEventListener("mouseout", (e) => {
+  const h = e.target.closest?.(".field-help");
+  if (h) hideHelp();
+});
+document.addEventListener("focusin", (e) => {
+  const h = e.target.closest?.(".field-help");
+  if (h) showHelp(h);
+});
+document.addEventListener("focusout", (e) => {
+  const h = e.target.closest?.(".field-help");
+  if (h) hideHelp();
+});
+window.addEventListener("scroll", hideHelp, true);
 
 function noteNode(text) {
   const d = document.createElement("div");
@@ -420,7 +487,7 @@ function itemControl(fld, value, onChange) {
 
 function fieldList(f) {
   const w = wrapField(f, "list");
-  w.append(labelNode(f.label || ""));
+  w.append(labelNode(f.label || "", f.help));
 
   const body = document.createElement("div");
   body.className = "list-body";
@@ -733,7 +800,7 @@ function openFormDialog(title, fields, testAction, onSave) {
 
 function fieldInput(f, inputType) {
   const w = wrapField(f);
-  const l = labelNode(f.label || "");
+  const l = labelNode(f.label || "", f.help);
   const inp = document.createElement("input");
   inp.type = inputType;
   inp.value = val(f.key) == null ? "" : String(val(f.key));
@@ -776,7 +843,7 @@ function fieldInput(f, inputType) {
 
 function fieldNumber(f) {
   const w = wrapField(f);
-  const l = labelNode(f.label || "");
+  const l = labelNode(f.label || "", f.help);
 
   const row = document.createElement("div");
   row.className = "num-row" + (f.unit ? " has-unit" : "");
@@ -827,7 +894,7 @@ function fieldSwitch(f) {
   const inp = document.createElement("input");
   inp.type = "checkbox";
   inp.checked = !!val(f.key);
-  const l = labelNode(f.label || "");
+  const l = labelNode(f.label || "", f.help);
   // 点标题也能切换
   l.addEventListener("click", () => {
     inp.checked = !inp.checked;
@@ -896,7 +963,7 @@ function refreshEngineSelects() {
 
 function fieldSelect(f) {
   const w = wrapField(f);
-  const l = labelNode(f.label || "");
+  const l = labelNode(f.label || "", f.help);
   const sel = document.createElement("select");
 
   if (f.dynamic) {
@@ -988,7 +1055,7 @@ function cancelCapture() { endCapture(false); }
 
 function fieldHotkey(f) {
   const w = wrapField(f);
-  const l = labelNode(f.label || "");
+  const l = labelNode(f.label || "", f.help);
   const inp = document.createElement("input");
   inp.type = "text";
   inp.className = "capture";
@@ -1009,7 +1076,11 @@ function fieldButton(f) {
   b.className = "btn";
   b.textContent = f.label || f.key;
   b.addEventListener("click", () => runAction(f, b, w));
-  w.append(b);
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  row.append(b);
+  if (f.help) row.append(helpIcon(f.help));
+  w.append(row);
   return w;
 }
 

@@ -70,16 +70,18 @@ impl Tool for Transfer {
                 "通用",
                 vec![
                     Field::group("接收"),
-                    Field::switch("transfer_auto_accept", "自动保存"),
-                    Field::note("打开后收到的文件不再弹确认框，直接写入保存目录。"),
-                    Field::switch("require_pin", "需要一个 PIN"),
+                    Field::switch("transfer_auto_accept", "自动保存")
+                        .help("打开后收到的文件不再弹确认框，直接写入保存目录。"),
+                    Field::switch("require_pin", "需要一个 PIN")
+                        .help("开启后对方发文件前要输入下面的 PIN。"),
                     Field::text_hint("pin", "PIN（4–6 位数字）", "4–6 位数字")
-                        .show_if("require_pin", "true"),
-                    Field::dir("receive_dir", "保存目录"),
-                    Field::note("留空则用系统「下载」文件夹下的 LightBox 子目录。"),
+                        .show_if("require_pin", "true")
+                        .help("4–6 位数字；对方发送时输入。"),
+                    Field::dir("receive_dir", "保存目录")
+                        .help("接收到的文件保存到这个目录。"),
                     Field::group("设备"),
-                    Field::text_hint("device_alias", "别名", "不填用计算机名"),
-                    Field::note("对方在设备列表 / 确认框里看到的就是这个名字。"),
+                    Field::text_hint("device_alias", "别名", "不填用计算机名")
+                        .help("对方在设备列表 / 确认框里看到的就是这个名字。"),
                 ],
             ),
             // ── 高级 ──────────────────────────────────────────────────
@@ -88,9 +90,12 @@ impl Tool for Transfer {
                 "高级",
                 vec![
                     Field::group("网络"),
-                    Field::number_unit("transfer_port", "端口", 1024, 65535, ""),
-                    Field::switch("transfer_use_https", "加密（HTTPS）"),
-                    Field::text_hint("transfer_multicast", "多播地址", "224.0.0.167"),
+                    Field::number_unit("transfer_port", "端口", 1024, 65535, "")
+                        .help("TCP 与 UDP 组播同号；首次启用可能弹防火墙提示。改端口后对方也要用同一端口。"),
+                    Field::switch("transfer_use_https", "加密（HTTPS）")
+                        .help("关闭后走明文 HTTP；部分客户端会拒绝，且 lanflare 的 /info 仍自称 https。"),
+                    Field::text_hint("transfer_multicast", "多播地址", "224.0.0.167")
+                        .help("组播地址要和对方一致；默认 224.0.0.167。"),
                     Field::select(
                         "transfer_device_type",
                         "设备类型",
@@ -101,28 +106,23 @@ impl Tool for Transfer {
                             ("headless", "无头"),
                             ("server", "服务器"),
                         ],
-                    ),
-                    Field::text_hint("transfer_device_model", "设备型号", "Windows"),
+                    )
+                    .help("只影响组播公告；lanflare 的 /info 固定返回 desktop。"),
+                    Field::text_hint("transfer_device_model", "设备型号", "Windows")
+                        .help("只影响组播公告；lanflare 的 /info 固定返回 OS 名。"),
                     Field::text_hint(
                         "transfer_interface_whitelist",
                         "网络接口白名单",
                         "留空 = 所有网卡；如 192.168.1.*,10.0.0.*",
-                    ),
-                    Field::number_unit("transfer_peer_timeout_secs", "设备保留时长", 5, 3600, "秒"),
-                    Field::note(
-                        "端口 / 多播地址要和对方一致；改完保存即重启服务。\n\
-                         关闭 HTTPS 后走明文 HTTP，部分客户端会拒绝；设备类型 / 型号只影响\n\
-                         组播公告（lanflare 的 /info 固定返回 desktop / OS）。\n\
-                         设备保留时长 = 多久没收到公告就从设备列表移除。",
-                    ),
-                    Field::note("首次启用时 Windows 可能弹防火墙提示，需要允许专用网络访问。"),
+                    )
+                    .help("逗号分隔的 IP 前缀，留空 = 所有网卡。"),
+                    Field::number_unit("transfer_peer_timeout_secs", "设备保留时长", 5, 3600, "秒")
+                        .help("超过这个时间没收到公告就从设备列表移除；不是扫描超时。"),
                     Field::group("维护"),
-                    Field::button("transfer_restart", "重启传输服务"),
-                    Field::button("transfer_open_dir", "打开接收目录"),
-                    Field::note(
-                        "修改别名 / 保存目录 / PIN / 自动保存后保存即生效（会重启传输服务，\n\
-                         进行中的传输会中断）。「重启传输服务」用于端口被占或服务异常后手动恢复。",
-                    ),
+                    Field::button("transfer_restart", "重启传输服务")
+                        .help("改别名 / 目录 / PIN 等保存后会自动重启；此按钮用于端口被占或服务异常时手动恢复。"),
+                    Field::button("transfer_open_dir", "打开接收目录")
+                        .help("在资源管理器里打开接收目录。"),
                 ],
             ),
         ]

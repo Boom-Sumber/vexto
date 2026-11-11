@@ -129,6 +129,9 @@ pub struct Field {
     pub kind: FieldKind,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub show_if: Option<ShowIf>,
+    /// 字段旁的「?」悬浮说明。设置页不再单独画说明行。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help: Option<&'static str>,
 }
 
 impl Field {
@@ -138,7 +141,14 @@ impl Field {
             label,
             kind,
             show_if: None,
+            help: None,
         }
+    }
+
+    /// 给字段挂一段「?」悬浮说明。设置页不再用独立的说明行。
+    pub fn help(mut self, text: &'static str) -> Self {
+        self.help = Some(text);
+        self
     }
 
     pub fn text_hint(key: &'static str, label: &'static str, placeholder: &'static str) -> Self {

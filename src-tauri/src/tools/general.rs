@@ -58,26 +58,21 @@ impl Tool for General {
             "通用",
             vec![
                 Field::group("启动"),
-                Field::switch("autostart", "开机自动启动"),
-                Field::note(
-                    "登录 Windows 后在托盘静默运行（不弹窗口）。\n\
-                     只写当前用户的启动项（HKCU），不需要管理员权限；\n\
-                     换了安装目录的话下次启动会自动把路径改正。",
-                ),
+                Field::switch("autostart", "开机自动启动")
+                    .help("登录 Windows 后在托盘静默运行；只写当前用户启动项（HKCU），不需要管理员权限。"),
                 Field::group("性能"),
-                Field::switch("lite_mode", "极轻模式"),
-                Field::note(
-                    "开启时关闭窗口立即释放 WebView 内存；关闭后窗口只是隐藏、再次打开更快，但会一直占内存。",
-                ),
+                Field::switch("lite_mode", "极轻模式")
+                    .help("开启时关闭窗口立即释放 WebView 内存；关闭后窗口只是隐藏，再次打开更快，但会一直占内存。"),
                 Field::group("翻译与弹窗"),
-                Field::switch("cache_enabled", "翻译缓存"),
-                Field::note("开着缓存时，同一段文字再次翻译直接用上次结果，不消耗额度。"),
-                Field::number_unit("popup_timeout_ms", "弹窗自动关闭", 3000, 120000, "毫秒"),
+                Field::switch("cache_enabled", "翻译缓存")
+                    .help("同一段文字再次翻译直接用上次结果，不消耗额度。"),
+                Field::number_unit("popup_timeout_ms", "弹窗自动关闭", 3000, 120000, "毫秒")
+                    .help("弹窗显示多久后自动关闭。"),
                 Field::group("配置与日志"),
-                Field::note("日志默认关闭，避免常驻进程无谓写盘。"),
-                Field::button("open_config_file", "打开配置文件"),
-                Field::note("用记事本之类的程序打开 config.json。改完保存后部分设置要重启才生效。"),
-                Field::button("open_config_dir", "打开配置目录"),
+                Field::button("open_config_file", "打开配置文件")
+                    .help("用记事本打开 config.json；日志默认关闭（LIGHTBOX_DEBUG=1 可开）。改完保存后部分设置要重启才生效。"),
+                Field::button("open_config_dir", "打开配置目录")
+                    .help("在资源管理器里打开配置目录。"),
             ],
         )]
     }
