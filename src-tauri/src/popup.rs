@@ -779,7 +779,10 @@ pub fn open_transfer_confirm(app: &AppHandle) {
     )
     .title("收到传输请求")
     .decorations(false)
-    .shadow(true)
+    // 透明窗口不能开系统阴影：DWM 会按整个窗口矩形投影，桌面上会看到
+    // 一圈比卡片大得多的暗色方块。阴影交给卡片自己的 CSS box-shadow
+    // （与翻译弹窗同一口径，见 popup.css #card）。
+    .shadow(false)
     // 模态对话框形态（用户参考稿）：透明窗口只画居中卡片，无系统边框。
     // 窗口自己盖在其他窗口之上，用户处理完（接受 / 拒绝）才消失。
     .transparent(true)
@@ -787,6 +790,9 @@ pub fn open_transfer_confirm(app: &AppHandle) {
     .inner_size(400.0, 560.0)
     .min_inner_size(400.0, 480.0)
     .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .skip_taskbar(true)
     .center()
     // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
     .visible(false)
