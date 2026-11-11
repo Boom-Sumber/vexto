@@ -205,6 +205,10 @@ pub struct Config {
     /// 收到传输请求时是否自动接受（跳过确认框）。默认关：确认弹窗才是主门。
     #[serde(default)]
     pub transfer_auto_accept: bool,
+    /// 传输完成后是否自动关闭传输页。默认关：让用户自己看到「已完成」再退出。
+    /// 与 `transfer_auto_accept` 是两件事：那个管「要不要弹确认框」，这个管「页面留不留」。
+    #[serde(default)]
+    pub transfer_auto_complete: bool,
     /// 传输服务端口（UDP 组播 + TCP 同号）。默认 53317。
     #[serde(default = "d_transfer_port")]
     pub transfer_port: u16,
@@ -475,6 +479,7 @@ impl Default for Config {
             require_pin: false,
             pin: String::new(),
             transfer_auto_accept: false,
+            transfer_auto_complete: false,
             transfer_port: d_transfer_port(),
             transfer_use_https: true,
             transfer_multicast: d_transfer_multicast(),

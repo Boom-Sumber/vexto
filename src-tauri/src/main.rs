@@ -1647,6 +1647,18 @@ fn transfer_refresh() -> Result<(), String> {
     transfer::backend().refresh()
 }
 
+/// 当前 / 刚结束的传输快照。传输页开场拉一次，之后靠 `transfer:event` 增量更新。
+#[tauri::command]
+fn transfer_active() -> Vec<transfer::ActiveTransfer> {
+    transfer::backend().active_transfers()
+}
+
+/// 取消一次**接收中**的会话（发送侧用 `transfer_cancel_send`，两条路最后都归到同一套事件）。
+#[tauri::command]
+fn transfer_cancel_receive(session_id: String) -> Result<(), String> {
+    transfer::backend().cancel_receive(&session_id)
+}
+
 /// 接受 / 拒绝一条传入请求（§S4.7.2 确认框的两个按钮）。
 #[tauri::command]
 fn transfer_respond(session_id: String, accept: bool) -> Result<(), String> {
@@ -1805,6 +1817,8 @@ fn main() {
             transfer_peers,
             transfer_pending,
             transfer_refresh,
+            transfer_active,
+            transfer_cancel_receive,
             transfer_respond,
             transfer_send,
             transfer_cancel_send,

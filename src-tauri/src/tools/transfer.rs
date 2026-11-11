@@ -72,6 +72,8 @@ impl Tool for Transfer {
                     Field::group("接收"),
                     Field::switch("transfer_auto_accept", "自动保存")
                         .help("打开后收到的文件不再弹确认框，直接写入保存目录。"),
+                    Field::switch("transfer_auto_complete", "自动完成")
+                        .help("传输结束后自动关闭传输页；关掉则停在「已完成」，由你点一下退出。"),
                     Field::switch("require_pin", "需要一个 PIN"),
                     Field::text_hint("pin", "PIN（4–6 位数字）", "4–6 位数字")
                         .show_if("require_pin", "true"),
@@ -143,6 +145,7 @@ mod tests {
             "require_pin",
             "pin",
             "transfer_auto_accept",
+            "transfer_auto_complete",
             "transfer_port",
             "transfer_use_https",
             "transfer_multicast",

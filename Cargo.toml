@@ -2,6 +2,14 @@
 members = ["src-tauri"]
 resolver = "2"
 
+# S4（会话 45）：接收侧也要能取消，需要 lanflare 的 `SessionManager`，
+# 而上游 0.5.0 把它关在 `ServerState` 里、`ServerHandle` 没暴露。
+# 因此把 crate vendor 进 `vendor/lanflare-core` 并打一个最小补丁（只加一个 getter，
+# 见该目录下 NOTICE）。**升级 lanflare 时要重新打补丁并更新 NOTICE 里的版本号**，
+# 忘了这一步会退回「接收侧不能取消」。
+[patch.crates-io]
+lanflare-core = { path = "vendor/lanflare-core" }
+
 # 注意：profile 必须写在 workspace 根。写在成员包的 Cargo.toml 里会被 cargo 忽略
 # （提示 "profiles for the non root package will be ignored"），等于白写。
 # 任务书 S0.3 第 2 步把 profile 放在 src-tauri/Cargo.toml，那是 MVP 时代「src-tauri 就是根包」的残留。

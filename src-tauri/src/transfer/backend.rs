@@ -124,6 +124,36 @@ pub struct IncomingRequest {
     pub files: Vec<IncomingFile>,
 }
 
+/// 传输页里的一行文件。
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ActiveFile {
+    pub name: String,
+    pub bytes: u64,
+    pub total: u64,
+    /// `active` / `done` / `failed` / `cancelled`
+    pub status: String,
+}
+
+/// 一次传输会话的快照（传输页数据源）。
+///
+/// 为什么要有快照而不是只看事件：事件是「当场」推送，窗口中途打开时前面那些
+/// 全丢了（风险 71 的同族问题），页面必须能一把拉到当前进度。
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ActiveTransfer {
+    pub session_id: String,
+    /// `send` / `recv`
+    pub direction: String,
+    /// 对端别名（拿不到就是空串）。
+    pub peer: String,
+    /// `preparing` / `active` / `done` / `failed` / `cancelled`
+    pub status: String,
+    pub message: Option<String>,
+    pub bytes: u64,
+    pub total: u64,
+    pub speed_bps: Option<u64>,
+    pub files: Vec<ActiveFile>,
+}
+
 /// 一次发送的句柄（取消用）。
 #[derive(Debug)]
 pub struct TransferHandle {
@@ -154,6 +184,10 @@ pub trait TransferBackend: Send + Sync {
     fn pending_requests(&self) -> Vec<IncomingRequest>;
     /// 接受 / 拒绝一条传入请求。
     fn respond(&self, session_id: &str, accept: bool) -> Result<(), String>;
+    /// 当前 / 刚结束的传输快照（传输页数据源；窗口中途打开也能还原进度）。
+    fn active_transfers(&self) -> Vec<ActiveTransfer>;
+    /// 取消一次**接收中**的会话。发送侧取消用 `send::cancel_send`。
+    fn cancel_receive(&self, session_id: &str) -> Result<(), String>;
 }
 
 #[cfg(test)]

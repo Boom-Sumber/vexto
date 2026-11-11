@@ -21,7 +21,7 @@ pub mod send;
 pub mod server;
 
 // 只重导出当前被外部用到的类型；其余用 `transfer::backend::X` 全路径访问。
-pub use backend::{IncomingRequest, Peer, TransferConfig};
+pub use backend::{ActiveTransfer, IncomingRequest, Peer, TransferConfig};
 
 /// 全局传输实现（ADR-010 的兑换点：换实现只改 `server.rs`）。
 ///

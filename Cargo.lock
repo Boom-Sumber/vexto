@@ -2304,8 +2304,6 @@ dependencies = [
 [[package]]
 name = "lanflare-core"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "039b00a1b9e19207da4be13a6447d703650fd2569434d5d3d4a9b595e7516128"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

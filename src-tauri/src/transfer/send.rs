@@ -129,6 +129,9 @@ pub fn send_files(
     let fingerprint = peer.fingerprint.clone();
     let target_name = peer.alias.clone();
 
+    // 传输页要显示「发给谁」：进度事件里只有 session_id，这里记一笔。
+    server::remember_session_peer(&send_id, &target_name);
+
     rt.spawn(async move {
         let total: u64 = files
             .iter()

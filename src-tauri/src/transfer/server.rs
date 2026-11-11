@@ -26,12 +26,15 @@ use lanflare_core::discovery::multicast::{
 };
 use lanflare_core::discovery::{DiscoveredPeer, PeerRegistry, PeerRegistryConfig};
 use lanflare_core::server::{
-    start_server, PrepareUploadDecision, ServerTransferEvent,
+    start_server, PrepareUploadDecision, ServerTransferEvent, SessionEndReason,
 };
 use lanflare_proto::discovery::{DeviceType, ProtocolType};
 use tokio::sync::{mpsc, oneshot};
 
-use super::backend::{IncomingFile, IncomingRequest, Peer, TransferBackend, TransferConfig, TransferHandle};
+use super::backend::{
+    ActiveFile, ActiveTransfer, IncomingFile, IncomingRequest, Peer, TransferBackend,
+    TransferConfig, TransferHandle,
+};
 use super::events::{ProgressView, TransferEvent};
 use crate::config;
 
@@ -69,6 +72,14 @@ struct Globals {
     /// 发现侧句柄（组播 + 注册表）：`refresh_peers_now()` 用它主动广播、
     /// 探测在线状态并剔除已离线设备。服务停止时清空。
     discovery: Mutex<Option<Arc<DiscoveryCtx>>>,
+    /// 会话管理器（vendored lanflare 补丁暴露）：接收侧取消要用。
+    session_mgr: Mutex<Option<Arc<lanflare_core::server::SessionManager>>>,
+    /// 进行中 / 刚结束的传输快照（传输页数据源）。事件驱动更新，最多留 4 个会话。
+    active: Mutex<Vec<ActiveTransfer>>,
+    /// 会话 → 对端别名（进度事件里没有对端信息，建会话时记一笔）。
+    session_peer: Mutex<HashMap<String, String>>,
+    /// 会话 → 发起方 IP（接收侧取消必须带对方 IP，lanflare 用它校验）。
+    session_ip: Mutex<HashMap<String, std::net::IpAddr>>,
 }
 
 /// 发现侧的两件东西，只在服务运行期间有效。
@@ -93,6 +104,10 @@ fn globals() -> &'static Globals {
         runtime: Mutex::new(None),
         identity: Mutex::new(None),
         discovery: Mutex::new(None),
+        session_mgr: Mutex::new(None),
+        active: Mutex::new(Vec::new()),
+        session_peer: Mutex::new(HashMap::new()),
+        session_ip: Mutex::new(HashMap::new()),
     })
 }
 
@@ -109,12 +124,170 @@ pub fn set_event_sink(f: impl Fn(TransferEvent) + Send + Sync + 'static) {
 }
 
 /// 发事件。没人听就丢（与 pump 同策略，只记日志）。`send.rs` 也用它。
+///
+/// 同时维护 [`ActiveTransfer`] 快照：传输页中途打开时靠它还原进度，
+/// 不必依赖「窗口开着时的那些事件」（风险 71 的同族问题）。
 pub(crate) fn emit(evt: TransferEvent) {
+    if let TransferEvent::Progress { view } = &evt {
+        record_progress(view);
+    }
     let sink = lock(&EVENT_SINK).clone();
     match sink {
         Some(f) => f(evt),
         None => crate::dlog::dlog("transfer: 事件被丢弃（前端未接入）"),
     }
+}
+
+// ---------- 传输快照（传输页数据源） ----------
+
+/// 记「这个会话的对端是谁」：进度事件里只有 session_id，没有对端信息。
+pub(crate) fn remember_session_peer(session_id: &str, alias: &str) {
+    let mut m = lock(&globals().session_peer);
+    m.insert(session_id.to_string(), alias.to_string());
+    // 同步会话数上限，避免长跑程序把表撑大
+    if m.len() > 32 {
+        let stale: Vec<String> = m.keys().take(m.len() - 32).cloned().collect();
+        for k in stale {
+            m.remove(&k);
+        }
+    }
+}
+
+fn record_progress(view: &ProgressView) {
+    let peer = lock(&globals().session_peer)
+        .get(&view.session_id)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut list = lock(&globals().active);
+    let sid = view.session_id.clone();
+
+    if !list.iter().any(|t| t.session_id == sid) {
+        // 新会话：先把已结束的老会话清掉，页面只显示「本次」
+        list.retain(|t| !matches!(t.status.as_str(), "done" | "failed" | "cancelled"));
+        list.push(ActiveTransfer {
+            session_id: sid.clone(),
+            direction: view.direction.clone(),
+            peer: peer.clone(),
+            status: "active".into(),
+            message: None,
+            bytes: 0,
+            total: 0,
+            speed_bps: None,
+            files: Vec::new(),
+        });
+        if list.len() > 4 {
+            list.remove(0);
+        }
+    }
+    let Some(t) = list.iter_mut().find(|t| t.session_id == sid) else {
+        return;
+    };
+    if t.peer.is_empty() && !peer.is_empty() {
+        t.peer = peer;
+    }
+    if t.direction.is_empty() {
+        t.direction = view.direction.clone();
+    }
+
+    // 会话级事件：发送侧会用空 file_name 发 preparing / 终态，
+    // 完成时也会发一条 `N 个文件` 的汇总。都不该变成「文件行」。
+    let session_level = view.file_name.is_empty() || view.file_name.ends_with(" 个文件");
+    if session_level {
+        if !view.status.is_empty() {
+            t.status = view.status.clone();
+        }
+        if view.message.is_some() {
+            t.message = view.message.clone();
+        }
+        if view.speed_bps.is_some() {
+            t.speed_bps = view.speed_bps;
+        }
+        if view.total > 0 {
+            t.total = view.total;
+            t.bytes = view.bytes;
+        }
+        return;
+    }
+
+    match t.files.iter_mut().find(|f| f.name == view.file_name) {
+        Some(f) => {
+            f.bytes = view.bytes;
+            if view.total > 0 {
+                f.total = view.total;
+            }
+            if matches!(view.status.as_str(), "done" | "failed" | "cancelled") {
+                f.status = view.status.clone();
+            }
+        }
+        None => t.files.push(ActiveFile {
+            name: view.file_name.clone(),
+            bytes: view.bytes,
+            total: view.total,
+            status: if view.status == "done" { "active".into() } else { view.status.clone() },
+        }),
+    }
+
+    if let Some(p) = &view.message {
+        if t.message.is_none() {
+            t.message = Some(p.clone());
+        }
+    }
+    if view.speed_bps.is_some() {
+        t.speed_bps = view.speed_bps;
+    }
+
+    // 会话内所有文件都完成了 → 会话也算完成（接收侧没有会话级终态事件）
+    if !t.files.is_empty() && t.files.iter().all(|f| f.status == "done") {
+        t.status = "done".into();
+    }
+    t.total = t.files.iter().map(|f| f.total).sum();
+    t.bytes = t.files.iter().map(|f| f.bytes).sum();
+}
+
+/// 当前 / 刚结束的传输快照（传输页开场拉一次，之后靠事件增量更新）。
+pub fn active_transfers() -> Vec<ActiveTransfer> {
+    lock(&globals().active).clone()
+}
+
+/// 取消一次**接收中**的会话（发送侧取消走 `send::cancel_send`）。
+///
+/// lanflare 的 `cancel_session` 要求同时给出 session_id 与发起方 IP
+/// （`ServerSession` 用它校验「是不是同一台设备」），所以建会话时要把 IP 记下来。
+pub fn cancel_receive(session_id: &str) -> Result<(), String> {
+    let mgr = lock(&globals().session_mgr)
+        .clone()
+        .ok_or("传输服务未就绪")?;
+    let ip = lock(&globals().session_ip)
+        .get(session_id)
+        .copied()
+        .ok_or("找不到该会话的发起方，无法取消")?;
+    let rt = runtime_handle().ok_or("请先启用局域网互传")?;
+    let sid = session_id.to_string();
+    rt.spawn(async move {
+        let hit = mgr.cancel_session(Some(&sid), ip).await;
+        match hit {
+            Some(reason) => {
+                crate::dlog::dlog(&format!("transfer: 本机取消接收 {sid}，lanflare 返回 {reason:?}"));
+                // 会话级终态自己发一条：传输页立刻从「传输中」翻成「已取消」，
+                // 不用等 lanflare 的 FileFailed（那条是文件级的，措辞也不同）。
+                emit(TransferEvent::Progress {
+                    view: ProgressView {
+                        session_id: sid.clone(),
+                        direction: "recv".into(),
+                        file_name: String::new(),
+                        bytes: 0,
+                        total: 0,
+                        speed_bps: None,
+                        status: "cancelled".into(),
+                        message: Some("已在本机取消".to_string()),
+                    },
+                });
+            }
+            None => crate::dlog::dlog(&format!("transfer: 取消接收 {sid} 未命中（会话已结束？）")),
+        }
+    });
+    Ok(())
 }
 
 // ---------- 对外接口（tools/transfer.rs、main.rs、send.rs 用） ----------
@@ -349,6 +522,14 @@ impl TransferBackend for LanflareBackend {
     fn respond(&self, session_id: &str, accept: bool) -> Result<(), String> {
         respond(session_id, accept)
     }
+
+    fn active_transfers(&self) -> Vec<ActiveTransfer> {
+        active_transfers()
+    }
+
+    fn cancel_receive(&self, session_id: &str) -> Result<(), String> {
+        cancel_receive(session_id)
+    }
 }
 
 // ---------- 配置解析 ----------
@@ -540,6 +721,8 @@ async fn service_main(
         }
     };
     let port = server.bound_port();
+    // 拿一份会话管理器：接收侧取消要用（vendored 补丁暴露的 getter）。
+    *lock(&globals().session_mgr) = Some(server.session_manager().clone());
 
     let whitelist: Vec<String> = cfg
         .interface_whitelist
@@ -681,6 +864,10 @@ async fn service_main(
     server.stop();
     registry.shutdown();
     *lock(&globals().discovery) = None;
+    *lock(&globals().session_mgr) = None;
+    lock(&globals().active).clear();
+    lock(&globals().session_peer).clear();
+    lock(&globals().session_ip).clear();
     *lock(&globals().state) = ServiceState::Stopped;
     crate::dlog::dlog("transfer: 服务已停止");
 }
@@ -721,6 +908,12 @@ fn on_prepare_upload(
         view: view.clone(),
         decision_tx,
     });
+    // 进度事件只有 session_id，对端别名与 IP 在建会话时记一笔：
+    // 前者给传输页显示「谁发来的」，后者是接收侧取消的必填参数。
+    remember_session_peer(&session_id, &view.sender_alias);
+    if let Ok(ip) = view.sender_ip.parse::<std::net::IpAddr>() {
+        lock(&globals().session_ip).insert(session_id.clone(), ip);
+    }
     emit(TransferEvent::Incoming { req: view });
 }
 
@@ -813,6 +1006,26 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
         }
         ServerTransferEvent::SessionEnded { session_id, reason } => {
             crate::dlog::dlog(&format!("transfer: 会话 {session_id} 结束：{reason:?}"));
+            // 会话级终态也要发一条：传输页靠它把「传输中」翻成「已完成 / 已取消」，
+            // 否则取消之后页面会停在最后那个百分比上不动。
+            let (status, message) = match reason {
+                SessionEndReason::Finished => ("done", "传输完成".to_string()),
+                SessionEndReason::CancelledBySender => ("cancelled", "对方已取消".to_string()),
+                SessionEndReason::CancelledLocally => ("cancelled", "已在本机取消".to_string()),
+                SessionEndReason::TimedOut => ("failed", "传输超时".to_string()),
+            };
+            emit(TransferEvent::Progress {
+                view: ProgressView {
+                    session_id,
+                    direction: "recv".into(),
+                    file_name: String::new(),
+                    bytes: 0,
+                    total: 0,
+                    speed_bps: None,
+                    status: status.to_string(),
+                    message: Some(message),
+                },
+            });
         }
         // 其余事件（注册等）在 select 里已处理；Debug 兜底不刷屏。
         other => {
