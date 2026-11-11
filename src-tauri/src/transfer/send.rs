@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use lanflare_core::client::transfer::{
     OutgoingFile, TransferOptions, TransferOrchestrator, TransferProgress,
@@ -31,6 +32,50 @@ fn cancels() -> &'static Mutex<HashMap<String, CancellationToken>> {
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 发送请求的总时长上限（`reqwest::ClientBuilder::timeout` 的口径是「整个请求」，
+/// 从开始连接到上传 body 写完，不是空闲超时）。
+///
+/// 旧值固定 60 秒会把大文件腰斩：4 GB 在 5 MB/s 的 WiFi 上要 14 分钟，60 秒只能过
+/// 约 300 MB（真机实测恰好在 7% 处报 `error sending request for url (…/upload…)`）。
+/// 所以按体积给下限——假设最差 1 MB/s，另加 120 秒余量；封顶 6 小时。
+///
+/// 代价：对端假死时最长要等到这个值才报错，期间进度条不动，用户可以主动取消。
+const MIN_SEND_TIMEOUT: Duration = Duration::from_secs(120);
+const MAX_SEND_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
+/// 计算超时时假设的最差平均速率（字节/秒）。
+const WORST_CASE_BPS: u64 = 1024 * 1024;
+
+fn send_timeout(total_bytes: u64) -> Duration {
+    let secs = total_bytes / WORST_CASE_BPS + MIN_SEND_TIMEOUT.as_secs();
+    Duration::from_secs(secs).clamp(MIN_SEND_TIMEOUT, MAX_SEND_TIMEOUT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_timeout_keeps_floor_for_small_files() {
+        assert_eq!(send_timeout(0), MIN_SEND_TIMEOUT);
+        // 小文件按 1 MB/s 折算只多几秒，仍远小于旧值 60 秒之外的余量，够用
+        assert_eq!(send_timeout(10 * 1024 * 1024), Duration::from_secs(130));
+        assert_eq!(send_timeout(100 * 1024 * 1024), Duration::from_secs(220));
+    }
+
+    #[test]
+    fn send_timeout_scales_with_size() {
+        // 4 GB：4096 秒 + 120 秒余量，够 1 MB/s 跑完
+        assert_eq!(send_timeout(4 * 1024 * 1024 * 1024), Duration::from_secs(4216));
+        // 1 GB
+        assert_eq!(send_timeout(1024 * 1024 * 1024), Duration::from_secs(1144));
+    }
+
+    #[test]
+    fn send_timeout_is_capped() {
+        assert_eq!(send_timeout(u64::MAX / 2), MAX_SEND_TIMEOUT);
+    }
 }
 
 /// 局域网目标不走代理（风险 55 / 62 的同类坑）：reqwest 默认读 `HTTP_PROXY`
@@ -159,7 +204,8 @@ pub fn send_files(
             download: false,
         };
         let client = LsClient::new(LsClientConfig {
-            timeout: std::time::Duration::from_secs(60),
+            // 总时长上限按体积算，见 `send_timeout()`：固定值会把大文件腰斩。
+            timeout: send_timeout(total),
             connect_timeout: std::time::Duration::from_secs(5),
             tls_identity: Some(identity),
             target_fingerprint: if fingerprint.is_empty() {
