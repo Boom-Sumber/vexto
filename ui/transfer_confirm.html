@@ -30,7 +30,8 @@
     background: var(--bg-panel);
     border: 1px solid var(--border-default);
     border-radius: var(--r-xl);
-    box-shadow: var(--shadow-popup);
+    /* 透明窗口左右只剩 12px 边距，大 box-shadow 会被窗口边缘裁成矩形；
+       确认卡只用 1px 边框，不加阴影（会话 41 用户反馈）。 */
   }
 
   .close-btn {
