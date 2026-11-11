@@ -459,9 +459,11 @@ pub fn ready(app: &AppHandle) {
 
 /// 关闭弹窗。**必须在主线程调用。**
 ///
-/// 用 `destroy` 而不是 `hide`：`hide` 之后 6 个 msedgewebview2 子进程
+/// 极轻模式开（默认）= `destroy`：`hide` 之后 6 个 msedgewebview2 子进程
 /// （实测合计约 280 MB）会一直驻留；`destroy` 之后整个 WebView2 进程组退出，
-/// 主进程回到纯 Rust 的几 MB。
+/// 主进程回到纯 Rust 的几 MB。极轻模式关 = `hide`，窗口挂起复用。
+/// 从「关」切回「开」时 `save_tool_config` 会调 `prune_hidden_windows()`，
+/// 把这一轮挂起的窗口统一回收（会话 33）。
 pub fn close(app: &AppHandle) {
     // 先让监视器退场，避免它对着正在销毁的句柄继续轮询
     WATCHED_HWND.store(0, Ordering::SeqCst);
@@ -485,6 +487,39 @@ pub fn close(app: &AppHandle) {
             crate::dlog::dlog("popup::close: hide（极轻模式已关，WebView 挂起）");
             let _ = w.hide();
         }
+    }
+}
+
+/// 极轻模式重新开启时要回收的窗口 label。
+/// **不含设置窗口**：用户此刻正在里面点「保存」，把它销毁了面板会当场消失。
+pub fn prunable_labels() -> [&'static str; 3] {
+    [POPUP_LABEL, MAIN_LABEL, NEW_TASK_LABEL]
+}
+
+/// 开启极轻模式后，把上一次「关掉极轻模式」期间挂起（hide）的窗口一次性回收。
+///
+/// 会话 33 的 bug：关掉极轻模式时窗口关闭只是 hide，之后即使重新打开极轻模式，
+/// 这些 WebView 也没人再去关一次，于是继续占着内存；只有设置窗口在用户关闭它时
+/// 走了新的 destroy 分支。所以在「lite_mode 变为 true」那次保存里主动清一遍。
+/// 只销毁**不可见**的窗口：正显示着的留给用户，等他关闭时自然按新语义 destroy。
+pub fn prune_hidden_windows(app: &AppHandle) {
+    let mut n = 0;
+    for label in prunable_labels() {
+        let Some(w) = app.get_webview_window(label) else {
+            continue;
+        };
+        // 可见性查不出来时按「可见」处理，宁可少收一个也别把正在用的窗口弄没。
+        if w.is_visible().unwrap_or(true) {
+            continue;
+        }
+        if w.destroy().is_ok() {
+            n += 1;
+        }
+    }
+    if n > 0 {
+        crate::dlog::dlog(&format!("popup: 极轻模式开启，回收 {n} 个挂起的窗口"));
+        // WebView2 进程组收尾后再换出工作集，和 close() 的 destroy 分支一致
+        crate::mem::trim_soon(1200);
     }
 }
 
@@ -750,5 +785,21 @@ pub fn close_new_task_and_show_list(app: &AppHandle) {
     open_main_window(app);
     if let Some(w) = app.get_webview_window(NEW_TASK_LABEL) {
         let _ = w.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 开回极轻模式时只回收「别人」：设置窗口必须留着，用户正在里面点保存。
+    #[test]
+    fn prunable_labels_cover_all_but_settings() {
+        let labels = prunable_labels();
+        assert_eq!(labels.len(), 3);
+        assert!(labels.contains(&POPUP_LABEL));
+        assert!(labels.contains(&MAIN_LABEL));
+        assert!(labels.contains(&NEW_TASK_LABEL));
+        assert!(!labels.contains(&SETTINGS_LABEL));
     }
 }

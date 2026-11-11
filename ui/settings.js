@@ -305,22 +305,53 @@ function fieldGroup(f) {
 // 输入时不重画（否则光标会跳），只有增删、切换下拉才动 DOM。
 // 列表变了要 `renderFields()`：上面「翻译模式」的下拉是从这些列表算出来的。
 
+// ── 引擎实例的测试状态（会话 33）────────────────────────────────────────
+// 只活在内存里：测试是临时的，不该写进 config.json，也不该在下次打开设置页时
+// 还亮着上一次的绿灯。key = `${listKey}:${item.id}`；sig 是测试那一刻的配置
+// 指纹，配置后来被改过就对不上，自动回到「未测试」灰球。
+const profileStatus = new Map();
+const STATUS_TEXT = { ok: "测试通过", bad: "测试失败", idle: "未测试" };
+
+function setProfileStatus(listKey, item, status) {
+  profileStatus.set(`${listKey}:${item.id}`, { status, sig: stableJson(item) });
+}
+function getProfileStatus(listKey, item) {
+  const s = profileStatus.get(`${listKey}:${item.id}`);
+  return s && s.sig === stableJson(item) ? s.status : "idle";
+}
+function markStatus(dot, status) {
+  dot.dataset.status = status;
+  dot.title = STATUS_TEXT[status] || STATUS_TEXT.idle;
+}
+
 /// 实测一套引擎配置。卡片里刚改的值、弹窗里还没保存的草稿都能测：
 /// 后端用一份临时配置发一句翻译，不写盘、也不动当前正在用的引擎。
-async function testProfile(action, item, host, btn) {
-  const old = host.querySelector(".result");
-  if (old) old.remove();
+/// 呈现方式交给调用方：卡片只点状态球，弹窗只写一句结论，都不再摊开
+/// 译文 / 语向 / 耗时那一长串文本。
+async function testProfile(action, item, onResult, btn) {
   const label = btn.textContent;
   btn.disabled = true;
   btn.textContent = "测试中…";
+  let res;
   try {
-    renderResult(host, await invoke(action, { profile: item }));
+    res = await invoke(action, { profile: item });
   } catch (e) {
-    renderResult(host, { ok: false, message: errText(e) });
+    res = { ok: false, message: errText(e) };
   } finally {
     btn.disabled = false;
     btn.textContent = label;
   }
+  onResult(res);
+}
+
+/// 弹窗里的结论框：绿框「测试通过」/ 红框「测试失败」，不显示任何细节。
+function renderSimpleResult(host, status) {
+  const old = host.querySelector(".result");
+  if (old) old.remove();
+  const box = document.createElement("div");
+  box.className = "result " + (status === "ok" ? "ok" : "bad");
+  box.textContent = STATUS_TEXT[status] || STATUS_TEXT.bad;
+  host.append(box);
 }
 
 function newItemId() {
@@ -396,8 +427,9 @@ function fieldList(f) {
   w.append(body);
 
   const itemFields = f.item_fields || [];
-  const sums = new Map();   // id → 摘要节点
-  const details = new Map(); // id → 详情容器
+  const sums = new Map();    // id → 摘要节点
+  const details = new Map();  // id → 详情容器
+  const dots = new Map();     // id → 卡片头的状态球（会话 33）
 
   function readItems() {
     const v = val(f.key);
@@ -411,6 +443,13 @@ function fieldList(f) {
     it[key] = value;
     commit(f.key, next);
     refreshSummary(id);
+    // 测过之后又把配置改了，绿灯 / 红灯就不再代表当前值 → 回到「未测试」。
+    // 指纹机制保证下次重画也是灰的，这里只负责立刻改眼前这颗球。
+    const dot = dots.get(id);
+    if (dot) {
+      profileStatus.delete(`${f.key}:${id}`);
+      markStatus(dot, "idle");
+    }
   }
 
   function refreshSummary(id) {
@@ -480,9 +519,22 @@ function fieldList(f) {
       test.title = "用这套配置实测一句翻译（不写入配置）";
       test.addEventListener("click", () => {
         const fresh = readItems().find((x) => x.id === it.id) || it;
-        testProfile(f.test_action, fresh, c, test);
+        testProfile(f.test_action, fresh, (res) => {
+          const status = res && res.ok !== false ? "ok" : "bad";
+          setProfileStatus(f.key, fresh, status);
+          const dot = dots.get(it.id);
+          if (dot) markStatus(dot, status);
+        }, test);
       });
       head.append(test);
+
+      // 状态球紧挨「删除」左侧：绿=通过 / 红=失败 / 灰=未测试。
+      // 卡片里不再插结果文本框，测完只看这颗球。
+      const dot = document.createElement("span");
+      dot.className = "li-status";
+      markStatus(dot, getProfileStatus(f.key, it));
+      dots.set(it.id, dot);
+      head.append(dot);
     }
 
     const del = document.createElement("button");
@@ -532,8 +584,13 @@ function fieldList(f) {
     // 后端给的 label 是「已配置的厂商 / 已配置的模型」，去掉前缀正好当弹窗标题，
     // 不必再往 schema 里加一个 add_title 字段，也不在这里硬编码字段名。
     const noun = String(f.label || "一条").replace(/^已配置的/, "") || "一条";
-    openFormDialog("添加" + noun, itemFields, f.test_action, (draft) => {
+    openFormDialog("添加" + noun, itemFields, f.test_action, (draft, dialogStatus) => {
       const item = Object.assign({ id: newItemId() }, draft);
+      // 弹窗里测过就把状态带到新卡片，否则用户会觉得「刚测通过怎么是灰的」。
+      // 用含 id 的 item 重算指纹，和卡片渲染时的 stableJson 对得上。
+      if (dialogStatus && dialogStatus !== "idle") {
+        setProfileStatus(f.key, item, dialogStatus);
+      }
       const next = readItems();
       next.push(item);
       commit(f.key, next);
@@ -579,6 +636,9 @@ function fieldList(f) {
 
 function openFormDialog(title, fields, testAction, onSave) {
   const draft = {};
+  // 弹窗这一轮的测试结论；改了任何字段就作废，免得拿旧配置的「通过」
+  // 去标一套已经改过的配置。
+  let dialogStatus = "idle";
   for (const fld of fields) {
     // select 的草稿值必须等于界面上默认选中的那一项：浏览器会自动选中第一个
     // option，但草稿若留空，项内 show_if 就认为「没选厂商」，两家的凭据行
@@ -594,11 +654,21 @@ function openFormDialog(title, fields, testAction, onSave) {
   const body = el("fm-body");
 
   // 弹窗里的「测试」测的是**当前草稿**（还没保存、甚至还没进列表）。
-  // 只有后端声明了 test_action 的列表才有这个按钮。
+  // 只有后端声明了 test_action 的列表才有这个按钮。close() 只把弹窗藏起来，
+  // body 不清，所以每次打开都要手动收掉上一轮留下的结论框。
+  // 结论框只写一句话，不摊开译文 / 语向 / 耗时（会话 33）。
+  const clearResult = () => {
+    const old = body.querySelector(".result");
+    if (old) old.remove();
+  };
   const testBtn = el("fmTest");
   testBtn.classList.toggle("hidden", !testAction);
+  clearResult();
   testBtn.onclick = testAction
-    ? () => testProfile(testAction, JSON.parse(JSON.stringify(draft)), body, testBtn)
+    ? () => testProfile(testAction, JSON.parse(JSON.stringify(draft)), (res) => {
+        dialogStatus = res && res.ok !== false ? "ok" : "bad";
+        renderSimpleResult(body, dialogStatus);
+      }, testBtn)
     : null;
 
   // 项内联动只看草稿自己，复用卡片详情那一套判断
@@ -618,6 +688,9 @@ function openFormDialog(title, fields, testAction, onSave) {
 
       const ctrl = itemControl(fld, draft[fld.key], (v) => {
         draft[fld.key] = v;
+        // 草稿变了，上一轮的测试结论作废
+        dialogStatus = "idle";
+        clearResult();
         // 下拉切换会改变「哪些字段该显示」，必须重画
         if (fld.type === "select") draw();
       });
@@ -644,7 +717,7 @@ function openFormDialog(title, fields, testAction, onSave) {
         || "未命名";
     }
     close();
-    onSave(draft);
+    onSave(draft, dialogStatus);
   };
   el("fmCancel").onclick = close;
 

@@ -367,9 +367,28 @@ input.capturing {
 /* 卡片头：「测试」在「删除」左侧，两者都是同一排的小按钮 */
 .li-test { flex: 0 0 auto; margin-right: var(--sp-2); }
 .li-del { flex: 0 0 auto; }
-/* 卡片 / 弹窗里的实测结果框（复用 .result 的配色） */
-.list-item > .result { margin: 0 var(--sp-3) var(--sp-3); }
+/* 弹窗里的实测结论框（复用 .result 的绿 / 红配色，只写「测试通过 / 失败」） */
 .fm-body .result { margin-top: var(--sp-4); }
+
+/* 卡片头状态发光小球：绿=通过 / 红=失败 / 灰=未测试，紧挨「删除」左侧。
+ * 会话 33 起卡片里不再插结果文本框，测试结论全靠这颗球。 */
+.li-status {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: var(--sp-1);
+  background: #7a8290;
+}
+.li-status[data-status="idle"] { background: #7a8290; box-shadow: none; }
+.li-status[data-status="ok"] {
+  background: #34d399;
+  box-shadow: 0 0 8px 1px rgba(52, 211, 153, .7);
+}
+.li-status[data-status="bad"] {
+  background: #f87171;
+  box-shadow: 0 0 8px 1px rgba(248, 113, 113, .7);
+}
 
 /* ── 表单弹窗（新建一条配置）──────────────────────────────────────────── */
 

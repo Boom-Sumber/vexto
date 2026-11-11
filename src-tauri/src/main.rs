@@ -681,6 +681,14 @@ fn save_tool_config(
         );
     }
 
+    // 11) 极轻模式重新打开：把之前挂起的窗口立刻回收。
+    //     关掉极轻模式期间窗口关闭只 hide，光改配置不会让它们自己消失；
+    //     不主动清一次，用户会看到「开回极轻模式了内存却还是没降」。
+    //     只在值真的翻成 true 时跑（同值保存 commit() 已经不进 pending）。
+    if patch.contains_key("lite_mode") && cfg.lite_mode {
+        crate::popup::prune_hidden_windows(&app);
+    }
+
     SaveOut {
         ok: true,
         message: "已保存".to_string(),
@@ -1760,6 +1768,13 @@ mod tests {
     }
 
     /// 每个工具都能报出自己那批 key，且翻译里包含热键字段。
+    /// 会话 33：`lite_mode` 必须在保存白名单里，否则 `save_tool_config` 的
+    /// 第 11 步（开回极轻模式时回收挂起窗口）永远拿不到这个 key。
+    #[test]
+    fn tool_value_keys_include_lite_mode() {
+        assert!(tool_value_keys("general").contains(&"lite_mode"));
+    }
+
     #[test]
     fn tool_value_keys_come_from_sections() {
         let keys = tool_value_keys("translate");
