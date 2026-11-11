@@ -205,6 +205,27 @@ pub struct Config {
     /// 收到传输请求时是否自动接受（跳过确认框）。默认关：确认弹窗才是主门。
     #[serde(default)]
     pub transfer_auto_accept: bool,
+    /// 传输服务端口（UDP 组播 + TCP 同号）。默认 53317。
+    #[serde(default = "d_transfer_port")]
+    pub transfer_port: u16,
+    /// 接收传输是否使用 HTTPS。默认开（ADR-035）。
+    #[serde(default = "d_true")]
+    pub transfer_use_https: bool,
+    /// 组播地址。默认 224.0.0.167。
+    #[serde(default = "d_transfer_multicast")]
+    pub transfer_multicast: String,
+    /// 设备类型：mobile / desktop / web / headless / server。
+    #[serde(default = "d_transfer_device_type")]
+    pub transfer_device_type: String,
+    /// 设备型号（组播公告里的 deviceModel）。
+    #[serde(default = "d_transfer_device_model")]
+    pub transfer_device_model: String,
+    /// 设备列表保留时长（秒）：超过这个时间没再收到公告就移除。
+    #[serde(default = "d_transfer_peer_timeout")]
+    pub transfer_peer_timeout_secs: u64,
+    /// 网络接口白名单（逗号分隔的 IP 前缀；空 = 所有网卡）。
+    #[serde(default)]
+    pub transfer_interface_whitelist: String,
 
     // ---- 下载（S3a）----
     /// 全局限速，单位 KB/s，0 = 不限。作为 aria2 的启动参数读取，
@@ -360,6 +381,21 @@ fn d_true() -> bool {
 fn d_popup_timeout() -> u64 {
     15000
 }
+fn d_transfer_port() -> u16 {
+    53317
+}
+fn d_transfer_multicast() -> String {
+    "224.0.0.167".to_string()
+}
+fn d_transfer_device_type() -> String {
+    "desktop".to_string()
+}
+fn d_transfer_device_model() -> String {
+    "Windows".to_string()
+}
+fn d_transfer_peer_timeout() -> u64 {
+    90
+}
 /// aria2 自己的默认值就是 5，跟它保持一致，别给用户一个"升级后突然变快"的惊喜。
 fn d_max_concurrent() -> u32 {
     5
@@ -439,6 +475,13 @@ impl Default for Config {
             require_pin: false,
             pin: String::new(),
             transfer_auto_accept: false,
+            transfer_port: d_transfer_port(),
+            transfer_use_https: true,
+            transfer_multicast: d_transfer_multicast(),
+            transfer_device_type: d_transfer_device_type(),
+            transfer_device_model: d_transfer_device_model(),
+            transfer_peer_timeout_secs: d_transfer_peer_timeout(),
+            transfer_interface_whitelist: String::new(),
             max_speed_kb: 0,
             max_concurrent: d_max_concurrent(),
             max_connection_per_server: d_connections(),

@@ -27,6 +27,18 @@ pub struct TransferConfig {
     pub pin: String,
     /// 收到请求时是否跳过确认框、直接接受。
     pub auto_accept: bool,
+    /// 是否使用 HTTPS（ADR-035 默认开）。
+    pub use_https: bool,
+    /// 组播地址（已解析：空值 → 224.0.0.167）。
+    pub multicast: String,
+    /// 设备类型：mobile / desktop / web / headless / server。
+    pub device_type: String,
+    /// 设备型号（组播公告用）。
+    pub device_model: String,
+    /// 设备列表保留时长（秒）。
+    pub peer_timeout_secs: u64,
+    /// 网络接口白名单（逗号分隔的 IP 前缀；空 = 所有网卡）。
+    pub interface_whitelist: String,
 }
 
 impl TransferConfig {
@@ -39,11 +51,33 @@ impl TransferConfig {
         };
         Self {
             alias,
-            port: crate::transfer::TRANSFER_PORT,
+            port: if cfg.transfer_port == 0 {
+                crate::transfer::TRANSFER_PORT
+            } else {
+                cfg.transfer_port.clamp(1024, 65535)
+            },
             receive_dir: crate::transfer::server::resolve_receive_dir(cfg),
             require_pin: cfg.require_pin,
             pin: cfg.pin.trim().to_string(),
             auto_accept: cfg.transfer_auto_accept,
+            use_https: cfg.transfer_use_https,
+            multicast: if cfg.transfer_multicast.trim().is_empty() {
+                "224.0.0.167".to_string()
+            } else {
+                cfg.transfer_multicast.trim().to_string()
+            },
+            device_type: if cfg.transfer_device_type.trim().is_empty() {
+                "desktop".to_string()
+            } else {
+                cfg.transfer_device_type.trim().to_lowercase()
+            },
+            device_model: if cfg.transfer_device_model.trim().is_empty() {
+                "Windows".to_string()
+            } else {
+                cfg.transfer_device_model.trim().to_string()
+            },
+            peer_timeout_secs: cfg.transfer_peer_timeout_secs.clamp(5, 3600),
+            interface_whitelist: cfg.transfer_interface_whitelist.trim().to_string(),
         }
     }
 }
@@ -130,12 +164,25 @@ mod tests {
         cfg.require_pin = true;
         cfg.pin = " 123456 ".to_string();
         cfg.transfer_auto_accept = true;
+        cfg.transfer_port = 53319;
+        cfg.transfer_use_https = false;
+        cfg.transfer_multicast = " 239.1.2.3 ".to_string();
+        cfg.transfer_device_type = "Mobile".to_string();
+        cfg.transfer_device_model = "  Mate 80  ".to_string();
+        cfg.transfer_peer_timeout_secs = 30;
+        cfg.transfer_interface_whitelist = " 192.168.1.* ".to_string();
         let tc = TransferConfig::from_app(&cfg);
         assert_eq!(tc.alias, "我的电脑");
         assert!(tc.require_pin);
         assert_eq!(tc.pin, "123456");
         assert!(tc.auto_accept);
-        assert_eq!(tc.port, crate::transfer::TRANSFER_PORT);
+        assert_eq!(tc.port, 53319);
+        assert!(!tc.use_https);
+        assert_eq!(tc.multicast, "239.1.2.3");
+        assert_eq!(tc.device_type, "mobile");
+        assert_eq!(tc.device_model, "Mate 80");
+        assert_eq!(tc.peer_timeout_secs, 30);
+        assert_eq!(tc.interface_whitelist, "192.168.1.*");
     }
 
     #[test]

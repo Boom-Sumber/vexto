@@ -13,16 +13,18 @@
 //! 启动时清超过 24 小时的残留临时文件（任务书 §S4.10 坑 3）。
 
 use std::collections::HashMap;
+use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use lanflare_core::config::AppConfig;
 use lanflare_core::crypto::cert::{load_or_generate_identity, TlsIdentity};
+use lanflare_core::discovery::interface::InterfaceFilter;
 use lanflare_core::discovery::multicast::{
     start_multicast_engine, MulticastConfig, MulticastDiscoveryEvent, MulticastNodeInfo,
 };
-use lanflare_core::discovery::{DiscoveredPeer, PeerRegistry};
+use lanflare_core::discovery::{DiscoveredPeer, PeerRegistry, PeerRegistryConfig};
 use lanflare_core::server::{
     start_server, PrepareUploadDecision, ServerTransferEvent,
 };
@@ -313,6 +315,17 @@ fn device_type_str(dt: Option<DeviceType>) -> &'static str {
     }
 }
 
+/// 配置里的设备类型串 → 协议枚举。未知值按 `desktop` 兜底。
+pub(crate) fn parse_device_type(s: &str) -> DeviceType {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "mobile" => DeviceType::Mobile,
+        "web" => DeviceType::Web,
+        "headless" => DeviceType::Headless,
+        "server" => DeviceType::Server,
+        _ => DeviceType::Desktop,
+    }
+}
+
 /// `DiscoveredPeer` → 快照 `Peer`（IPv4 优先的主 IP）。
 fn map_peer(p: &DiscoveredPeer) -> Peer {
     Peer {
@@ -393,10 +406,21 @@ async fn service_main(
     result_tx: std::sync::mpsc::Sender<Result<u16, String>>,
     mut stop_rx: oneshot::Receiver<()>,
 ) {
-    let registry = PeerRegistry::new();
-    registry.start_eviction_task();
+    // 组播地址先校验：配错了宁可启动失败，也不要用默认值悄悄兜底。
+    let group: Ipv4Addr = match cfg.multicast.parse() {
+        Ok(g) => g,
+        Err(_) => {
+            let _ = result_tx.send(Err(format!("组播地址不合法：{}", cfg.multicast)));
+            return;
+        }
+    };
 
-    // HTTPS + 持久化自签证书（ADR-035）。fingerprint = 证书 SHA-256。
+    let registry = PeerRegistry::with_config(PeerRegistryConfig {
+        peer_timeout: Duration::from_secs(cfg.peer_timeout_secs),
+        ..Default::default()
+    });
+
+    // 证书始终生成/加载：即使服务走 HTTP，发送侧连接 HTTPS 对端仍需要它。
     let identity = match load_or_generate_identity(&identity_path()) {
         Ok(id) => id,
         Err(e) => {
@@ -418,6 +442,7 @@ async fn service_main(
             None
         },
         auto_accept: cfg.auto_accept,
+        multicast_address: cfg.multicast.clone(),
         ..Default::default()
     };
 
@@ -426,9 +451,12 @@ async fn service_main(
     cleanup_stale_parts(&cfg.receive_dir);
 
     let (stx, mut srx) = mpsc::channel::<ServerTransferEvent>(256);
-    let server = match start_server(app_cfg, Some(identity.clone()), registry.clone(), Some(stx))
-        .await
-    {
+    let tls_identity = if cfg.use_https {
+        Some(identity.clone())
+    } else {
+        None
+    };
+    let server = match start_server(app_cfg, tls_identity, registry.clone(), Some(stx)).await {
         Ok(s) => s,
         Err(e) => {
             // 端口被占是这里最常见的失败，原因要能原样展示给用户。
@@ -441,19 +469,43 @@ async fn service_main(
     };
     let port = server.bound_port();
 
+    let whitelist: Vec<String> = cfg
+        .interface_whitelist
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let interface_filter = if whitelist.is_empty() {
+        InterfaceFilter::default()
+    } else {
+        InterfaceFilter::new().with_whitelist(whitelist)
+    };
+
     let node_info = MulticastNodeInfo {
         alias: cfg.alias.clone(),
         // 任务书 §S4.3.2 的示例值。与 /info 应答（lanflare 内部写死 "2.0"）
         // 不一致是已知偏差（RISKS 91.），官方 LocalSend 不按 version 串做兼容判断。
         version: "2.2".to_string(),
-        device_model: Some("Windows".to_string()),
-        device_type: Some(DeviceType::Desktop),
-        fingerprint: identity.fingerprint.clone(),
+        device_model: Some(cfg.device_model.clone()),
+        device_type: Some(parse_device_type(&cfg.device_type)),
+        fingerprint: if cfg.use_https {
+            identity.fingerprint.clone()
+        } else {
+            // HTTP 模式没有证书指纹；给一个每进程稳定的串，只用于「别把自己当设备」。
+            format!("lightbox-{}-{}", std::process::id(), port)
+        },
         port,
-        protocol: ProtocolType::Https,
+        protocol: if cfg.use_https {
+            ProtocolType::Https
+        } else {
+            ProtocolType::Http
+        },
         download: false,
     };
     let mcfg = MulticastConfig {
+        group_v4: group,
+        port: cfg.port,
+        interface_filter,
         node_info,
         // 无物理网卡时允许回环兜底：开发机 / 虚拟网环境下也能自测发现。
         allow_loopback_fallback: true,
@@ -488,9 +540,10 @@ async fn service_main(
 
     let mut snapshot_rx = registry.subscribe();
     refresh_peers(&registry).await;
+    let scheme = if cfg.use_https { "https" } else { "http" };
     crate::dlog::dlog(&format!(
-        "transfer: 服务已启动 https 0.0.0.0:{port}，组播 224.0.0.167:{}",
-        cfg.port
+        "transfer: 服务已启动 {scheme} 0.0.0.0:{port}，组播 {}:{}",
+        cfg.multicast, cfg.port
     ));
 
     loop {

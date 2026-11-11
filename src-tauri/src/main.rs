@@ -609,6 +609,18 @@ fn save_tool_config(
         }
     }
 
+    // 3.5) 多播地址是服务启动参数，非法值别写进配置（否则下次启动直接失败）。
+    if let Some(Value::String(s)) = patch.get("transfer_multicast") {
+        let s = s.trim();
+        if !s.is_empty() && s.parse::<std::net::Ipv4Addr>().is_err() {
+            return SaveOut {
+                ok: false,
+                message: format!("多播地址不合法：{s}"),
+                warnings,
+            };
+        }
+    }
+
     let mut cfg = config::load();
     if let Err(e) = apply_values(&mut cfg, &patch) {
         return SaveOut {
@@ -699,9 +711,22 @@ fn save_tool_config(
     // 12) 传输服务的对外身份 / 落盘参数都在启动时烘焙进 announce 与 /info，
     //     改完必须重启才生效——否则用户改完设备名，对方看到的还是旧名字。
     //     进行中的传输会被打断，这是改这些字段的代价。
-    if ["device_alias", "receive_dir", "require_pin", "pin", "transfer_auto_accept"]
-        .iter()
-        .any(|k| patch.contains_key(*k))
+    if [
+        "device_alias",
+        "receive_dir",
+        "require_pin",
+        "pin",
+        "transfer_auto_accept",
+        "transfer_port",
+        "transfer_use_https",
+        "transfer_multicast",
+        "transfer_device_type",
+        "transfer_device_model",
+        "transfer_peer_timeout_secs",
+        "transfer_interface_whitelist",
+    ]
+    .iter()
+    .any(|k| patch.contains_key(*k))
         && cfg.enable_transfer
         && !matches!(
             transfer::server::state(),

@@ -14,7 +14,7 @@ use lanflare_core::client::transfer::{
     OutgoingFile, TransferOptions, TransferOrchestrator, TransferProgress,
 };
 use lanflare_core::client::{LsClient, LsClientConfig};
-use lanflare_proto::discovery::{DeviceType, ProtocolType, RegisterDtoV2};
+use lanflare_proto::discovery::{ProtocolType, RegisterDtoV2};
 use tokio_util::sync::CancellationToken;
 
 use super::backend::TransferHandle;
@@ -139,11 +139,23 @@ pub fn send_files(
         let sender_info = RegisterDtoV2 {
             alias,
             version: "2.2".to_string(),
-            device_model: Some("Windows".to_string()),
-            device_type: Some(DeviceType::Desktop),
+            device_model: Some(if cfg.transfer_device_model.trim().is_empty() {
+                "Windows".to_string()
+            } else {
+                cfg.transfer_device_model.trim().to_string()
+            }),
+            device_type: Some(super::server::parse_device_type(&cfg.transfer_device_type)),
             fingerprint: identity.fingerprint.clone(),
-            port: crate::transfer::TRANSFER_PORT,
-            protocol: ProtocolType::Https,
+            port: if cfg.transfer_port == 0 {
+                crate::transfer::TRANSFER_PORT
+            } else {
+                cfg.transfer_port.clamp(1024, 65535)
+            },
+            protocol: if cfg.transfer_use_https {
+                ProtocolType::Https
+            } else {
+                ProtocolType::Http
+            },
             download: false,
         };
         let client = LsClient::new(LsClientConfig {
