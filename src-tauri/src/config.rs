@@ -42,6 +42,15 @@ pub struct ModelProfile {
     /// 自定义 system prompt，空则用内置的翻译指令
     #[serde(default)]
     pub prompt: String,
+    /// 是否启用（卡片头的小开关）。false 时不出现在「翻译模式」下拉里
+    /// （会话 53 用户裁定）；老配置缺省视为启用。
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+/// 老配置没有 `enabled` 字段，缺省视为启用（会话 53 卡片开关）。
+fn default_true() -> bool {
+    true
 }
 
 /// 一套「厂商翻译」配置。
@@ -68,6 +77,10 @@ pub struct VendorProfile {
     /// 由 `active_engine` 的 `:llm` 后缀决定（会话 52 语义）。
     #[serde(default)]
     pub use_llm: bool,
+    /// 是否启用（卡片头的小开关）。false 时整个实例不出现在
+    /// 「翻译模式」下拉里（会话 53 用户裁定）；老配置缺省视为启用。
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     /// 百度：APPID / 密钥
     #[serde(default)]
     pub appid: String,
@@ -589,6 +602,7 @@ pub fn migrate_openai(cfg: &mut Config) {
             },
             key: cfg.openai_key.clone(),
             prompt: cfg.openai_prompt.clone(),
+            enabled: true,
         });
     }
     // 手改配置时可能漏字段（对象少一个键也能反序列化成功）：补上 id 与名字，
@@ -709,20 +723,24 @@ pub fn migrate_vendors(cfg: &mut Config) {
         }
     }
 
-    // 4) active 失效（删了当前那套 / 手改成不存在的 id）→ 顺位到第一项。
+    // 4) active 失效（删了当前那套 / 指向不存在的 id / **被关掉了开关**）→
+    //    顺位到第一个**启用**的实例（会话 53：停用的实例不能装作还能用）。
     //    顺序：厂商在前、OpenAI 在后，和界面上的分组顺序一致。
-    if cfg.active_vendor_profile().is_none() && cfg.active_openai_profile().is_none() {
+    let vendor_active_ok = cfg.active_vendor_profile().is_some_and(|p| p.enabled);
+    let openai_active_ok = cfg.active_openai_profile().is_some_and(|p| p.enabled);
+    if !vendor_active_ok && !openai_active_ok {
         cfg.active_engine = cfg
             .vendor_profiles
-            .first()
+            .iter()
+            .find(|p| p.enabled)
             .map(|p| {
-                // 顺位也保留机翻/大模型的当前用法（该实例开了 use_llm 就顺到机翻，
-                // 用户要大模型再在下拉里点一下——顺位只兜底，不猜用户要哪个）
+                // 顺位落到机翻；该实例开了 use_llm 的话用户在下拉里再点大模型
                 format!("vendor:{}", p.id)
             })
             .or_else(|| {
                 cfg.openai_profiles
-                    .first()
+                    .iter()
+                    .find(|p| p.enabled)
                     .map(|p| format!("openai:{}", p.id))
             })
             .unwrap_or_default();
@@ -768,10 +786,11 @@ impl Config {
     ///
     /// 厂商实例在前、OpenAI 模型在后，和设置页的分组顺序一致。
     /// 开了 `use_llm` 的厂商出**两个**候选项（机翻 + 大模型，会话 52）；
-    /// 没开就只有机翻一项。没配置任何实例时返回空——设置页据此显示「先去下面添加」。
+    /// 没开就只有机翻一项。`enabled=false` 的实例整条不出现（会话 53）。
+    /// 没配置任何实例时返回空——设置页据此显示「先去下面添加」。
     pub fn engine_choices(&self) -> Vec<(String, String)> {
         let mut out: Vec<(String, String)> = Vec::new();
-        for p in &self.vendor_profiles {
+        for p in self.vendor_profiles.iter().filter(|p| p.enabled) {
             let name = p.name.trim().to_string();
             out.push((
                 format!("vendor:{}", p.id),
@@ -788,12 +807,17 @@ impl Config {
                 ));
             }
         }
-        out.extend(self.openai_profiles.iter().map(|p| {
-            (
-                format!("openai:{}", p.id),
-                format!("OpenAI 兼容 · {}", p.name.trim()),
-            )
-        }));
+        out.extend(
+            self.openai_profiles
+                .iter()
+                .filter(|p| p.enabled)
+                .map(|p| {
+                    (
+                        format!("openai:{}", p.id),
+                        format!("OpenAI 兼容 · {}", p.name.trim()),
+                    )
+                }),
+        );
         out
     }
 
@@ -840,8 +864,9 @@ pub fn save(cfg: &Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        migrate_engine, migrate_openai, Config, ModelProfile, VendorProfile, LLM_ENGINE_SUFFIX,
-        MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
+        migrate_engine, migrate_openai, migrate_vendors, Config, ModelProfile, VendorProfile,
+        LLM_ENGINE_SUFFIX, MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU,
+        VENDOR_YOUDAO,
     };
 
     /// 老版本只有 appid，新版本加了字段也必须能读出来（ADR-013）。
@@ -1061,6 +1086,20 @@ mod tests {
         assert_eq!(c.openai_active, "a");
     }
 
+    fn vendor(id: &str, name: &str, vendor: &str, use_llm: bool) -> VendorProfile {
+        VendorProfile {
+            id: id.into(),
+            name: name.into(),
+            vendor: vendor.into(),
+            use_llm,
+            enabled: true,
+            appid: "app".into(),
+            secret: "sec".into(),
+            youdao_app_key: "yk".into(),
+            youdao_app_secret: "ys".into(),
+        }
+    }
+
     fn model(id: &str, name: &str) -> ModelProfile {
         ModelProfile {
             id: id.into(),
@@ -1069,19 +1108,7 @@ mod tests {
             model: "m".into(),
             key: "k".into(),
             prompt: String::new(),
-        }
-    }
-
-    fn vendor(id: &str, name: &str, vendor: &str, use_llm: bool) -> VendorProfile {
-        VendorProfile {
-            id: id.into(),
-            name: name.into(),
-            vendor: vendor.into(),
-            use_llm,
-            appid: "app".into(),
-            secret: "sec".into(),
-            youdao_app_key: "yk".into(),
-            youdao_app_secret: "ys".into(),
+            enabled: true,
         }
     }
 
@@ -1157,6 +1184,32 @@ mod tests {
         assert_eq!(c.active_engine_label(), "百度 · 大模型");
     }
 
+    /// 会话 53：卡片开关关掉的实例不出现在下拉里；active 指向它时
+    /// 迁移顺位到第一个**启用**的实例，不会指向停用的。
+    #[test]
+    fn disabled_profiles_are_hidden_and_skipped_in_fallback() {
+        let mut c = Config {
+            vendor_profiles: vec![
+                vendor("v1", "百度停用", VENDOR_BAIDU, true),
+                vendor("v2", "有道启用", VENDOR_YOUDAO, false),
+            ],
+            openai_profiles: vec![model("a", "DeepSeek")],
+            ..Config::default()
+        };
+        c.vendor_profiles[0].enabled = false;
+        c.active_engine = "vendor:v1".into();
+
+        // 下拉里没有 v1（机翻与大模型项都消失）
+        let choices = c.engine_choices();
+        let ids: Vec<&str> = choices.iter().map(|(id, _)| id.as_str()).collect();
+        assert!(!ids.iter().any(|x| x.starts_with("vendor:v1")));
+        assert!(ids.contains(&"vendor:v2"));
+
+        // active 指向停用实例 → 顺位到第一个启用的厂商
+        migrate_vendors(&mut c);
+        assert_eq!(c.active_engine, "vendor:v2");
+    }
+
     /// 列表要能原样存回去（含中文名与空指令）。
     #[test]
     fn openai_profiles_roundtrip() {
@@ -1168,6 +1221,7 @@ mod tests {
                 model: "Qwen/Qwen2.5-72B".into(),
                 key: "sk-2".into(),
                 prompt: String::new(),
+                enabled: true,
             }],
             openai_active: "x1".into(),
             ..Config::default()

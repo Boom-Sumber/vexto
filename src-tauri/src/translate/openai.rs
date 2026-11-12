@@ -279,6 +279,7 @@ mod tests {
             model: "deepseek-chat".into(),
             key: "sk-x".into(),
             prompt: String::new(),
+            enabled: true,
         }
     }
 

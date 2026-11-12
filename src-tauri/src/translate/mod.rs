@@ -548,6 +548,7 @@ mod tests {
             name: format!("{vendor}-{id}"),
             vendor: vendor.into(),
             use_llm,
+            enabled: true,
             appid: "app".into(),
             secret: "sec".into(),
             youdao_app_key: "yk".into(),
@@ -563,6 +564,7 @@ mod tests {
             model: "deepseek-chat".into(),
             key: "sk".into(),
             prompt: String::new(),
+            enabled: true,
         }
     }
 

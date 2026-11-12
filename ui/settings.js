@@ -737,6 +737,16 @@ function fieldList(f) {
     del.addEventListener("click", () => removeItem(it.id));
     head.append(del);
 
+    // 卡头启用开关（会话 53 用户裁定）：关掉后这套配置**整个**从「翻译模式」
+    // 下拉里消失；厂商详情里的小开关继续只管「大模型」选项。老配置没有
+    // enabled 字段，默认视为启用。改动走 patch → pending，保存才落盘。
+    const en = itemControl({ type: "switch" }, it.enabled !== false, (v) =>
+      patch(it.id, "enabled", v),
+    );
+    en.title = "关闭后不出现在「翻译模式」列表";
+    en.classList.add("li-enable");
+    head.append(en);
+
     c.append(head);
 
     const detail = document.createElement("div");
@@ -1038,7 +1048,8 @@ function fieldSwitch(f) {
 
 // 「翻译模式」的候选项：从当前配置里的厂商实例 + OpenAI 模型算出来。
 // 值就是 `active_engine` 的写法（`vendor:<id>` / `vendor:<id>:llm` / `openai:<id>`）。
-// 开了 use_llm 的厂商出两项：机翻 + 大模型（会话 52，后端 engine_choices 同口径）。
+// 开了 use_llm 的厂商出两项：机翻 + 大模型（会话 52，后端 engine_choices 同口径）；
+// 卡头开关关掉的实例（enabled=false，会话 53）整条不出现。
 function engineChoices() {
   const listOf = (k) => {
     const v = val(k);
@@ -1046,6 +1057,7 @@ function engineChoices() {
   };
   const out = [];
   for (const p of listOf("vendor_profiles")) {
+    if (p.enabled === false) continue;
     const name = String(p.name || "").trim() || "未命名";
     out.push(["vendor:" + p.id, p.use_llm ? name + " · 机翻" : name]);
     if (p.use_llm) {
@@ -1053,6 +1065,7 @@ function engineChoices() {
     }
   }
   for (const p of listOf("openai_profiles")) {
+    if (p.enabled === false) continue;
     const name = String(p.name || "").trim() || "未命名";
     out.push(["openai:" + p.id, "OpenAI 兼容 · " + name]);
   }

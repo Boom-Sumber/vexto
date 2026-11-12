@@ -44,7 +44,8 @@
   gap: 3px;
 }
 
-/* 工具项：图标 + 文字；选中 = 主题色淡底 + 左侧渐变指示条（demo 口径） */
+/* 工具项：图标 + 文字；选中 = 主题色淡底 + 左侧渐变指示条（demo 口径）。
+ * 会话 53：字号放大一档 + 加粗 + 字距加宽（用户对菜单文字的要求）。 */
 .tool {
   position: relative;
   display: flex;
@@ -57,8 +58,9 @@
   background: none;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: var(--fs-md);
-  letter-spacing: .02em;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: .05em;
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -435,11 +437,13 @@ input.capturing {
 .switch-pill input:checked ~ .thumb { transform: translateX(18px); }
 .switch-pill input:focus-visible ~ .track { box-shadow: var(--ring); }
 
-/* 小号开关：列表项详情 / 弹窗里的开关（如「使用大模型翻译」）比页面级小一号 */
+/* 小号开关：列表项详情 / 弹窗里的开关（如「使用大模型翻译」）比页面级小一号。
+ * thumb 顶 3px 才居中（轨道 18px 含上下各 1px 边框，内腔 16px，(16-12)/2=2
+ * 是相对内腔的，再让出 1px 边框——之前写 2px 结果小球偏上，会话 53 修）。 */
 .switch-pill.sm { width: 32px; height: 18px; }
 .switch-pill.sm .thumb {
-  top: 2px;
-  left: 2px;
+  top: 3px;
+  left: 3px;
   width: 12px;
   height: 12px;
 }
@@ -614,18 +618,17 @@ input.capturing {
 /* 弹窗里的实测结论框（复用 .result 的绿 / 红配色，只写「测试通过 / 失败」） */
 .fm-body .result { margin-top: var(--sp-4); }
 
-/* 卡片头状态发光小灯：绿=通过 / 红=失败 / 灰=未测试。
- * 会话 52 用户改版：灯跟在名字**后面**（.li-name-row），小一号、留 8px 间距，
- * 不再挂在「删除」右侧（原会话 34 定稿位置就此作废）；
+/* 卡片头状态发光小灯：绿=通过 / 红=失败。
+ * 会话 53 用户裁定：**未测试时不显示**（默认干干净净，测过才有灯）；
+ * 灯跟在名字后面（.li-name-row）、8px + 8px 间距（会话 52）；
  * 颜色仍是会话 33 那组，勿改。 */
 .li-status {
   flex: 0 0 auto;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #7a8290;
 }
-.li-status[data-status="idle"] { background: #7a8290; box-shadow: none; }
+.li-status[data-status="idle"] { display: none; }
 .li-status[data-status="ok"] {
   background: #34d399;
   box-shadow: 0 0 6px 1px rgba(52, 211, 153, .7);
