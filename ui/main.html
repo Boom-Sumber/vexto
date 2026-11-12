@@ -86,26 +86,30 @@
             <button id="tfRefresh" class="btn" type="button">
               <span data-icon="refresh" data-icon-size="14"></span>刷新
             </button>
-            <button id="tfPick" class="btn btn-primary" type="button">选择文件</button>
           </div>
         </header>
 
-        <div id="tfDropBar" class="tf-dropbar hidden">
-          <span id="tfDropInfo"></span>
-          <select id="tfDropTarget" class="input"></select>
-          <button id="tfDropSend" class="btn btn-primary" type="button">发送</button>
-          <button id="tfDropClear" class="btn" type="button">取消</button>
-        </div>
-
         <div class="page-body">
-          <div class="section-title">选择发送内容</div>
-          <div class="action-cards">
-            <button class="action-card" id="tfActionFile" type="button">
-              <span class="action-icon" data-icon="file" data-icon-size="20"></span>
-              <span class="action-text">文件</span>
-            </button>
-          </div>
-          <div class="action-hint">也可以直接把文件拖进这个窗口。</div>
+          <!-- 选文件卡片：拖入或点添加都往这里堆；选好之后点设备直接发 -->
+          <section class="pick" id="pickCard">
+            <header class="pick-head">
+              <span class="pick-title">选择</span>
+              <button id="pickClear" class="pick-x" type="button" title="清空" aria-label="清空">
+                <span data-icon="close" data-icon-size="14"></span>
+              </button>
+            </header>
+            <div class="pick-meta">
+              <span id="pickCount">文件：0</span>
+              <span id="pickSize">大小：0 B</span>
+            </div>
+            <div class="pick-grid" id="pickGrid"></div>
+            <div class="pick-hint" id="pickHint">把文件拖到这里，或点下面的「添加」</div>
+            <footer class="pick-foot">
+              <button id="pickAdd" class="btn pick-add" type="button">
+                <span data-icon="plus" data-icon-size="14"></span>添加
+              </button>
+            </footer>
+          </section>
 
           <div class="section-title">附近的设备</div>
           <div id="peerList" class="device-list"></div>
@@ -117,7 +121,7 @@
         </div>
       </div>
 
-      <!-- 接收：本机信息 + 待确认请求 -->
+      <!-- 接收：大 LOGO + 主机名 + 地址 + 自动保存开关（不再列待确认卡片） -->
       <div id="paneReceive" class="pane hidden">
         <header class="head">
           <h1>接收文件</h1>
@@ -128,20 +132,26 @@
           </div>
         </header>
 
-        <div class="page-body">
-          <div class="local-card">
-            <div class="local-name" id="localAlias">—</div>
-            <div class="local-meta" id="localStatus">—</div>
-            <div class="local-path">
-              <span class="path-text" id="localDir">—</span>
-              <button id="tfOpenDir" class="icon-btn" type="button" title="打开接收目录"
-                      aria-label="打开接收目录"></button>
-            </div>
+        <div class="page-body rv-body">
+          <div class="rv-hero">
+            <img class="rv-logo" src="logo.png" alt="LightBox" />
+            <div class="rv-name" id="localAlias">—</div>
+            <div class="rv-addr" id="localAddr">—</div>
           </div>
 
-          <div class="section-title">待确认的接收请求</div>
-          <div id="reqList" class="tf-reqs"></div>
-          <div id="reqEmpty" class="empty">没有待确认的请求。</div>
+          <div class="rv-auto">
+            <span class="rv-auto-label">自动保存</span>
+            <button id="autoSave" class="switch" type="button" role="switch" aria-checked="false"
+                    title="打开后收到的文件直接保存，不再弹确认框">
+              <span class="switch-knob"></span>
+            </button>
+          </div>
+
+          <div class="rv-dir">
+            <span class="path-text" id="localDir">—</span>
+            <button id="tfOpenDir" class="icon-btn" type="button" title="打开接收目录"
+                    aria-label="打开接收目录"></button>
+          </div>
         </div>
       </div>
 

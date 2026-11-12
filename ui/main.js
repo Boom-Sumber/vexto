@@ -408,13 +408,53 @@ async function refreshLocalInfo() {
     const info = await invoke("transfer_local_info");
     tfView.receiveDir = info.receive_dir || "";
     el("localAlias").textContent = info.alias || "—";
-    el("localStatus").textContent = info.enabled ? info.status : "模块已停用";
+    const ip = (info.ips && info.ips[0]) || "";
+    el("localAddr").textContent = ip
+      ? "主机地址 " + ip
+      : (info.enabled ? "未获取到局域网地址" : "互传已停用");
     el("localDir").textContent = info.receive_dir || "—";
     el("localDir").title = info.receive_dir || "";
   } catch (e) {
-    el("localStatus").textContent = "读取本机信息失败：" + errText(e);
+    el("localAddr").textContent = "读取本机信息失败：" + errText(e);
+  }
+  refreshAutoSave();
+}
+
+// 「自动保存」= transfer_auto_accept：开了就不再弹确认框，直接存盘。
+async function refreshAutoSave() {
+  try {
+    const res = await invoke("get_tool_config", { toolId: "transfer" });
+    const v = (res && res.values) || {};
+    setAutoSave(v.transfer_auto_accept === true);
+  } catch (e) {
+    /* 读不到就当关着 */
   }
 }
+
+function setAutoSave(on) {
+  const b = el("autoSave");
+  if (b) b.setAttribute("aria-checked", on ? "true" : "false");
+}
+
+el("autoSave").addEventListener("click", async () => {
+  const on = el("autoSave").getAttribute("aria-checked") !== "true";
+  setAutoSave(on);
+  try {
+    const res = await invoke("save_tool_config", {
+      toolId: "transfer",
+      values: { transfer_auto_accept: on },
+    });
+    if (!res || !res.ok) {
+      setAutoSave(!on);
+      tfNotice((res && res.message) || "保存失败", true);
+    } else {
+      tfNotice(on ? "已开启自动保存：收到的文件直接存盘" : "已关闭自动保存：接收前会先弹确认");
+    }
+  } catch (e) {
+    setAutoSave(!on);
+    tfNotice("保存失败：" + errText(e), true);
+  }
+});
 
 // 轻提示（toast）：浮在窗口右下角，3 秒自动消失，错误类 6 秒；悬停暂停计时、点击立即关。
 // 取代原先把消息写进页面顶部常驻 div 的做法（S4 复测：常驻通知一直挂着，还挤占内容区）。
@@ -475,23 +515,22 @@ function renderPeers() {
     sub.textContent = bits.join(" · ");
     meta.append(name, sub);
 
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn";
-    btn.textContent = "发送文件";
-    btn.addEventListener("click", () => stageForPeer(p));
-
-    d.append(av, meta, btn);
+    // 整行就是发送入口：选好文件后点设备直接发（不再单放「发送文件」按钮）
+    d.tabIndex = 0;
+    d.setAttribute("role", "button");
+    d.title = "发送给 " + (p.alias || p.ip);
+    const go = document.createElement("span");
+    go.className = "device-go";
+    go.innerHTML = Icons.svg("upload", 16);
+    d.append(av, meta, go);
+    d.addEventListener("click", () => sendToPeer(p));
+    d.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        sendToPeer(p);
+      }
+    });
     box.appendChild(d);
-  }
-  // 拖放目标下拉跟着刷新
-  const sel = el("tfDropTarget");
-  sel.innerHTML = "";
-  for (const p of tfView.peers) {
-    const o = document.createElement("option");
-    o.value = p.fingerprint || (p.ip + ":" + p.port);
-    o.textContent = p.alias + " (" + p.ip + ")";
-    sel.appendChild(o);
   }
 }
 
@@ -507,7 +546,9 @@ async function refreshPeers() {
 function fmtTfBytes(n) { return fmtBytes(n); }
 
 function renderPending() {
+  // 接收页已不再列待确认卡片（确认走独立确认窗），容器不在就直接返回
   const box = el("reqList");
+  if (!box) return;
   box.innerHTML = "";
   const list = tfView.pending || [];
   el("reqEmpty").classList.toggle("hidden", list.length > 0);
@@ -602,22 +643,92 @@ function upsertRow(view) {
   }
 }
 
-// 选文件 → 进「待发送」条，由用户再点「发送」。
-// S4 复测里的第 2 条缺陷：单设备时选完文件立刻发出去，误触没有任何确认机会。
-async function stageForPeer(peer) {
+// ── 选文件卡片（S4 · 会话 46） ─────────────────────────────────────────
+// 拖入或点「添加」都往 tfView.dropPaths 里堆，卡片上直接摊开「文件 N 个 / 大小 X」；
+// 选好之后点下面任意一台设备就发出去——不再有「将发送 N 个文件到…」的确认条，
+// 设备行也不再单放「发送文件」按钮。
+async function addFiles() {
   try {
     const paths = await invoke("transfer_pick_files");
     if (!paths || !paths.length) return;
-    tfView.dropPaths.push(...paths);
-    showDropBar();
-    if (peer) {
-      const sel = el("tfDropTarget");
-      const v = peer.fingerprint || (peer.ip + ":" + peer.port);
-      if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+    for (const p of paths) {
+      if (!tfView.dropPaths.includes(p)) tfView.dropPaths.push(p);
     }
+    await renderPick();
   } catch (e) {
     tfNotice("选择文件失败：" + errText(e), true);
   }
+}
+
+function addDropped(paths) {
+  if (!paths || !paths.length) return;
+  for (const p of paths) {
+    if (!tfView.dropPaths.includes(p)) tfView.dropPaths.push(p);
+  }
+  renderPick();
+}
+
+async function renderPick() {
+  const paths = tfView.dropPaths || [];
+  el("pickCount").textContent = "文件：" + paths.length;
+  el("pickHint").classList.toggle("hidden", paths.length > 0);
+  el("pickClear").classList.toggle("hidden", paths.length === 0);
+
+  let sizes = [];
+  if (paths.length) {
+    try {
+      sizes = await invoke("transfer_path_sizes", { paths });
+    } catch (e) {
+      sizes = [];
+    }
+  }
+  el("pickSize").textContent =
+    "大小：" + fmtBytes(sizes.reduce((a, b) => a + (b || 0), 0));
+
+  const grid = el("pickGrid");
+  grid.innerHTML = "";
+  paths.forEach((p, i) => {
+    const name = p.replace(/^.*[\\/]/, "");
+    const item = document.createElement("div");
+    item.className = "pick-item";
+    item.innerHTML =
+      '<div class="pick-tile">' + Icons.svg("file", 28) + "</div>" +
+      '<div class="pick-name"></div>' +
+      '<button class="pick-del" type="button" title="移除这个文件" aria-label="移除"></button>';
+    const nm = item.querySelector(".pick-name");
+    nm.textContent = name;
+    nm.title = p;
+    // 单击文件名展开完整名字，再点收回去
+    nm.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      item.classList.toggle("open");
+    });
+    const del = item.querySelector(".pick-del");
+    del.innerHTML = Icons.svg("trash", 12);
+    del.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      tfView.dropPaths.splice(i, 1);
+      renderPick();
+    });
+    grid.appendChild(item);
+  });
+}
+
+function clearPick() {
+  tfView.dropPaths = [];
+  renderPick();
+}
+
+// 点设备 = 直接发；没选文件就先提示，不去猜用户想发什么
+async function sendToPeer(peer) {
+  const paths = (tfView.dropPaths || []).slice();
+  if (!paths.length) {
+    tfNotice("先从上面的卡片里添加要发送的文件");
+    return;
+  }
+  tfView.dropPaths = [];
+  renderPick();
+  await doSend(peer.fingerprint || (peer.ip + ":" + peer.port), paths, peer);
 }
 
 async function doSend(target, paths, peer) {
@@ -642,32 +753,17 @@ el("tfRefresh").addEventListener("click", async () => {
   }
 });
 el("tfRefreshRecv").addEventListener("click", () => { refreshPending(); refreshLocalInfo(); });
-el("tfActionFile").addEventListener("click", () => el("tfPick").click());
+el("pickAdd").addEventListener("click", () => addFiles());
+el("pickClear").addEventListener("click", () => clearPick());
+el("pickCard").addEventListener("dragover", (e) => {
+  e.preventDefault();
+  el("pickCard").classList.add("drag-over");
+});
+el("pickCard").addEventListener("dragleave", () => el("pickCard").classList.remove("drag-over"));
+el("pickCard").addEventListener("drop", () => el("pickCard").classList.remove("drag-over"));
 el("tfOpenDir").addEventListener("click", () => {
   if (!tfView.receiveDir) { tfNotice("还没有读取到接收目录", true); return; }
   invoke("open_path", { path: tfView.receiveDir }).catch((e) => tfNotice(errText(e), true));
-});
-el("tfPick").addEventListener("click", async () => {
-  if (!tfView.peers.length) { tfNotice("没有发现设备，先点「刷新」", true); return; }
-  await stageForPeer(null);
-});
-
-// 拖放文件：收集 → 选目标 → 发送
-function showDropBar() {
-  el("tfDropBar").classList.remove("hidden");
-  el("tfDropInfo").textContent = "将发送 " + tfView.dropPaths.length + " 个文件到：";
-}
-el("tfDropClear").addEventListener("click", () => {
-  tfView.dropPaths = [];
-  el("tfDropBar").classList.add("hidden");
-});
-el("tfDropSend").addEventListener("click", () => {
-  const target = el("tfDropTarget").value;
-  if (!target) { tfNotice("没有目标设备", true); return; }
-  const paths = tfView.dropPaths.slice();
-  tfView.dropPaths = [];
-  el("tfDropBar").classList.add("hidden");
-  doSend(target, paths);
 });
 
 for (const b of document.querySelectorAll(".nav-item[data-view]")) {
@@ -743,9 +839,11 @@ function tpRender() {
   const files = s.files && s.files.length
     ? s.files
     : [{ name: s.message || "（会话）", bytes: s.bytes, total: s.total, status: st }];
+  const cancelled = st === "cancelled";
   for (const f of files) {
     const row = document.createElement("div");
-    row.className = "tp-file" + (f.status === "done" ? " done" : f.status === "failed" ? " failed" : "");
+    const rowFailed = f.status === "failed" && !cancelled;
+    row.className = "tp-file" + (f.status === "done" ? " done" : rowFailed ? " failed" : "");
     row.innerHTML =
       '<span class="tp-file-ico">' + Icons.svg("file", 20) + "</span>" +
       '<div class="tp-file-meta">' +
@@ -761,8 +859,12 @@ function tpRender() {
     else bits.push(fmtBytes(f.bytes) + " / " + fmtBytes(f.total));
     row.querySelector(".tp-file-sub").textContent = bits.join("　");
     row.querySelector(".tp-file-bar i").style.width = pct + "%";
-    row.querySelector(".tp-file-pct").textContent =
-      f.status === "failed" ? "失败" : pct + "%";
+    // 整个会话被取消时，行上直接说清「谁取消的」，比停在某个百分比有用
+    row.querySelector(".tp-file-pct").textContent = cancelled && f.status !== "done"
+      ? (sending ? "已取消" : "对方已取消")
+      : rowFailed
+        ? "失败"
+        : pct + "%";
     box.appendChild(row);
   }
 
@@ -1225,8 +1327,7 @@ el("hsClear").addEventListener("click", async (ev) => {
       if (!paths || !paths.length) return;
       if (tfView.view !== "transfer") setView("transfer");
       setSub("send");
-      tfView.dropPaths.push(...paths);
-      showDropBar();
+      addDropped(paths);
     });
     await listen("main:switch-view", (ev) => {
       if (ev.payload === "transfer") { setView("transfer"); setSub("send"); }
@@ -1237,4 +1338,6 @@ el("hsClear").addEventListener("click", async (ev) => {
 
   // 传输页开场：拉一次快照（窗口中途打开也要能看到正在传的进度）
   tpLoad();
+  // 选文件卡片先渲染一次空态（提示语 + 「文件：0」）
+  renderPick();
 })();

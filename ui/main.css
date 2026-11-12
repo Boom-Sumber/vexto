@@ -355,41 +355,6 @@
 }
 .section-title:first-child { margin-top: 0; }
 
-/* 发送入口卡片（参考任务窗口稿的 action-card） */
-.action-cards { display: flex; gap: var(--sp-3); }
-
-.action-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--fs-md);
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
-}
-.action-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-.action-card:active { background: var(--bg-active); }
-.action-icon { display: inline-flex; color: var(--accent); }
-.action-text { font-size: var(--fs-md); line-height: var(--lh-normal); }
-.action-hint {
-  margin-top: var(--sp-2);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
-  color: var(--text-dim);
-}
-
 /* 设备列表 */
 .device-list { display: flex; flex-direction: column; gap: var(--sp-3); }
 
@@ -437,47 +402,6 @@
   color: var(--text-muted);
 }
 
-/* 接收页的本机信息卡 */
-.local-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-5);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
-}
-.local-name {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  line-height: var(--lh-tight);
-  letter-spacing: var(--ls-normal);
-  color: var(--text-primary);
-}
-.local-meta {
-  font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
-  letter-spacing: var(--ls-normal);
-  color: var(--text-muted);
-}
-.local-path {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-md);
-  background: var(--bg-input);
-}
-.local-path .path-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-}
 
 /* 待确认请求 */
 .tf-req {
@@ -555,24 +479,6 @@
 .tf-row .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width var(--dur-fast) linear; }
 .tf-row.failed .bar i { background: var(--danger); }
 .tf-row.done .bar i { width: 100%; }
-
-/* 拖放目标条 */
-.tf-dropbar {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  margin: var(--sp-3) var(--sp-8) 0;
-  padding: var(--sp-4) var(--sp-5);
-  border: 1px dashed var(--accent);
-  border-radius: var(--r-md);
-  background: var(--accent-soft);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-normal);
-  letter-spacing: var(--ls-normal);
-  color: var(--text-primary);
-}
-
-.tf-dropbar .input { max-width: 220px; }
 
 /* ── 轻提示（toast） ───────────────────────────────────────────────────── */
 .toast-host {
@@ -952,3 +858,255 @@
   color: var(--text-primary);
   word-break: break-all;
 }
+
+/* ── 发送页：选文件卡片（S4 · 会话 46） ───────────────────────────────── */
+/* 一次把「选了什么」摊开：文件数、总大小、缩略方格；选好之后点设备就发。 */
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-6) var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+/* 拖到窗口上时整卡高亮，提示「松手就加进来」 */
+.pick.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pick-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--ls-normal);
+  color: var(--text-primary);
+}
+.pick-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--w-icon-btn);
+  height: var(--w-icon-btn);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pick-x:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pick-x.hidden { display: none; }
+
+.pick-meta {
+  display: flex;
+  gap: var(--sp-6);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pick-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* 一个文件 = 88×88 的方格 + 下面的文件名（限宽省略，单击展开全名） */
+.pick-item {
+  position: relative;
+  width: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.pick-tile {
+  position: relative;
+  width: 96px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+}
+.pick-item:hover .pick-tile { border-color: var(--border-default); }
+.pick-name {
+  width: 96px;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* 单击展开：允许换行显示完整名字（最多 3 行，再长也还是省略） */
+.pick-item.open .pick-name {
+  white-space: normal;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  color: var(--text-primary);
+}
+/* 悬停右上角出现删除 */
+.pick-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.pick-item:hover .pick-del { display: inline-flex; }
+.pick-del:hover { background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger); }
+
+.pick-hint {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-dim);
+}
+.pick-hint.hidden { display: none; }
+
+.pick-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.pick-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 36px;
+  padding: 0 var(--sp-4);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.pick-add:hover { background: var(--accent); color: var(--accent-text); }
+
+/* 设备行改成「整行可点 = 发送」，不再单独放按钮 */
+.device-item { cursor: pointer; }
+.device-item:hover { border-color: var(--accent); background: var(--bg-hover); }
+.device-item:active { background: var(--bg-active); }
+.device-item:focus-visible { box-shadow: var(--ring); outline: none; }
+.device-item .device-go {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--text-dim);
+}
+.device-item:hover .device-go { color: var(--accent); }
+
+/* ── 接收页：LOGO + 主机名 + 地址 + 自动保存（S4 · 会话 46） ───────────── */
+.rv-body {
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-8);
+}
+.rv-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.rv-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: var(--r-xl);
+  margin-bottom: var(--sp-2);
+}
+.rv-name {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-primary);
+}
+.rv-addr {
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.rv-auto {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.rv-auto-label {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  letter-spacing: var(--ls-normal);
+}
+.rv-dir {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 520px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+}
+.rv-dir .path-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+/* 开关（自绘，不用 checkbox） */
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg-input);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.switch .switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.switch[aria-checked="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(20px);
+  background: var(--accent);
+}
+.switch:focus-visible { box-shadow: var(--ring); outline: none; }

@@ -29,6 +29,10 @@ reqwest = { version = "0.13", default-features = false, features = [
     "native-tls",
 ] }
 md-5 = "0.11"
+
+# 接收页要显示「主机地址：192.168.x.x」。lanflare 内部已经用它枚举网卡，
+# 这里只是把它提到直接依赖，不新增下载。
+if-addrs = "0.13"
 # 有道智云 v3 签名要 sha256（`sha256(appKey+input+salt+curtime+密钥)`）。
 # 与 md-5 同属 RustCrypto，digest trait 已经在依赖树里，只是多一个小 crate。
 sha2 = "0.10"

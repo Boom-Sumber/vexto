@@ -80,6 +80,10 @@ struct Globals {
     session_peer: Mutex<HashMap<String, String>>,
     /// 会话 → 发起方 IP（接收侧取消必须带对方 IP，lanflare 用它校验）。
     session_ip: Mutex<HashMap<String, std::net::IpAddr>>,
+    /// 会话 → 发起方服务地址（ip, port, scheme, 证书指纹）：
+    /// 接收方取消时要去**对方的** /cancel 端点喊一声，对方 UI 才会显示「接收方已取消」，
+    /// 否则它只看到连接被掐断，界面报「已完成但发生错误」。
+    session_target: Mutex<HashMap<String, (std::net::IpAddr, u16, String, String)>>,
     /// `"会话|file_id"` → 文件名：`FileFailed` 事件只带 file_id，不带名字，
     /// 不查这张表 UI 上会多出一行叫 `f1` 的幽灵条目。
     session_file_names: Mutex<HashMap<String, String>>,
@@ -114,6 +118,7 @@ fn globals() -> &'static Globals {
         active: Mutex::new(Vec::new()),
         session_peer: Mutex::new(HashMap::new()),
         session_ip: Mutex::new(HashMap::new()),
+        session_target: Mutex::new(HashMap::new()),
         session_file_names: Mutex::new(HashMap::new()),
         session_files: Mutex::new(HashMap::new()),
     })
@@ -323,6 +328,41 @@ fn record_progress(view: &ProgressView) {
     }
 }
 
+/// 通知对端「我们这边取消了」（对方收到才会显示「接收方已取消」）。
+async fn notify_peer_cancel(
+    session_id: &str,
+    peer_ip: std::net::IpAddr,
+    port: u16,
+    scheme: &str,
+    fingerprint: &str,
+) {
+    use lanflare_core::client::{LsClient, LsClientConfig};
+
+    let pinned = if fingerprint.trim().is_empty() {
+        None
+    } else {
+        Some(fingerprint.to_string())
+    };
+    let cfg = LsClientConfig {
+        timeout: std::time::Duration::from_secs(8),
+        connect_timeout: std::time::Duration::from_secs(3),
+        tls_identity: None,
+        target_fingerprint: pinned.clone(),
+    };
+    let client = match LsClient::new(cfg) {
+        Ok(c) => c,
+        Err(e) => {
+            crate::dlog::dlog(&format!("transfer: 通知对端取消失败（建客户端）：{e}"));
+            return;
+        }
+    };
+    let base = format!("{scheme}://{peer_ip}:{port}");
+    match client.cancel_session(&base, session_id).await {
+        Ok(()) => crate::dlog::dlog(&format!("transfer: 已通知 {base} 取消 {session_id}")),
+        Err(e) => crate::dlog::dlog(&format!("transfer: 通知 {base} 取消失败：{e}")),
+    }
+}
+
 /// 当前 / 刚结束的传输快照（传输页开场拉一次，之后靠事件增量更新）。
 pub fn active_transfers() -> Vec<ActiveTransfer> {
     lock(&globals().active).clone()
@@ -342,6 +382,7 @@ pub fn cancel_receive(session_id: &str) -> Result<(), String> {
         .ok_or("找不到该会话的发起方，无法取消")?;
     let rt = runtime_handle().ok_or("请先启用局域网互传")?;
     let sid = session_id.to_string();
+    let target = lock(&globals().session_target).get(session_id).cloned();
     rt.spawn(async move {
         let hit = mgr.cancel_session(Some(&sid), ip).await;
         match hit {
@@ -361,6 +402,12 @@ pub fn cancel_receive(session_id: &str) -> Result<(), String> {
                         message: Some("已在本机取消".to_string()),
                     },
                 });
+                // 关键一步：去**对方**的 /cancel 端点喊一声。LocalSend 的接收方
+                // 取消就是这么做的；不喊的话对方只看到连接被掐断，界面报
+                // 「已完成，但发生错误」，而不是「接收方已取消」。
+                if let Some((peer_ip, port, scheme, fp)) = target {
+                    notify_peer_cancel(&sid, peer_ip, port, &scheme, &fp).await;
+                }
             }
             None => crate::dlog::dlog(&format!("transfer: 取消接收 {sid} 未命中（会话已结束？）")),
         }
@@ -946,6 +993,7 @@ async fn service_main(
     lock(&globals().active).clear();
     lock(&globals().session_peer).clear();
     lock(&globals().session_ip).clear();
+    lock(&globals().session_target).clear();
     lock(&globals().session_file_names).clear();
     lock(&globals().session_files).clear();
     *lock(&globals().state) = ServiceState::Stopped;
@@ -993,6 +1041,15 @@ fn on_prepare_upload(
     remember_session_peer(&session_id, &view.sender_alias);
     if let Ok(ip) = view.sender_ip.parse::<std::net::IpAddr>() {
         lock(&globals().session_ip).insert(session_id.clone(), ip);
+        lock(&globals().session_target).insert(
+            session_id.clone(),
+            (
+                ip,
+                sender_info.port,
+                sender_info.protocol.as_str().to_string(),
+                sender_info.fingerprint.clone(),
+            ),
+        );
     }
     emit(TransferEvent::Incoming { req: view });
 }
@@ -1080,18 +1137,36 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
                 .get(&format!("{session_id}|{file_id}"))
                 .cloned()
                 .unwrap_or(file_id);
+            let aborted = error.contains("Stream error") || error.contains("已在本机取消");
             emit(TransferEvent::Progress {
                 view: ProgressView {
-                    session_id,
+                    session_id: session_id.clone(),
                     direction: "recv".into(),
                     file_name: name,
                     bytes: 0,
                     total: 0,
                     speed_bps: None,
                     status: "failed".into(),
-                    message: Some(error),
+                    message: Some(error.clone()),
                 },
             });
+            // 流量中途断掉 = 对方把连接掐了（手机上点「取消」就是这个行为）。
+            // 只发文件级 failed 的话，传输页会停在「传输中」、按钮还是「取消」，
+            // 所以补一条会话级 terminated，让页面翻成「对方已取消」。
+            if aborted {
+                emit(TransferEvent::Progress {
+                    view: ProgressView {
+                        session_id,
+                        direction: "recv".into(),
+                        file_name: String::new(),
+                        bytes: 0,
+                        total: 0,
+                        speed_bps: None,
+                        status: "cancelled".into(),
+                        message: Some("对方已取消".to_string()),
+                    },
+                });
+            }
         }
         ServerTransferEvent::SessionEnded { session_id, reason } => {
             crate::dlog::dlog(&format!("transfer: 会话 {session_id} 结束：{reason:?}"));

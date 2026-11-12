@@ -2429,6 +2429,7 @@ name = "lightbox"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "if-addrs 0.13.4",
  "lanflare-core",
  "lanflare-proto",
  "md-5",

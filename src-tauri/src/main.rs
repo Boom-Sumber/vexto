@@ -1659,6 +1659,16 @@ fn transfer_cancel_receive(session_id: String) -> Result<(), String> {
     transfer::backend().cancel_receive(&session_id)
 }
 
+/// 选文件卡片要显示「文件 N 个 / 大小 X MB」，前端只有路径，大小在这里补。
+/// 读不到（文件被删/无权限）就给 0，别让整张卡片报错。
+#[tauri::command]
+fn transfer_path_sizes(paths: Vec<String>) -> Vec<u64> {
+    paths
+        .iter()
+        .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .collect()
+}
+
 /// 一页传输历史（`page` 从 1 开始；越界会自动回到最后一页）。
 #[derive(serde::Serialize)]
 struct HistoryPage {
@@ -1752,6 +1762,10 @@ struct TransferLocalOut {
     receive_dir: String,
     enabled: bool,
     status: String,
+    /// 本机局域网地址（接收页显示「主机地址」用）。取第一个非回环 IPv4；
+    /// 多网卡时按接口名排序取第一个，界面上只显示一个够用。
+    #[serde(default)]
+    ips: Vec<String>,
 }
 
 #[tauri::command]
@@ -1763,11 +1777,25 @@ fn transfer_local_info() -> TransferLocalOut {
         transfer::server::ServiceState::Failed(e) => format!("启动失败：{e}"),
         transfer::server::ServiceState::Stopped => "服务未运行".to_string(),
     };
+    // 只挑非回环、IPv4、非 link-local（169.254.x.x）的地址
+    let mut ips: Vec<String> = if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| !i.is_loopback())
+        .filter_map(|i| match i.ip() {
+            std::net::IpAddr::V4(v4) if !v4.is_link_local() => Some(v4.to_string()),
+            _ => None,
+        })
+        .collect();
+    ips.sort();
+    ips.dedup();
+
     TransferLocalOut {
         alias: tc.alias,
         receive_dir: tc.receive_dir.to_string_lossy().to_string(),
         enabled: cfg.enable_transfer,
         status,
+        ips,
     }
 }
 
@@ -1860,6 +1888,7 @@ fn main() {
             transfer_refresh,
             transfer_active,
             transfer_cancel_receive,
+            transfer_path_sizes,
             transfer_history_page,
             transfer_history_remove,
             transfer_history_clear,
