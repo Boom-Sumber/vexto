@@ -80,6 +80,9 @@ struct Globals {
     session_peer: Mutex<HashMap<String, String>>,
     /// 会话 → 发起方 IP（接收侧取消必须带对方 IP，lanflare 用它校验）。
     session_ip: Mutex<HashMap<String, std::net::IpAddr>>,
+    /// `"会话|file_id"` → 文件名：`FileFailed` 事件只带 file_id，不带名字，
+    /// 不查这张表 UI 上会多出一行叫 `f1` 的幽灵条目。
+    session_file_names: Mutex<HashMap<String, String>>,
 }
 
 /// 发现侧的两件东西，只在服务运行期间有效。
@@ -108,6 +111,7 @@ fn globals() -> &'static Globals {
         active: Mutex::new(Vec::new()),
         session_peer: Mutex::new(HashMap::new()),
         session_ip: Mutex::new(HashMap::new()),
+        session_file_names: Mutex::new(HashMap::new()),
     })
 }
 
@@ -868,6 +872,7 @@ async fn service_main(
     lock(&globals().active).clear();
     lock(&globals().session_peer).clear();
     lock(&globals().session_ip).clear();
+    lock(&globals().session_file_names).clear();
     *lock(&globals().state) = ServiceState::Stopped;
     crate::dlog::dlog("transfer: 服务已停止");
 }
@@ -922,10 +927,14 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
     match ev {
         ServerTransferEvent::FileStarted {
             session_id,
+            file_id,
             file_name,
             total_bytes,
             ..
         } => {
+            // 记下 file_id → 文件名，供后面的 FileFailed 反查（那条事件只有 id）
+            lock(&globals().session_file_names)
+                .insert(format!("{session_id}|{file_id}"), file_name.clone());
             emit(TransferEvent::Progress {
                 view: ProgressView {
                     session_id,
@@ -991,11 +1000,16 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
             error,
         } => {
             crate::dlog::dlog(&format!("transfer: 接收失败 {file_id}: {error}"));
+            // 事件只带 file_id：用 FileStarted 时记下的名字，避免 UI 多出一行 `f1`
+            let name = lock(&globals().session_file_names)
+                .get(&format!("{session_id}|{file_id}"))
+                .cloned()
+                .unwrap_or(file_id);
             emit(TransferEvent::Progress {
                 view: ProgressView {
                     session_id,
                     direction: "recv".into(),
-                    file_name: file_id,
+                    file_name: name,
                     bytes: 0,
                     total: 0,
                     speed_bps: None,

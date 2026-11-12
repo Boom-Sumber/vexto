@@ -606,3 +606,206 @@
 .toast-text { min-width: 0; }
 
 #transferView.hidden { display: none; }
+
+/* ── 传输页（覆盖整个窗口，标题栏除外） ───────────────────────────────── */
+/* 为什么从 --h-titlebar 起：标题栏上有最小化/最大化/关闭，盖住它等于把窗口
+   控制全遮了；「覆盖整个窗口」指的是内容区。 */
+.tp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: var(--h-titlebar);
+  z-index: var(--z-float);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app);
+}
+.tp.hidden { display: none; }
+
+.tp-head {
+  flex: 0 0 auto;
+  padding: var(--sp-8) var(--sp-8) var(--sp-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tp-title {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-primary);
+}
+.tp-sub {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-6) var(--sp-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 文件行：图标 + 名字/大小/进度条 + 百分比 */
+.tp-file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+.tp-file-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--text-dim);
+}
+.tp-file-meta { flex: 1 1 auto; min-width: 0; }
+.tp-file-name {
+  font-size: var(--fs-base);
+  font-weight: 500;
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tp-file-sub {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.tp-file-bar {
+  margin-top: var(--sp-2);
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.tp-file-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width var(--dur-fast) linear;
+}
+.tp-file-pct {
+  flex: 0 0 auto;
+  min-width: 64px;
+  text-align: right;
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.tp-file.done .tp-file-bar > i { background: var(--accent); width: 100%; }
+.tp-file.failed .tp-file-bar > i { background: var(--danger); }
+.tp-file.failed .tp-file-pct { color: var(--danger); }
+
+/* 底部总进度 */
+.tp-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-8);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-bar);
+}
+.tp-total { flex: 1 1 auto; min-width: 0; }
+.tp-total-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.tp-total-label {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  letter-spacing: var(--ls-normal);
+}
+.tp-total-stat {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.tp-bar {
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.tp-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width var(--dur-fast) linear;
+}
+.tp-foot .btn {
+  min-width: 128px;
+  height: 40px;
+}
+
+/* 取消确认 */
+.tp-modal {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-overlay);
+}
+.tp-modal.hidden { display: none; }
+.tp-card {
+  width: 440px;
+  max-width: calc(100% - var(--sp-8) * 2);
+  padding: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-xl);
+  background: var(--bg-panel);
+}
+.tp-card-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: var(--ls-normal);
+  color: var(--text-primary);
+}
+.tp-card-text {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-secondary);
+}
+.tp-card-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.tp-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--text-inverse);
+}
+.tp-danger:hover {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
+}

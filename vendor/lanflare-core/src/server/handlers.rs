@@ -722,15 +722,8 @@ pub async fn handle_upload(
             .session_manager
             .mark_file_status(session_id, file_id, FileTransferStatus::Failed)
             .await;
-        if let Some(ref tx) = state.event_tx {
-            let _ = tx
-                .send(ServerTransferEvent::FileFailed {
-                    session_id: session_id.clone(),
-                    file_id: file_id.clone(),
-                    error: "已在本机取消".to_string(),
-                })
-                .await;
-        }
+        // 不再发 FileFailed：本机取消由宿主发「会话级 cancelled」，
+        // 文件级失败事件只有 file_id、没有文件名，发出去会在 UI 上多出一行幽灵条目。
         return empty_response(StatusCode::INTERNAL_SERVER_ERROR);
     }
 

@@ -674,6 +674,283 @@ for (const b of document.querySelectorAll(".sub-item[data-sub]")) {
   b.addEventListener("click", () => setSub(b.dataset.sub));
 }
 
+// ── 传输页（S4 · 会话 45） ──────────────────────────────────────────────
+//
+// 数据源有两条：①开场 `transfer_active()` 拉一次快照——窗口中途打开、或者
+// 传输在窗口关着的时候就开始了，只能靠它还原进度（事件是「当场」推的，错过就没了）；
+// ②之后由 `transfer:event` 的 progress 增量更新。
+const tpView = {
+  sessions: [],      // 最近 4 个会话的快照（后端也是这个上限）
+  open: false,
+  autoComplete: false,
+  pendingCancel: null, // 等待二次确认的 session_id
+  dismissed: null,     // 用户点过「已完成/关闭」的会话，不再自动弹回
+};
+
+function tpCurrent() {
+  // 后端按「新会话 push 到尾部」维护，取最后一个就是本次传输
+  return tpView.sessions.length ? tpView.sessions[tpView.sessions.length - 1] : null;
+}
+
+function tpStatusOf(s) {
+  if (!s) return "idle";
+  if (s.status === "done") return "done";
+  if (s.status === "cancelled") return "cancelled";
+  if (s.status === "failed") return "failed";
+  return s.status === "preparing" ? "preparing" : "active";
+}
+
+function tpPct(s) {
+  if (!s) return 0;
+  if (s.status === "done") return 100;
+  if (!s.total) return 0;
+  return Math.min(100, Math.round((s.bytes / s.total) * 100));
+}
+
+function tpFilePct(f) {
+  if (!f.total) return f.status === "done" ? 100 : 0;
+  return Math.min(100, Math.round((f.bytes / f.total) * 100));
+}
+
+function tpRender() {
+  const s = tpCurrent();
+  const page = el("tp");
+  if (!s) { page.classList.add("hidden"); tpView.open = false; return; }
+
+  const st = tpStatusOf(s);
+  const sending = s.direction === "send";
+  const peer = s.peer || "对方";
+
+  // 标题 / 副标题
+  let title = sending ? "正在发送文件" : "正在接收文件";
+  if (st === "preparing") title = "正在准备传输";
+  else if (st === "done") title = "传输完成";
+  else if (st === "cancelled") title = "已取消";
+  else if (st === "failed") title = "传输失败";
+  el("tpTitle").textContent = title;
+
+  const sub = sending
+    ? "发送给 " + peer
+    : "来自 " + peer + (tfView.receiveDir ? "　·　保存到 " + tfView.receiveDir : "");
+  el("tpSub").textContent = sub;
+
+  // 文件行
+  const box = el("tpFiles");
+  box.innerHTML = "";
+  const files = s.files && s.files.length
+    ? s.files
+    : [{ name: s.message || "（会话）", bytes: s.bytes, total: s.total, status: st }];
+  for (const f of files) {
+    const row = document.createElement("div");
+    row.className = "tp-file" + (f.status === "done" ? " done" : f.status === "failed" ? " failed" : "");
+    row.innerHTML =
+      '<span class="tp-file-ico">' + Icons.svg("file", 20) + "</span>" +
+      '<div class="tp-file-meta">' +
+        '<div class="tp-file-name"></div>' +
+        '<div class="tp-file-sub"></div>' +
+        '<div class="tp-file-bar"><i></i></div>' +
+      "</div>" +
+      '<span class="tp-file-pct num"></span>';
+    row.querySelector(".tp-file-name").textContent = f.name || "（会话）";
+    const pct = tpFilePct(f);
+    const bits = [];
+    if (f.status === "done") bits.push(fmtBytes(f.total || f.bytes));
+    else bits.push(fmtBytes(f.bytes) + " / " + fmtBytes(f.total));
+    row.querySelector(".tp-file-sub").textContent = bits.join("　");
+    row.querySelector(".tp-file-bar i").style.width = pct + "%";
+    row.querySelector(".tp-file-pct").textContent =
+      f.status === "failed" ? "失败" : pct + "%";
+    box.appendChild(row);
+  }
+
+  // 底部总进度
+  const pct = tpPct(s);
+  el("tpBar").style.width = pct + "%";
+  let stat = pct + "%";
+  if (s.total) stat = fmtBytes(s.bytes) + " / " + fmtBytes(s.total) + "　·　" + pct + "%";
+  if (st === "active" && s.speed_bps) stat += "　·　" + fmtBytes(s.speed_bps) + "/s";
+  if (st === "preparing") stat = "准备中…";
+  if (st === "done") stat = "100%　·　已完成";
+  if (st === "cancelled") stat = "已取消";
+  if (st === "failed") stat = "失败" + (s.message ? "　·　" + s.message : "");
+  el("tpStat").textContent = stat;
+
+  // 主按钮：传输中=取消，结束=关闭
+  const act = el("tpAction");
+  const finished = st === "done" || st === "cancelled" || st === "failed";
+  act.textContent = finished ? (st === "done" ? "已完成" : "关闭") : "取消";
+  act.classList.toggle("btn-primary", !finished || st === "done");
+
+  page.classList.remove("hidden");
+  tpView.open = true;
+  const tb = document.querySelector(".tb-title");
+  if (tb) tb.textContent = "传输";
+
+  // 「自动完成」：传完停一会儿再收页面，让用户看到「已完成」；关掉则等用户点
+  if (st === "done" && tpView.autoComplete && !s._autoClosed) {
+    s._autoClosed = true;
+    setTimeout(() => {
+      if (tpView.dismissed === s.session_id) return;
+      tpClose();
+    }, 1200);
+  }
+}
+
+function tpSync(list) {
+  tpView.sessions = Array.isArray(list) ? list : [];
+  tpRender();
+}
+
+// 新会话出现 / 进度推进：更新快照并按需打开页面
+function tpOnProgress(view) {
+  if (!view || !view.session_id) return;
+  const sid = view.session_id;
+  let s = tpView.sessions.find((x) => x.session_id === sid);
+  if (!s) {
+    s = {
+      session_id: sid,
+      direction: view.direction,
+      peer: "",
+      status: view.status,
+      message: view.message || null,
+      bytes: 0,
+      total: 0,
+      speed_bps: null,
+      files: [],
+    };
+    tpView.sessions.push(s);
+    if (tpView.sessions.length > 4) tpView.sessions.shift();
+    // 用户主动关掉的会话不再自动弹回来
+    if (tpView.dismissed !== sid) {
+      tpView.dismissed = null;
+      renderTpWith(s);
+      return;
+    }
+  }
+  // 已在跟踪：用事件里的数据就地更新（事件带的不全，缺的字段保留旧值）
+  const sessionLevel = !view.file_name || view.file_name.endsWith(" 个文件");
+  // 会话状态只认会话级事件：文件级的 failed/done 不能把「已取消」冲掉
+  if (sessionLevel) {
+    if (view.status) s.status = view.status;
+    if (view.message) s.message = view.message;
+    if (view.speed_bps) s.speed_bps = view.speed_bps;
+    if (view.total > 0) { s.total = view.total; s.bytes = view.bytes; }
+  } else {
+    if (view.speed_bps) s.speed_bps = view.speed_bps;
+    if (view.message && !s.message) s.message = view.message;
+    let f = s.files.find((x) => x.name === view.file_name);
+    if (!f) {
+      f = { name: view.file_name, bytes: view.bytes, total: view.total, status: view.status };
+      s.files.push(f);
+    } else {
+      f.bytes = view.bytes;
+      if (view.total > 0) f.total = view.total;
+      if (["done", "failed", "cancelled"].includes(view.status)) f.status = view.status;
+    }
+    if (s.status !== "cancelled" && s.status !== "failed") {
+      s.total = s.files.reduce((a, x) => a + (x.total || 0), 0);
+      s.bytes = s.files.reduce((a, x) => a + (x.bytes || 0), 0);
+      // 接收侧没有会话级终态事件，靠「所有文件都完成」推断
+      if (s.files.length && s.files.every((x) => x.status === "done")) s.status = "done";
+    }
+  }
+
+  // 接收侧事件不带速度，用两次进度的差值在本地估一个（够看趋势，不做精确度量）
+  const now = Date.now();
+  if (s._lastTs && now - s._lastTs > 200) {
+    const db = s.bytes - (s._lastBytes || 0);
+    if (db >= 0) {
+      const inst = (db / (now - s._lastTs)) * 1000;
+      s._speed = s._speed ? s._speed * 0.6 + inst * 0.4 : inst;
+      s.speed_bps = Math.round(s._speed);
+    }
+  }
+  s._lastTs = now;
+  s._lastBytes = s.bytes;
+
+  if (tpView.open) tpRender();
+}
+
+function renderTpWith(s) {
+  // 新会话：先拉一次全量快照（拿到 peer / 文件名），再渲染
+  tpView.sessions = [s];
+  tpRender();
+  invoke("transfer_active").then((list) => {
+    if (Array.isArray(list) && list.length) tpSync(list);
+  }).catch(() => {});
+}
+
+async function tpLoad() {
+  try {
+    // 接收目录要在传输页也能显示（副标题「保存到 …」），别指望用户先去接收页点一下
+    invoke("transfer_local_info").then((info) => {
+      if (info && info.receive_dir) {
+        tfView.receiveDir = info.receive_dir;
+        if (tpView.open) tpRender();
+      }
+    }).catch(() => {});
+
+    const list = await invoke("transfer_active");
+    const active = (list || []).some(
+      (s) => s.status === "active" || s.status === "preparing"
+    );
+    tpView.sessions = list || [];
+    // 只有「正在传」才自动弹：传输早就结束了再开窗口，不该莫名弹个进度页
+    if (active) tpRender();
+  } catch (e) { /* 模块停用 / 服务没起：不弹即可 */ }
+  tpLoadConfig();
+}
+
+async function tpLoadConfig() {
+  try {
+    const res = await invoke("get_tool_config", { toolId: "transfer" });
+    const v = (res && res.values) || {};
+    tpView.autoComplete = v.transfer_auto_complete === true;
+  } catch (e) { tpView.autoComplete = false; }
+}
+
+async function tpDoCancel(s) {
+  try {
+    if (s.direction === "send") await invoke("transfer_cancel_send", { sessionId: s.session_id });
+    else await invoke("transfer_cancel_receive", { sessionId: s.session_id });
+  } catch (e) {
+    tfNotice("取消失败：" + errText(e), true);
+  }
+}
+
+function tpClose() {
+  const s = tpCurrent();
+  if (s) tpView.dismissed = s.session_id;
+  el("tp").classList.add("hidden");
+  el("tpConfirm").classList.add("hidden");
+  tpView.open = false;
+  tpView.pendingCancel = null;
+  const tb = document.querySelector(".tb-title");
+  if (tb) tb.textContent = "任务列表";
+}
+
+el("tpAction").addEventListener("click", () => {
+  const s = tpCurrent();
+  if (!s) { tpClose(); return; }
+  const st = tpStatusOf(s);
+  if (st === "active" || st === "preparing") {
+    tpView.pendingCancel = s.session_id;
+    el("tpConfirm").classList.remove("hidden");
+  } else {
+    tpClose();
+  }
+});
+el("tpConfirmNo").addEventListener("click", () => {
+  tpView.pendingCancel = null;
+  el("tpConfirm").classList.add("hidden");
+});
+el("tpConfirmYes").addEventListener("click", () => {
+  const s = tpCurrent();
+  el("tpConfirm").classList.add("hidden");
+  tpView.pendingCancel = null;
+  if (s) tpDoCancel(s);
+});
+
 (async function initTransfer() {
   // 模块停用时隐藏「互传」入口（S4.8）
   try {
@@ -703,6 +980,7 @@ for (const b of document.querySelectorAll(".sub-item[data-sub]")) {
         refreshPending();
       } else if (e.type === "progress") {
         upsertRow(e.view);
+        tpOnProgress(e.view);
       } else if (e.type === "notice") {
         tfNotice(e.message, false);
       }
@@ -721,4 +999,7 @@ for (const b of document.querySelectorAll(".sub-item[data-sub]")) {
   } catch (e) {
     tfNotice("订阅传输事件失败：" + errText(e), true);
   }
+
+  // 传输页开场：拉一次快照（窗口中途打开也要能看到正在传的进度）
+  tpLoad();
 })();
