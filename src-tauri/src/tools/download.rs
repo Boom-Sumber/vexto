@@ -82,6 +82,23 @@ impl Tool for Download {
         )
     }
 
+    /// 引擎/插件接管有失败信息时红，aria2c 还没起来时黄（会话 52）。
+    fn status_kind(&self) -> &'static str {
+        let cfg = config::load();
+        if !cfg.enable_download {
+            return "ok";
+        }
+        let engine_msg = crate::download::engine::status_line();
+        let bridge_msg = crate::extension_bridge::status_line();
+        if engine_msg.contains("失败") || bridge_msg.contains("失败") {
+            return "error";
+        }
+        if engine_msg.contains("未启动") {
+            return "warn";
+        }
+        "ok"
+    }
+
     fn sections(&self) -> Vec<Section> {
         vec![
             // ── 通用 ──────────────────────────────────────────────────

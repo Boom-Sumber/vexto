@@ -148,8 +148,15 @@ async function selectTool(id, opts = {}) {
 function renderStatusLine(tool) {
   const p = el("tool-status-line");
   p.textContent = tool.status_line || "";
-  // 状态行的颜色只是提示，判据仍然是 enabled
-  p.className = "status-line" + (tool.enabled ? "" : " off");
+  // 颜色语义由后端 status_kind 给（ok 绿 / warn 黄 / error 红，会话 52）；
+  // 停用的工具一律灰——「已停用」不是错误。
+  let kind = "off";
+  if (tool.enabled !== false) {
+    kind = tool.status_kind === "error" ? "error"
+         : tool.status_kind === "warn" ? "warn"
+         : "";
+  }
+  p.className = "status-line" + (kind ? " " + kind : "");
 }
 
 function renderEnable(tool) {
@@ -168,6 +175,9 @@ function renderEnable(tool) {
       const res = await invoke("set_tool_enabled", { toolId: tool.id, enabled: want });
       if (res && res.ok) {
         setStatus(res.message || "已保存");
+        // 启动成功就收掉上一次失败留下的红横幅（会话 52：错误不许赖着不走）。
+        // 若热键注册等仍有新问题，下面的 selectTool → refreshHotkeyError 会再挂上来。
+        showBanner("");
         await reloadTools();
         await selectTool(tool.id, { keepBanner: true });
       } else {
@@ -512,7 +522,7 @@ function summaryParts(f, it) {
       const hit = (fld.options || []).find((o) => String(o[0]) === String(v));
       if (hit) v = hit[1];
     } else if (fld && fld.type === "switch") {
-      v = k === "use_llm" ? (v ? "大模型" : "机器翻译") : v ? "开" : "关";
+      v = k === "use_llm" ? (v ? "大模型" : "机翻") : v ? "开" : "关";
     }
     if (v != null && String(v).trim() !== "") parts.push(String(v));
   }
@@ -528,14 +538,23 @@ function itemShowIf(fld, it) {
   return list.some((e) => String(e) === String(it[fld.show_if.key] ?? ""));
 }
 
-// 一个控件（详情区与弹窗共用）：text / password / select / switch
+// 一个控件（详情区与弹窗共用）：text / password / select / switch。
+// switch 返回的是整个小号 pill 开关（label.switch-pill.sm，会话 52）——
+// 列表项里的开关比页面级开关小一号，调用方直接 append，不再自己包 label。
 function itemControl(fld, value, onChange) {
   if (fld.type === "switch") {
+    const lab = document.createElement("label");
+    lab.className = "switch-pill sm";
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = !!value;
+    const track = document.createElement("span");
+    track.className = "track";
+    const thumb = document.createElement("span");
+    thumb.className = "thumb";
+    lab.append(cb, track, thumb);
     cb.addEventListener("change", () => onChange(cb.checked));
-    return cb;
+    return lab;
   }
   if (fld.type === "select") {
     const sel = document.createElement("select");
@@ -632,14 +651,8 @@ function fieldList(f) {
           if (fresh) fillDetail(box, fresh);
         }
       });
-      if (fld.type === "switch") {
-        const wrap = document.createElement("label");
-        wrap.className = "li-switch";
-        wrap.append(ctrl);
-        row.append(wrap);
-      } else {
-        row.append(ctrl);
-      }
+      // switch 时 ctrl 本身就是 label.switch-pill，直接进网格
+      row.append(ctrl);
       box.append(row);
     }
   }
@@ -664,14 +677,19 @@ function fieldList(f) {
     ico.innerHTML = Icons.svg("file", 16);
     head.append(ico);
 
-    // 两行摘要：第一段当标题，其余段当描述（demo 的 .list-row 结构）
+    // 两行摘要：第一段当标题，其余段当描述（demo 的 .list-row 结构）。
+    // 会话 52：标题行单独包一层，测试状态灯跟在名字**后面**（小一号、留间距），
+    // 不再挂在「删除」最右侧——离名字近才能一眼看出「这套配置测没测过」。
     const parts = summaryParts(f, it);
     const info = document.createElement("div");
     info.className = "li-info";
+    const nameRow = document.createElement("div");
+    nameRow.className = "li-name-row";
     const nm = document.createElement("span");
     nm.className = "li-name";
     nm.textContent = parts[0] || "未命名";
-    info.append(nm);
+    nameRow.append(nm);
+    info.append(nameRow);
     let de = null;
     if (parts.length > 1) {
       de = document.createElement("span");
@@ -683,7 +701,7 @@ function fieldList(f) {
     head.append(info);
 
     // 「测试」在「删除」左侧：先用这套配置实测一句，不写入配置。
-    // 状态球单独留到最后 append：会话 34 起它要在「删除」**右侧**。
+    // 状态灯现在跟在名字后面（.li-name-row，会话 52 用户改版）。
     let dot = null;
     if (f.test_action) {
       const test = document.createElement("button");
@@ -703,11 +721,12 @@ function fieldList(f) {
       head.append(test);
 
       // 绿=通过 / 红=失败 / 灰=未测试。卡片里不再插结果文本框，
-      // 测完只看这颗球；直径按 CSS 跟按钮外框对齐，别在这里写死尺寸。
+      // 测完只看这颗灯；尺寸/发光由 CSS 管，别在这里写死。
       dot = document.createElement("span");
       dot.className = "li-status";
       markStatus(dot, getProfileStatus(f.key, it));
       dots.set(it.id, dot);
+      nameRow.append(dot);
     }
 
     const del = document.createElement("button");
@@ -717,8 +736,6 @@ function fieldList(f) {
     del.title = "只删这套配置，不动任何账号";
     del.addEventListener("click", () => removeItem(it.id));
     head.append(del);
-    // 卡片头最终顺序：箭头 → 摘要 → 测试 → 删除 → 状态球
-    if (dot) head.append(dot);
 
     c.append(head);
 
@@ -740,9 +757,11 @@ function fieldList(f) {
   function removeItem(id) {
     const next = readItems().filter((x) => x.id !== id);
     commit(f.key, next);
-    // 删的正好是「当前使用」→ 顺位：厂商优先、OpenAI 其次
+    // 删的正好是「当前使用」→ 顺位：厂商优先、OpenAI 其次。
+    // 厂商的 active_engine 可能带 :llm 后缀（机翻/大模型），两种都要算命中。
     const prefix = f.key === "vendor_profiles" ? "vendor:" : "openai:";
-    if (String(val("active_engine") || "") === prefix + id) {
+    const ae = String(val("active_engine") || "");
+    if (ae === prefix + id || ae === prefix + id + ":llm") {
       const vendors = f.key === "vendor_profiles" ? next : (val("vendor_profiles") || []);
       const models = f.key === "openai_profiles" ? next : (val("openai_profiles") || []);
       const pick = vendors[0]
@@ -1018,7 +1037,8 @@ function fieldSwitch(f) {
 }
 
 // 「翻译模式」的候选项：从当前配置里的厂商实例 + OpenAI 模型算出来。
-// 值就是 `active_engine` 的写法（`vendor:<id>` / `openai:<id>`）。
+// 值就是 `active_engine` 的写法（`vendor:<id>` / `vendor:<id>:llm` / `openai:<id>`）。
+// 开了 use_llm 的厂商出两项：机翻 + 大模型（会话 52，后端 engine_choices 同口径）。
 function engineChoices() {
   const listOf = (k) => {
     const v = val(k);
@@ -1027,7 +1047,10 @@ function engineChoices() {
   const out = [];
   for (const p of listOf("vendor_profiles")) {
     const name = String(p.name || "").trim() || "未命名";
-    out.push(["vendor:" + p.id, name + (p.use_llm ? " · 大模型" : "")]);
+    out.push(["vendor:" + p.id, p.use_llm ? name + " · 机翻" : name]);
+    if (p.use_llm) {
+      out.push(["vendor:" + p.id + ":llm", name + " · 大模型"]);
+    }
   }
   for (const p of listOf("openai_profiles")) {
     const name = String(p.name || "").trim() || "未命名";
@@ -1322,6 +1345,10 @@ async function saveAll() {
     setStatus(res.message || "已保存");
     if (Array.isArray(res.warnings) && res.warnings.length) {
       showBanner(res.warnings.join("\n"));
+    } else {
+      // 没有新警告就收掉旧横幅；refreshAfterSave 里的热键检查会把仍存在的
+      // 问题（如热键仍被占用）重新挂上来。
+      showBanner("");
     }
     // 热键归一化、状态摘要都变了，回读一次
     await refreshAfterSave();

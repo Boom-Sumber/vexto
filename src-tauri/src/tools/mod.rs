@@ -354,6 +354,11 @@ pub trait Tool: Send + Sync {
     }
     /// 状态摘要，显示在工具名下方与分区顶部。例如「百度翻译 · 已就绪」/「未配置」
     fn status_line(&self) -> String;
+    /// 状态摘要的颜色语义（会话 52）：`"ok"` 绿 / `"warn"` 黄 / `"error"` 红。
+    /// 默认绿；服务启动失败这类必须红的，由工具自己覆盖。
+    fn status_kind(&self) -> &'static str {
+        "ok"
+    }
     /// 设置项分组。多数工具返回一个 Section，翻译返回三个。
     fn sections(&self) -> Vec<Section>;
 }

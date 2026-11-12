@@ -550,11 +550,11 @@ pub fn start_service(cfg: &TransferConfig) -> Result<(), String> {
     let handle = std::thread::Builder::new()
         .name("lightbox-transfer".into())
         .spawn(move || service_thread(cfg, tx, stop_rx))
-        .map_err(|e| format!("启动传输线程失败：{e}"))?;
+        .map_err(|_| "传输服务线程启动失败，请重试".to_string())?;
 
     let started = match rx.recv_timeout(Duration::from_secs(10)) {
         Ok(res) => res,
-        Err(_) => Err("启动超时（10 秒内没拿到绑定结果）".to_string()),
+        Err(_) => Err("启动超时（10 秒内没有响应），请重试".to_string()),
     };
 
     match started {
@@ -837,11 +837,20 @@ async fn service_main(
     let server = match start_server(app_cfg, tls_identity, registry.clone(), Some(stx)).await {
         Ok(s) => s,
         Err(e) => {
-            // 端口被占是这里最常见的失败，原因要能原样展示给用户。
-            let _ = result_tx.send(Err(format!(
-                "无法启动传输服务（端口 {} 可能被占用）：{e}",
-                cfg.port
-            )));
+            // 用户要求：通知里不出现错误码，只说原因（会话 52）。
+            // 端口被占是最常见的失败；其余异常也给一句能懂的话，细节在日志里。
+            let looks_like_port = ["占用", "already in use", "os error 10048", "os error 10013"]
+                .iter()
+                .any(|k| e.to_string().to_lowercase().contains(k));
+            let msg = if looks_like_port {
+                format!(
+                    "无法启动传输服务（端口 {} 可能被占用）。请释放端口或改用其他端口后，在「高级 → 维护」里重启传输服务",
+                    cfg.port
+                )
+            } else {
+                "无法启动传输服务（服务异常退出）。请在「高级 → 维护」里重启传输服务；反复失败可在日志中查看原因".to_string()
+            };
+            let _ = result_tx.send(Err(msg));
             return;
         }
     };

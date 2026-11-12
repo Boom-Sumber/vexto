@@ -47,8 +47,8 @@ pub struct ModelProfile {
 /// 一套「厂商翻译」配置。
 ///
 /// 可以对同一家厂商建多套（例如两个百度应用、一个有额度一个没有），各起名字，
-/// 用哪套由 `active_engine` 指向。`use_llm` 决定走这家的机器翻译还是大模型翻译
-/// ——同一家也能配两套，一套机翻一套大模型。
+/// 用哪套由 `active_engine` 指向。`use_llm` 决定要不要给这家开放大模型选项，
+/// 当前实际走机翻还是大模型由 `active_engine` 的 `:llm` 后缀表达（会话 52）。
 ///
 /// 四组凭据都放在一个结构里而不是 `enum`：用户在弹窗里切厂商时，已经填过的另一家
 /// 字段不会丢（切回来还在），也不用为「切厂商」写一套字段搬迁逻辑。
@@ -63,7 +63,9 @@ pub struct VendorProfile {
     /// 厂商：`baidu` | `youdao`。以后接第三家只扩这个字段的取值
     #[serde(default)]
     pub vendor: String,
-    /// 这家用大模型翻译（true）还是机器翻译（false）
+    /// 这家**允许**用大模型翻译（true）还是只有机器翻译（false）。
+    /// 打开后「翻译模式」下拉会列出这家的大模型选项；当前实际用哪个
+    /// 由 `active_engine` 的 `:llm` 后缀决定（会话 52 语义）。
     #[serde(default)]
     pub use_llm: bool,
     /// 百度：APPID / 密钥
@@ -618,6 +620,13 @@ pub fn migrate_openai(cfg: &mut Config) {
 ///
 /// 迁移是**幂等**的：只要 `vendor_profiles` 已经有内容就不再根据老字段造新的，
 /// 老字段本身也会被清空（不再序列化），所以第二次跑什么都不会发生。
+/// `active_engine` 里「用这套厂商实例的大模型翻译」的后缀。
+///
+/// 会话 52 起 `use_llm` 开关的语义改为**允许**这家出两个模式：开关打开后，
+/// 「翻译模式」下拉同时列出 `vendor:<id>`（机翻）和 `vendor:<id>:llm`（大模型）
+/// 两项，选哪个由 `active_engine` 自己说了算——不再由实例的 `use_llm` 单独决定。
+pub const LLM_ENGINE_SUFFIX: &str = ":llm";
+
 pub fn migrate_vendors(cfg: &mut Config) {
     // 1) 老的单套凭据 → 实例（只在列表为空时）
     if cfg.vendor_profiles.is_empty() {
@@ -692,7 +701,10 @@ pub fn migrate_vendors(cfg: &mut Config) {
                 .find(|p| p.vendor == want)
                 .or_else(|| cfg.vendor_profiles.first())
             {
-                cfg.active_engine = format!("vendor:{}", p.id);
+                // 老配置 engine_mode=厂商大模型 时，实例在步骤 1 里已带上 use_llm；
+                // 新语义下「正在用大模型」由后缀表达，这里照搬到 active_engine。
+                let suffix = if p.use_llm { LLM_ENGINE_SUFFIX } else { "" };
+                cfg.active_engine = format!("vendor:{}{suffix}", p.id);
             }
         }
     }
@@ -703,7 +715,11 @@ pub fn migrate_vendors(cfg: &mut Config) {
         cfg.active_engine = cfg
             .vendor_profiles
             .first()
-            .map(|p| format!("vendor:{}", p.id))
+            .map(|p| {
+                // 顺位也保留机翻/大模型的当前用法（该实例开了 use_llm 就顺到机翻，
+                // 用户要大模型再在下拉里点一下——顺位只兜底，不猜用户要哪个）
+                format!("vendor:{}", p.id)
+            })
             .or_else(|| {
                 cfg.openai_profiles
                     .first()
@@ -736,7 +752,9 @@ impl Config {
     /// 当前选中的厂商实例。`active_engine` 不是 `vendor:` 前缀或指向不存在的 id
     /// 时返回 `None`（由 `migrate_vendors` 负责顺位，运行期不会长期为空）。
     pub fn active_vendor_profile(&self) -> Option<&VendorProfile> {
-        let id = self.active_engine.trim().strip_prefix("vendor:")?;
+        let raw = self.active_engine.trim().strip_prefix("vendor:")?;
+        // 「vendor:<id>:llm」也指向同一个实例：后缀只决定用机翻还是大模型
+        let id = raw.strip_suffix(LLM_ENGINE_SUFFIX).unwrap_or(raw);
         self.vendor_profiles.iter().find(|p| p.id == id)
     }
 
@@ -749,19 +767,27 @@ impl Config {
     /// 「翻译模式」下拉的全部候选项：`(active_engine 的值, 显示名)`。
     ///
     /// 厂商实例在前、OpenAI 模型在后，和设置页的分组顺序一致。
-    /// 没配置任何实例时返回空——设置页据此显示「先去下面添加」。
+    /// 开了 `use_llm` 的厂商出**两个**候选项（机翻 + 大模型，会话 52）；
+    /// 没开就只有机翻一项。没配置任何实例时返回空——设置页据此显示「先去下面添加」。
     pub fn engine_choices(&self) -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = self
-            .vendor_profiles
-            .iter()
-            .map(|p| {
-                let suffix = if p.use_llm { " · 大模型" } else { "" };
-                (
-                    format!("vendor:{}", p.id),
-                    format!("{}{suffix}", p.name.trim()),
-                )
-            })
-            .collect();
+        let mut out: Vec<(String, String)> = Vec::new();
+        for p in &self.vendor_profiles {
+            let name = p.name.trim().to_string();
+            out.push((
+                format!("vendor:{}", p.id),
+                if p.use_llm {
+                    format!("{name} · 机翻")
+                } else {
+                    name.clone()
+                },
+            ));
+            if p.use_llm {
+                out.push((
+                    format!("vendor:{}{LLM_ENGINE_SUFFIX}", p.id),
+                    format!("{name} · 大模型"),
+                ));
+            }
+        }
         out.extend(self.openai_profiles.iter().map(|p| {
             (
                 format!("openai:{}", p.id),
@@ -774,8 +800,15 @@ impl Config {
     /// 当前实例的显示名（状态行、翻译弹窗用）。没有可用实例时给空串。
     pub fn active_engine_label(&self) -> String {
         if let Some(p) = self.active_vendor_profile() {
-            let suffix = if p.use_llm { " · 大模型" } else { "" };
-            return format!("{}{suffix}", p.name.trim());
+            // 用机翻还是大模型由 `active_engine` 的 `:llm` 后缀说了算，
+            // `use_llm` 只决定下拉里要不要展示大模型选项。
+            return if self.active_engine.trim().ends_with(LLM_ENGINE_SUFFIX) {
+                format!("{} · 大模型", p.name.trim())
+            } else if p.use_llm {
+                format!("{} · 机翻", p.name.trim())
+            } else {
+                p.name.trim().to_string()
+            };
         }
         if let Some(p) = self.active_openai_profile() {
             return format!("OpenAI 兼容 · {}", p.name.trim());
@@ -807,7 +840,7 @@ pub fn save(cfg: &Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        migrate_engine, migrate_openai, migrate_vendors, Config, ModelProfile, VendorProfile,
+        migrate_engine, migrate_openai, Config, ModelProfile, VendorProfile, LLM_ENGINE_SUFFIX,
         MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
     };
 
@@ -1079,7 +1112,7 @@ mod tests {
         assert_eq!(c.active_engine_label(), "");
     }
 
-    /// 下拉候选项：厂商在前、OpenAI 在后，名字带「· 大模型」后缀。
+    /// 下拉候选项：厂商在前、OpenAI 在后；开了 use_llm 的厂商出机翻+大模型两项。
     #[test]
     fn engine_choices_list_vendors_then_models() {
         let c = Config {
@@ -1094,12 +1127,34 @@ mod tests {
             c.engine_choices(),
             vec![
                 ("vendor:v1".to_string(), "百度主账号".to_string()),
-                ("vendor:v2".to_string(), "有道大模型 · 大模型".to_string()),
+                ("vendor:v2".to_string(), "有道大模型 · 机翻".to_string()),
+                (
+                    format!("vendor:v2{LLM_ENGINE_SUFFIX}"),
+                    "有道大模型 · 大模型".to_string()
+                ),
                 ("openai:a".to_string(), "OpenAI 兼容 · DeepSeek".to_string()),
             ]
         );
         // 什么都没配 → 空（设置页据此显示「先去添加」）
         assert!(Config::default().engine_choices().is_empty());
+    }
+
+    /// 会话 52：`:llm` 后缀指向同一实例；机翻/大模型由后缀决定，
+    /// `use_llm` 只影响下拉要不要出大模型项。
+    #[test]
+    fn llm_suffix_selects_mode_not_profile() {
+        let mut c = Config {
+            vendor_profiles: vec![vendor("v1", "百度", VENDOR_BAIDU, true)],
+            ..Config::default()
+        };
+
+        c.active_engine = "vendor:v1".into();
+        assert_eq!(c.active_vendor_profile().unwrap().id, "v1");
+        assert_eq!(c.active_engine_label(), "百度 · 机翻");
+
+        c.active_engine = format!("vendor:v1{LLM_ENGINE_SUFFIX}");
+        assert_eq!(c.active_vendor_profile().unwrap().id, "v1");
+        assert_eq!(c.active_engine_label(), "百度 · 大模型");
     }
 
     /// 列表要能原样存回去（含中文名与空指令）。

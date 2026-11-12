@@ -62,6 +62,8 @@ struct ToolOut {
     /// 设置页右上角要不要画「启用」开关（通用 / 关于是 false）
     switchable: bool,
     status_line: String,
+    /// 状态行颜色语义：ok 绿 / warn 黄 / error 红（会话 52）
+    status_kind: &'static str,
     sections: Vec<tools::Section>,
 }
 
@@ -496,6 +498,7 @@ fn list_tools() -> Vec<ToolOut> {
             enabled: t.enabled(),
             switchable: t.switchable(),
             status_line: t.status_line(),
+            status_kind: t.status_kind(),
             sections: t.sections(),
         })
         .collect()

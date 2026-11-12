@@ -182,7 +182,8 @@ fn fire_after_done(action: &str, cmd: &str) {
         }
         Err(e) => {
             dlog::dlog(&format!("pump: 执行 {action} 失败：{e}"));
-            engine::set_message(format!("全部下载完成，但执行「{action}」失败：{e}"));
+            // 状态行是用户可见的：不显示错误码（会话 52），细节在日志里
+            engine::set_message(format!("全部下载完成，但执行「{action}」失败（原因见日志）"));
         }
     }
 }

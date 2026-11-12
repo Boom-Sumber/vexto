@@ -136,8 +136,9 @@ pub fn register_all(app: &AppHandle, list: Vec<Binding>) -> Vec<String> {
             }
         }) {
             Ok(()) => done.push(normalized),
-            Err(e) => errors.push(format!(
-                "{what}：热键 {normalized} 注册失败：{e}。多半是已被别的程序占用，换一个组合试试。"
+            // 用户要求：不显示系统错误码，只说原因（会话 52）
+            Err(_) => errors.push(format!(
+                "{what}：热键 {normalized} 注册失败，多半已被其他程序占用，换一个组合试试"
             )),
         }
     }

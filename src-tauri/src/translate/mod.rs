@@ -107,7 +107,9 @@ pub fn engine_id_of(cfg: &Config) -> String {
         } else {
             "baidu"
         };
-        return if p.use_llm {
+        // 机翻还是大模型由 `active_engine` 的 `:llm` 后缀说了算；
+        // 实例的 use_llm 只决定下拉里要不要展示大模型选项（会话 52）。
+        return if cfg.active_engine.trim().ends_with(config::LLM_ENGINE_SUFFIX) {
             format!("{base}-llm")
         } else {
             base.to_string()
@@ -569,17 +571,26 @@ mod tests {
     fn every_profile_shape_resolves_to_an_engine() {
         let mut seen = Vec::new();
         for vendor in [config::VENDOR_BAIDU, config::VENDOR_YOUDAO] {
-            for use_llm in [false, true] {
-                let cfg = Config {
-                    vendor_profiles: vec![vendor_profile("v1", vendor, use_llm)],
-                    active_engine: "vendor:v1".into(),
-                    ..Config::default()
-                };
-                let id = engine_id_of(&cfg);
-                let e = engine_by_id(&id)
-                    .unwrap_or_else(|| panic!("{vendor}/llm={use_llm} → {id} 没有实现"));
-                assert_eq!(e.id(), id);
-                seen.push(id);
+            for llm in [false, true] {
+                // 会话 52 语义：用不用大模型看 active_engine 的 :llm 后缀，
+                // use_llm 只是「允不允许」；两种取值都试一遍，确保路由不受它影响。
+                for use_llm in [false, true] {
+                    let cfg = Config {
+                        vendor_profiles: vec![vendor_profile("v1", vendor, use_llm)],
+                        active_engine: if llm {
+                            format!("vendor:v1{}", config::LLM_ENGINE_SUFFIX)
+                        } else {
+                            "vendor:v1".into()
+                        },
+                        ..Config::default()
+                    };
+                    let id = engine_id_of(&cfg);
+                    let e = engine_by_id(&id).unwrap_or_else(|| {
+                        panic!("{vendor}/suffix_llm={llm}/use_llm={use_llm} → {id} 没有实现")
+                    });
+                    assert_eq!(e.id(), id);
+                    seen.push(id);
+                }
             }
         }
         let cfg = Config {

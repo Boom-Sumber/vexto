@@ -61,8 +61,23 @@ impl Tool for Transfer {
                     transfer::backend().peers().len()
                 )
             }
-            transfer::server::ServiceState::Failed(e) => format!("启动失败：{e}"),
+            // 只说人话不带错误码；完整细节在日志里（会话 52 用户要求）
+            transfer::server::ServiceState::Failed(_) => {
+                "启动失败，无法启动服务（端口可能被占用）".to_string()
+            }
             transfer::server::ServiceState::Stopped => "已启用 · 服务未运行".to_string(),
+        }
+    }
+
+    /// 服务没起来必须红；「已启用但没运行」黄（会话 52）。
+    fn status_kind(&self) -> &'static str {
+        if !config::load().enable_transfer {
+            return "ok";
+        }
+        match transfer::server::state() {
+            transfer::server::ServiceState::Failed(_) => "error",
+            transfer::server::ServiceState::Stopped => "warn",
+            transfer::server::ServiceState::Listening { .. } => "ok",
         }
     }
 
