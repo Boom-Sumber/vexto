@@ -5,8 +5,14 @@
  *   2) 语义色 `--bg-* / --text-* / --border-* / --accent-* / --success-* …`：
  *      所有组件的样式只用这一层。
  *
- * 以后加亮色主题：新建 theme-light.css，在 `[data-theme="light"]` 里
- * 重定义同一批语义变量即可，其它文件一行不改。
+ * v2（UI 改版，映射《新UIdemo》设计稿）：
+ *   - 分层表面更深、带一点紫灰倾向（app 最深 → bar/side/panel/input 逐层抬亮）；
+ *   - 边框改用白 alpha，与表面亮度解耦（demo 口径）；
+ *   - 主题色仍走 `--theme` 单源：渐变端 `--accent-2`、淡底、描边、光晕全部
+ *     由它在文末 `@supports` 里用 oklch 相对色派生，换主色一处联动（含
+ *     Vexto.svg LOGO 与接收页蒙版）；
+ *   - 亮色主题：theme-light.css 在 `[data-theme="light"]` 里重定义同一批
+ *     语义变量即可，其它文件一行不改。
  */
 
 [data-theme="dark"] {
@@ -14,41 +20,43 @@
      由系统绘制的部件会跟着变暗，而不是弹出一块白。 */
   color-scheme: dark;
 
-  /* ── 原始色板（冷灰） ─────────────────────────────────────────────── */
-  --c-gray-1000: #0d0f13;
-  --c-gray-950: #121419;
-  --c-gray-900: #16181d;
-  --c-gray-850: #1a1d24;
-  --c-gray-800: #1f222a;
-  --c-gray-750: #252a33;
-  --c-gray-700: #2e333e;
-  --c-gray-600: #3b414e;
-  --c-gray-500: #4d5566;
-  --c-gray-400: #6f7789;
-  --c-gray-300: #8f97a8;
-  --c-gray-200: #b6bdcb;
-  --c-gray-100: #d8dde8;
-  --c-gray-50: #eef1f7;
+  /* ── 原始色板（紫灰） ─────────────────────────────────────────────── */
+  --c-gray-1000: #0b0b0f;
+  --c-gray-950: #0e0e13;
+  --c-gray-900: #121217;
+  --c-side: #111116;           /* 侧栏专用层：介于 950 与 850 之间 */
+  --c-gray-850: #16161d;
+  --c-gray-800: #1c1c25;
+  --c-gray-750: #23232e;
+  --c-gray-700: #2e2e39;
+  --c-gray-600: #3f3f4a;
+  --c-gray-500: #55555f;
+  --c-gray-400: #6c6c7a;
+  --c-gray-300: #8a8a96;
+  --c-gray-200: #a4a4b2;
+  --c-gray-100: #d5d5de;
+  --c-gray-50: #ededf2;
 
   --c-violet-400: #9d85ff;
   --c-violet-500: #7c5cff;
-  --c-violet-600: #6a48f5;
-  --c-green-500: #3fb950;
-  --c-amber-500: #d29922;
-  --c-red-500: #f85149;
-  --c-red-700: #c42b1c;
+  --c-violet-600: #6a4bff;
+  --c-green-500: #45c98a;
+  --c-amber-500: #f5b454;
+  --c-red-500: #f0566d;
+  --c-red-700: #c74255;
 
-  /* ── 背景 ─────────────────────────────────────────────────────────── */
-  --bg-app: var(--c-gray-900);
+  /* ── 背景（分层表面，由深到浅） ───────────────────────────────────── */
+  --bg-app: var(--c-gray-1000);
   --bg-bar: var(--c-gray-950);
+  --bg-side: var(--c-side);
   --bg-panel: var(--c-gray-850);
   --bg-input: var(--c-gray-800);
   --bg-hover: var(--c-gray-750);
   --bg-active: var(--c-gray-700);
+  /* 选中行（主题色 14% 透明）与文本选中（42%，深色下一眼可见）：
+     静态值兜底，相对色版在文末 @supports。 */
   --bg-selected: rgba(124, 92, 255, .14);
-  --bg-overlay: rgba(0, 0, 0, .45);
-  /* 文本选中底色：不能跟 --bg-selected 一样淡（那是行选中），
-     必须一眼看出「这几个字被选中了」。 */
+  --bg-overlay: rgba(0, 0, 0, .5);
   --selection-bg: rgba(124, 92, 255, .42);
 
   /* ── 文字 ─────────────────────────────────────────────────────────── */
@@ -59,56 +67,61 @@
   --text-disabled: var(--c-gray-500);
   --text-inverse: #ffffff;
 
-  /* ── 边框 ─────────────────────────────────────────────────────────── */
-  --border-subtle: #23262e;
-  --border-default: var(--c-gray-700);
-  --border-strong: var(--c-gray-600);
+  /* ── 边框：白 alpha，跟表面色解耦（demo 口径） ────────────────────── */
+  --border-subtle: rgba(255, 255, 255, .05);
+  --border-default: rgba(255, 255, 255, .07);
+  --border-strong: rgba(255, 255, 255, .12);
 
-  /* ── 主题色：改这里就是换主色 ───────────────────────────────────────
-     --theme 是唯一入口：UI 的 --accent、Vexto.svg 的渐变、接收页 LOGO 都取它。
-     改一个值三处同步变化；浅/深/透明档由文件末尾的 @supports 相对色现算。 */
+  /* ── 主题色：改 --theme 一处，UI / Vexto.svg / LOGO 全联动 ────────── */
   --theme: var(--c-violet-500);
   --accent: var(--theme);
+  --accent-2: var(--c-violet-600);      /* 渐变端；相对色版在文末 @supports */
   --accent-hover: var(--c-violet-400);
   --accent-active: var(--c-violet-600);
   --accent-soft: rgba(124, 92, 255, .16);
+  --accent-soft-2: rgba(124, 92, 255, .22);
+  --accent-border: rgba(124, 92, 255, .45);
   /* 焦点环：主题色边框本身已经足够标示焦点，外圈只做「一点点晕」。
      第一层 1px / 12% 只用来补一层色温，第二层 8px 柔光负责过渡；
-     环再宽就会和 1px 边框叠成一条粗边（用户反馈「边框很宽」）。 */
+     环再宽就会和 1px 边框叠成一条粗边（用户反馈「边框很宽」）。
+     demo 的 3px 实心晕不采纳。 */
   --accent-ring: rgba(124, 92, 255, .12);
   --accent-text: #ffffff;
 
   /* ── 状态色：与主题色分开，不要混用 ───────────────────────────────── */
   --success: var(--c-green-500);
-  --success-bg: rgba(63, 185, 80, .12);
-  --success-border: rgba(63, 185, 80, .35);
+  --success-bg: rgba(69, 201, 138, .12);
+  --success-border: rgba(69, 201, 138, .28);
   --warning: var(--c-amber-500);
-  --warning-bg: rgba(210, 153, 34, .12);
-  --warning-border: rgba(210, 153, 34, .35);
+  --warning-bg: rgba(245, 180, 84, .12);
+  --warning-border: rgba(245, 180, 84, .35);
   --danger: var(--c-red-500);
   --danger-hover: var(--c-red-700);
-  --danger-bg: rgba(248, 81, 73, .12);
-  --danger-border: rgba(248, 81, 73, .35);
+  --danger-bg: rgba(240, 86, 109, .12);
+  --danger-border: rgba(240, 86, 109, .35);
 
   /* ── 阴影与焦点环 ─────────────────────────────────────────────────── */
-  --shadow-float: 0 2px 8px rgba(0, 0, 0, .35);
-  --shadow-popup: 0 8px 28px rgba(0, 0, 0, .45);
-  --shadow-window: 0 12px 40px rgba(0, 0, 0, .5);
+  --shadow-float: 0 2px 10px rgba(0, 0, 0, .4);
+  --shadow-popup: 0 8px 30px rgba(0, 0, 0, .5);
+  --shadow-window: 0 12px 44px rgba(0, 0, 0, .55);
   --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(124, 92, 255, .22);
 
   /* ── 原生控件用的图标（data URI 不能引用 CSS 变量，颜色只能在这里写死） ──
-   * select 的箭头改成自绘后不再受系统白色箭头影响；换主题时改这一行即可。 */
-  --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%236f7789' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+   * select 的箭头改成自绘后不再受系统白色箭头影响；换主题时改这一行。 */
+  --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%236c6c7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-/* 主题色的浅/深/透明档从 --theme 现算（CSS Color 5 相对色）。
-   换主色时不用再手工改一串常量；旧版 WebView2 不认 oklch(from …) 时整块跳过，
-   上面那组静态值就是兜底，不影响任何控件。 */
+/* 主题色的浅/深/淡底/描边全部从 --theme 现算（CSS Color 5 相对色）。
+   换主色（设置里的外观 · 主色调，或直接改这里）时不用再手工改一串常量；
+   旧版 WebView2 不认 oklch(from …) 时整块跳过，上面那组静态值就是兜底。 */
 @supports (color: oklch(from red l c h)) {
   [data-theme="dark"] {
+    --accent-2: oklch(from var(--theme) calc(l - 0.06) c calc(h - 4));
     --accent-hover: oklch(from var(--theme) calc(l + 0.10) c h);
     --accent-active: oklch(from var(--theme) calc(l - 0.08) c h);
     --accent-soft: oklch(from var(--theme) l c h / .16);
+    --accent-soft-2: oklch(from var(--theme) l c h / .22);
+    --accent-border: oklch(from var(--theme) l c h / .45);
     --accent-ring: oklch(from var(--theme) l c h / .12);
     --bg-selected: oklch(from var(--theme) l c h / .14);
     --selection-bg: oklch(from var(--theme) l c h / .42);

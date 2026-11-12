@@ -9,7 +9,17 @@ html, body { height: 100%; }
 
 body {
   margin: 0;
+  /* v2 氛围光：两层紫红 radial 光晕铺在 app 底色上（demo 口径）。
+     第一条声明是不支持相对色引擎的兜底；颜色从 --theme 现算，
+     换主色调时光晕跟着变。透明窗口（popup / transfer_confirm）在
+     自己的 CSS 里覆盖回 transparent，光晕不会漏进去。 */
   background: var(--bg-app);
+  background:
+    radial-gradient(1200px 600px at 70% -10%,
+      oklch(from var(--theme) l c h / .10), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%,
+      oklch(from var(--theme) l c h / .06), transparent 55%),
+    var(--bg-app);
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: var(--fs-md);
@@ -280,19 +290,24 @@ input[type="search"]::-webkit-search-decoration {
 .btn:active { background: var(--bg-active); }
 .btn:disabled { opacity: .45; cursor: default; }
 
+/* 主按钮：主题色纵向渐变 + 顶部内高光 + 主题色投影（demo 口径）。
+   渐变端 --accent-2 与投影都从 --theme 派生（theme-dark.css 的 @supports
+   块），换主色自动联动；旧引擎下渐变端/投影取静态兜底值。 */
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-color: transparent;
   color: var(--accent-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18),
+              0 6px 16px oklch(from var(--theme) l c h / .35);
 }
 .btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  filter: brightness(1.07);
   color: var(--accent-text);
 }
 .btn-primary:active {
-  background: var(--accent-active);
-  border-color: var(--accent-active);
+  filter: brightness(.95);
+  border-color: transparent;
 }
 
 .btn-ghost { background: transparent; border-color: transparent; }
@@ -394,6 +409,18 @@ input[type="radio"]:disabled { opacity: .45; cursor: default; }
 
 /* 图标统一：不参与基线对齐，避免行高被撑开 */
 .ico { display: inline-flex; flex: 0 0 auto; }
+
+/* ── 品牌 LOGO 磁贴 ─────────────────────────────────────────────────────
+ * 形状来自 ui/Vexto.svg（CSS 蒙版，与接收页 .rv-logo 同机制），颜色取
+ * --theme 渐变——换主色调时 LOGO 同步变。页面里不写内联 <svg>（§13.5）。
+ * 尺寸与外发光由使用方给定（如 .brand .logo { width:30px; height:30px }）。
+ * 注意：Vexto.svg 内不能出现外链资源（@import 等），否则 Chromium 在
+ * image 模式下拒绝加载整个文件。 */
+.logo-mask {
+  background: linear-gradient(150deg, var(--accent), var(--accent-2));
+  -webkit-mask: url("Vexto.svg") center / contain no-repeat;
+  mask: url("Vexto.svg") center / contain no-repeat;
+}
 
 /* ── 提示条 ───────────────────────────────────────────────────────────── */
 

@@ -97,6 +97,22 @@ window.Icons = (function () {
     sort:
       '<path d="M8 6v12M8 18l-3-3M8 18l3-3"/>' +
       '<path d="M16 18V6M16 6l-3 3M16 6l3 3"/>',
+
+    // 导航（UI v2 侧栏：设置 / 翻译 / 下载分类 / 互传 / 大模型）
+    globe:
+      '<circle cx="12" cy="12" r="9"/>' +
+      '<path d="M3 12h18"/>' +
+      '<path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    grid:
+      '<rect x="3" y="3" width="7" height="7" rx="1.5"/>' +
+      '<rect x="14" y="3" width="7" height="7" rx="1.5"/>' +
+      '<rect x="3" y="14" width="7" height="7" rx="1.5"/>' +
+      '<rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    "check-circle": '<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 5-5"/>',
+    send:
+      '<path d="M22 2 11 13"/>' +
+      '<path d="M22 2 15 22l-4-9-9-4z"/>',
+    bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
   };
 
   // 设计稿给的两个「实心/彩色」图标：viewBox 是 1024，颜色写死或跟 currentColor，
