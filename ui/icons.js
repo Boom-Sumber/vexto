@@ -99,6 +99,18 @@ window.Icons = (function () {
       '<path d="M16 18V6M16 6l-3 3M16 6l3 3"/>',
   };
 
+  // 设计稿给的两个「实心/彩色」图标：viewBox 是 1024，颜色写死或跟 currentColor，
+  // 不套统一的 24×24 stroke 模板（见 §13.5）。用 Icons.raw(name, size) 取用。
+  const RAW = {
+    // 粉红圆底 + 白色 ×：文件卡片右上角删除
+    deleteRound:
+      '<circle cx="512" cy="512" r="512" fill="#FF6483"/>' +
+      '<path d="M727.04 733.730133a38.331733 38.331733 0 0 1-54.033067 0l-162.133333-162.235733-162.0992 162.133333a38.229333 38.229333 0 1 1-54.101333-54.033066l162.133333-162.133334-159.914667-159.914666a38.229333 38.229333 0 0 1 54.101334-54.033067l159.914666 159.914667 159.914667-159.914667a38.229333 38.229333 0 0 1 54.033067 54.033067l-159.914667 159.914666 162.133333 162.133334a38.331733 38.331733 0 0 1 0 54.033066v0.1024z" fill="#FFFFFF"/>',
+    // 向下箭头 + 底线：拖放页中间的大图标，颜色跟 currentColor
+    bigDownload:
+      '<path d="M960.512 897.024H63.488c-34.816 0-63.488 28.672-63.488 63.488C0 995.328 28.672 1024 63.488 1024h897.024c34.816 0 63.488-28.672 63.488-63.488 0-36.864-28.672-63.488-63.488-63.488z m-493.568-133.12c24.576 24.576 65.536 24.576 90.112 0L829.44 491.52c24.576-24.576 24.576-65.536 0-90.112-24.576-24.576-65.536-24.576-90.112 0l-161.792 161.792V63.488C575.488 28.672 546.816 0 512 0c-34.816 0-63.488 28.672-63.488 63.488v501.76L286.72 403.456c-24.576-24.576-65.536-24.576-90.112 0-24.576 24.576-24.576 65.536 0 90.112l270.336 270.336z"/>',
+  };
+
   /// 生成一个 SVG 字符串。`size` 是像素边长，只用 14 / 16 / 20。
   function svg(name, size) {
     const body = P[name] || P.info;
@@ -118,9 +130,20 @@ window.Icons = (function () {
     return el;
   }
 
-  function has(name) {
-    return Object.prototype.hasOwnProperty.call(P, name);
+  /// 设计稿里的实心图标：自带 viewBox 1024，颜色由图标自己决定或跟 currentColor。
+  function raw(name, size) {
+    const s = size || 24;
+    const body = RAW[name] || RAW.bigDownload;
+    const fill = name === "deleteRound" ? "none" : "currentColor";
+    return (
+      `<svg viewBox="0 0 1024 1024" width="${s}" height="${s}" fill="${fill}" ` +
+      `aria-hidden="true" class="ico-svg">${body}</svg>`
+    );
   }
 
-  return { svg, fill, has, names: () => Object.keys(P) };
+  function has(name) {
+    return Object.prototype.hasOwnProperty.call(P, name) || Object.prototype.hasOwnProperty.call(RAW, name);
+  }
+
+  return { svg, raw, fill, has, names: () => Object.keys(P).concat(Object.keys(RAW)) };
 })();

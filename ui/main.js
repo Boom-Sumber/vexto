@@ -591,6 +591,9 @@ async function respond(sessionId, accept) {
 }
 
 function upsertRow(view) {
+  // 发送页已不列「传输进度」（进度全在覆盖整窗的传输页里），容器没了就别写
+  const box = el("tfList");
+  if (!box) return;
   const key = view.session_id + "|" + view.file_name;
   let row = tfView.rows.get(key);
   if (!row) {
@@ -599,9 +602,8 @@ function upsertRow(view) {
     row.innerHTML =
       '<div class="line"><span class="tf-dir"></span><span class="fname"></span><span class="fstat"></span></div>' +
       '<div class="bar"><i></i></div>';
-    el("tfList").appendChild(row);
+    box.appendChild(row);
     tfView.rows.set(key, row);
-    el("tfEmpty").classList.add("hidden");
   }
   row.classList.toggle("done", view.status === "done");
   row.classList.toggle("failed", view.status === "failed" || view.status === "cancelled");
@@ -692,7 +694,7 @@ async function renderPick() {
     const item = document.createElement("div");
     item.className = "pick-item";
     item.innerHTML =
-      '<div class="pick-tile">' + Icons.svg("file", 28) + "</div>" +
+      '<div class="pick-tile">' + Icons.svg("file", 40) + "</div>" +
       '<div class="pick-name"></div>' +
       '<button class="pick-del" type="button" title="移除这个文件" aria-label="移除"></button>';
     const nm = item.querySelector(".pick-name");
@@ -704,7 +706,8 @@ async function renderPick() {
       item.classList.toggle("open");
     });
     const del = item.querySelector(".pick-del");
-    del.innerHTML = Icons.svg("trash", 12);
+    // 设计稿的粉红圆形「×」，无边框；28px 比原来的 22px 更醒目
+    del.innerHTML = Icons.raw("deleteRound", 28);
     del.addEventListener("click", (ev) => {
       ev.stopPropagation();
       tfView.dropPaths.splice(i, 1);
@@ -755,12 +758,42 @@ el("tfRefresh").addEventListener("click", async () => {
 el("tfRefreshRecv").addEventListener("click", () => { refreshPending(); refreshLocalInfo(); });
 el("pickAdd").addEventListener("click", () => addFiles());
 el("pickClear").addEventListener("click", () => clearPick());
-el("pickCard").addEventListener("dragover", (e) => {
+// 拖着文件进窗口、还没松手时：整张选择卡片换成「松开以添加文件」页。
+// 用 document 级事件 + 计数，避免鼠标在子元素间移动时反复闪。
+el("pickDropIcon").innerHTML = Icons.raw("bigDownload", 96);
+
+let dragDepth = 0;
+function draggingFiles(e) {
+  const types = e.dataTransfer && e.dataTransfer.types;
+  return !!types && Array.from(types).includes("Files");
+}
+function showPickDrop() {
+  el("pickDrop").classList.remove("hidden");
+}
+function hidePickDrop() {
+  dragDepth = 0;
+  el("pickDrop").classList.add("hidden");
+}
+document.addEventListener("dragenter", (e) => {
+  if (!draggingFiles(e)) return;
   e.preventDefault();
-  el("pickCard").classList.add("drag-over");
+  dragDepth += 1;
+  showPickDrop();
 });
-el("pickCard").addEventListener("dragleave", () => el("pickCard").classList.remove("drag-over"));
-el("pickCard").addEventListener("drop", () => el("pickCard").classList.remove("drag-over"));
+document.addEventListener("dragover", (e) => {
+  if (!draggingFiles(e)) return;
+  e.preventDefault();
+  showPickDrop();
+});
+document.addEventListener("dragleave", (e) => {
+  if (!draggingFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) hidePickDrop();
+});
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  hidePickDrop();
+});
 el("tfOpenDir").addEventListener("click", () => {
   if (!tfView.receiveDir) { tfNotice("还没有读取到接收目录", true); return; }
   invoke("open_path", { path: tfView.receiveDir }).catch((e) => tfNotice(errText(e), true));
@@ -1327,6 +1360,7 @@ el("hsClear").addEventListener("click", async (ev) => {
       if (!paths || !paths.length) return;
       if (tfView.view !== "transfer") setView("transfer");
       setSub("send");
+      hidePickDrop();
       addDropped(paths);
     });
     await listen("main:switch-view", (ev) => {

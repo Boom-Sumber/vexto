@@ -862,6 +862,7 @@
 /* ── 发送页：选文件卡片（S4 · 会话 46） ───────────────────────────────── */
 /* 一次把「选了什么」摊开：文件数、总大小、缩略方格；选好之后点设备就发。 */
 .pick {
+  position: relative; /* 拖放替换页要盖住整张卡片 */
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -919,18 +920,18 @@
   gap: var(--sp-3);
 }
 
-/* 一个文件 = 88×88 的方格 + 下面的文件名（限宽省略，单击展开全名） */
+/* 一个文件 = 80×72 的方格 + 下面的文件名（限宽省略，单击展开全名） */
 .pick-item {
   position: relative;
-  width: 96px;
+  width: 80px;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
 }
 .pick-tile {
   position: relative;
-  width: 96px;
-  height: 88px;
+  width: 80px;
+  height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -941,7 +942,8 @@
 }
 .pick-item:hover .pick-tile { border-color: var(--border-default); }
 .pick-name {
-  width: 96px;
+  width: 80px;
+  text-align: center; /* 名字相对方格居中 */
   font-size: var(--fs-xs);
   line-height: var(--lh-normal);
   letter-spacing: var(--ls-normal);
@@ -961,23 +963,26 @@
   color: var(--text-primary);
 }
 /* 悬停右上角出现删除 */
+/* 右上删除：设计稿里的粉红圆形「×」，无边框、无底色方块，整体放大到 28px */
 .pick-del {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: -8px;
+  right: -8px;
   display: none;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-sm);
-  background: var(--bg-panel);
-  color: var(--text-secondary);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .28));
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .pick-item:hover .pick-del { display: inline-flex; }
-.pick-del:hover { background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger); }
+.pick-del:hover { transform: scale(1.12); }
 
 .pick-hint {
   font-size: var(--fs-sm);
@@ -1002,6 +1007,32 @@
   color: var(--accent);
 }
 .pick-add:hover { background: var(--accent); color: var(--accent-text); }
+
+/* 拖着文件还没松手：整张卡片换成这个页面 */
+.pick-drop {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  border: 1px dashed var(--accent);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+.pick-drop.hidden { display: none; }
+.pick-drop-icon {
+  display: inline-flex;
+  color: var(--accent);
+}
+.pick-drop-text {
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: var(--ls-normal);
+  color: var(--text-secondary);
+}
 
 /* 设备行改成「整行可点 = 发送」，不再单独放按钮 */
 .device-item { cursor: pointer; }

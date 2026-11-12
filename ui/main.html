@@ -109,15 +109,18 @@
                 <span data-icon="plus" data-icon-size="14"></span>添加
               </button>
             </footer>
+
+            <!-- 拖着文件还没松手时，整张卡片换成这个「松手就加进来」的提示页 -->
+            <div id="pickDrop" class="pick-drop hidden">
+              <span class="pick-drop-icon" id="pickDropIcon"></span>
+              <div class="pick-drop-text">松开以添加文件</div>
+            </div>
           </section>
 
           <div class="section-title">附近的设备</div>
           <div id="peerList" class="device-list"></div>
           <div id="peerEmpty" class="empty">没有发现设备。确认对方也开着 LocalSend / LightBox，且在同一 WiFi。</div>
 
-          <div class="section-title">传输进度</div>
-          <div id="tfList" class="tf-rows"></div>
-          <div id="tfEmpty" class="empty">还没有传输。</div>
         </div>
       </div>
 
