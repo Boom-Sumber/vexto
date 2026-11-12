@@ -345,6 +345,7 @@ const listening = T.event.listen("popup-render", (e) => {
 });
 
 window.addEventListener("DOMContentLoaded", async () => {
+  Theme.apply(); // 外观：主题三态 + 主色调
   try {
     await listening;
   } catch (e) {

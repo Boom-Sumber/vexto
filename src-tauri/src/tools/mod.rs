@@ -77,6 +77,12 @@ pub enum FieldKind {
         #[serde(skip_serializing_if = "Option::is_none")]
         dynamic: Option<&'static str>,
     },
+    /// 主色调（外观功能）：预设色板 `(色名, #rrggbb)` + 前端自定义取色。
+    /// 值是 `#rrggbb` 字符串，空串 = 跟随默认色。色板是**数据**（用户可选的
+    /// 颜色），不是 UI 装饰色，所以由 Rust 侧给出、前端原样渲染。
+    Color {
+        presets: &'static [(&'static str, &'static str)],
+    },
     /// 热键：前端只读 + 捕获模式，用户点一下直接按组合键
     Hotkey,
     /// 目录选择。
@@ -230,6 +236,15 @@ impl Field {
                 dynamic: Some(source),
             },
         )
+    }
+
+    /// 主色调：预设色板 + 前端自定义取色（外观功能）。
+    pub fn color(
+        key: &'static str,
+        label: &'static str,
+        presets: &'static [(&'static str, &'static str)],
+    ) -> Self {
+        Self::new(key, label, FieldKind::Color { presets })
     }
 
     pub fn hotkey(key: &'static str, label: &'static str) -> Self {
@@ -415,6 +430,20 @@ mod tests {
         assert_eq!(v["type"], "group");
         assert_eq!(v["title"], "下载路径");
         assert_eq!(v["label"], "");
+    }
+
+    /// 主色调字段（外观功能）：type=color，色板原样带出。
+    #[test]
+    fn color_field_carries_presets() {
+        let v: Value = serde_json::to_value(Field::color(
+            "accent_color",
+            "主色调",
+            &[("#7c5cff", "高级紫")],
+        ))
+        .unwrap();
+        assert_eq!(v["type"], "color");
+        assert_eq!(v["presets"][0][0], "#7c5cff");
+        assert_eq!(v["presets"][0][1], "高级紫");
     }
 
     /// `show_if` 只在设置过时才出现，避免前端拿到 `null` 还要判空。

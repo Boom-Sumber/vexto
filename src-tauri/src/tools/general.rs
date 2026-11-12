@@ -61,6 +61,19 @@ impl Tool for General {
             "general",
             "通用",
             vec![
+                Field::group("外观"),
+                Field::select(
+                    "appearance_theme",
+                    "主题",
+                    &[
+                        ("dark", "暗色"),
+                        ("light", "明亮"),
+                        ("system", "跟随系统"),
+                    ],
+                )
+                .help("「跟随系统」跟着 Windows 的应用模式走（设置 → 个性化 → 颜色）。"),
+                Field::color("accent_color", "主色调", ACCENT_PRESETS)
+                    .help("按钮、光晕、LOGO 渐变都会跟着变。点已选中的色块恢复默认；「自定义」用系统取色器随便挑。"),
                 Field::group("启动"),
                 Field::switch("autostart", "开机自动启动"),
                 Field::group("性能"),
@@ -76,3 +89,14 @@ impl Tool for General {
         )]
     }
 }
+
+/// 主色调预设色板（外观功能会话，用户已确认六色）。
+/// 渐变端 / 淡底 / 描边全部由前端 oklch 从这里给的主色现算。
+pub const ACCENT_PRESETS: &[(&str, &str)] = &[
+    ("#7c5cff", "高级紫"),
+    ("#3b82f6", "湛蓝"),
+    ("#14b8a6", "青碧"),
+    ("#22c55e", "翠绿"),
+    ("#f59e0b", "琥珀"),
+    ("#ec4899", "玫红"),
+];

@@ -676,6 +676,48 @@ input.capturing {
 /* 页签里的第一个分组不要多出一截顶部留白 */
 #fields > .group-title:first-child { margin-top: 0; }
 
+/* ── 主色调色板（外观功能）：色块一排 + 自定义取色 ──────────────────────
+ * 色块颜色由 settings.js 以内联 style 上色（数据，非装饰色）；
+ * 这里的裸色值只用于选中描边与取色器图标。 */
+
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  outline: none;
+  transition: transform var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch.on {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 3.5px var(--text-primary);
+}
+.swatch.custom {
+  position: relative;
+  background: conic-gradient(#ff5757, #f5b454, #45c98a, #5aa2f7, #b06cff, #ff5757);
+  overflow: hidden;
+}
+.swatch.custom input[type="color"] {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
 /* ── 预设按钮（默认 User-Agent 的 Chrome / Edge / Safari / Firefox）────── */
 
 .presets {

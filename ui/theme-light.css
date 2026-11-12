@@ -1,0 +1,118 @@
+/* 明亮主题：**只放颜色**，结构与 theme-dark.css 一一对应。
+ *
+ * 切换机制（外观功能会话）：body[data-theme] 由 ui/theme.js 按配置写成
+ * dark / light；本文件在 `[data-theme="light"]` 里重定义同一批语义变量，
+ * 其它文件一行不改。主色调仍走 `--theme` 单源——文末 `@supports` 里
+ * 用同一组 oklch 相对色从 --theme 派生浅色下的淡底 / 描边 / 光晕。
+ *
+ * 明暗差异的设计口径：
+ *   - 分层反转：app 最浅 → bar/side 略深 → panel 纯白浮起 → input 再浅一层灰；
+ *   - 边框改黑 alpha（与白表面解耦），比暗色略实一点才看得清；
+ *   - 状态色加深一档保证白底对比度；阴影减淡（浅色不需要那么重的投影）。
+ */
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* ── 原始色板（中性灰） ───────────────────────────────────────────── */
+  --c-gray-1000: #1a1a22;
+  --c-gray-950: #43434e;
+  --c-gray-900: #63636e;
+  --c-side: #ebebf0;
+  --c-gray-850: #ffffff;
+  --c-gray-800: #f2f2f5;
+  --c-gray-750: #e8e8ee;
+  --c-gray-700: #e0e0e8;
+  --c-gray-600: #c9c9d2;
+  --c-gray-500: #a5a5af;
+  --c-gray-400: #85858f;
+  --c-gray-300: #63636e;
+  --c-gray-200: #43434e;
+  --c-gray-100: #2a2a33;
+  --c-gray-50: #1a1a22;
+
+  --c-violet-400: #6a4bff;
+  --c-violet-500: #7c5cff;
+  --c-violet-600: #6847f0;
+  --c-green-500: #17996a;
+  --c-amber-500: #b97c0e;
+  --c-red-500: #d63a52;
+  --c-red-700: #b52e44;
+
+  /* ── 背景（分层表面：app 最浅，panel 纯白浮起） ───────────────────── */
+  --bg-app: #f2f2f6;
+  --bg-bar: #ececf1;
+  --bg-side: var(--c-side);
+  --bg-panel: var(--c-gray-850);
+  --bg-input: var(--c-gray-800);
+  --bg-hover: var(--c-gray-750);
+  --bg-active: var(--c-gray-700);
+  --bg-selected: rgba(124, 92, 255, .12);
+  --bg-overlay: rgba(30, 30, 40, .4);
+  --selection-bg: rgba(124, 92, 255, .30);
+
+  /* ── 文字 ─────────────────────────────────────────────────────────── */
+  --text-primary: var(--c-gray-50);
+  --text-secondary: var(--c-gray-200);
+  --text-muted: var(--c-gray-300);
+  --text-dim: var(--c-gray-400);
+  --text-disabled: var(--c-gray-500);
+  --text-inverse: #ffffff;
+
+  /* ── 边框：黑 alpha ───────────────────────────────────────────────── */
+  --border-subtle: rgba(20, 20, 30, .06);
+  --border-default: rgba(20, 20, 30, .09);
+  --border-strong: rgba(20, 20, 30, .16);
+
+  /* ── 主题色：与暗色同源 --theme，只调透明度适配浅底 ────────────────── */
+  --theme: var(--c-violet-500);
+  --accent: var(--theme);
+  --accent-2: var(--c-violet-600);
+  --accent-hover: var(--c-violet-400);
+  --accent-active: var(--c-violet-600);
+  --accent-soft: rgba(124, 92, 255, .12);
+  --accent-soft-2: rgba(124, 92, 255, .18);
+  --accent-border: rgba(124, 92, 255, .40);
+  --accent-ring: rgba(124, 92, 255, .14);
+  --accent-text: #ffffff;
+
+  /* ── 状态色：加深一档保白底对比度 ─────────────────────────────────── */
+  --success: var(--c-green-500);
+  --success-bg: rgba(23, 153, 106, .10);
+  --success-border: rgba(23, 153, 106, .30);
+  --warning: var(--c-amber-500);
+  --warning-bg: rgba(185, 124, 14, .10);
+  --warning-border: rgba(185, 124, 14, .32);
+  --danger: var(--c-red-500);
+  --danger-hover: var(--c-red-700);
+  --danger-bg: rgba(214, 58, 82, .08);
+  --danger-border: rgba(214, 58, 82, .30);
+
+  /* ── 阴影与焦点环：浅色减淡 ───────────────────────────────────────── */
+  --shadow-float: 0 2px 10px rgba(20, 20, 30, .12);
+  --shadow-popup: 0 8px 30px rgba(20, 20, 30, .16);
+  --shadow-window: 0 12px 44px rgba(20, 20, 30, .20);
+  --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(124, 92, 255, .20);
+
+  /* ── 原生控件图标：亮色箭头 ───────────────────────────────────────── */
+  --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%2385858f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 与暗色同一组相对色派生（CSS Color 5）；旧引擎整块跳过用上面静态值兜底。
+ * （base.css 的 body 光晕直接用 --theme 与 --bg-app 现算，亮色下自动变成
+ *   浅底淡晕，无需在这里覆盖——覆盖反而会以更高优先级穿透透明窗的
+ *   background:transparent，popup / 传输确认窗会漏进一圈底色。） */
+@supports (color: oklch(from red l c h)) {
+  [data-theme="light"] {
+    --accent-2: oklch(from var(--theme) calc(l - 0.06) c calc(h - 4));
+    --accent-hover: oklch(from var(--theme) calc(l + 0.10) c h);
+    --accent-active: oklch(from var(--theme) calc(l - 0.08) c h);
+    --accent-soft: oklch(from var(--theme) l c h / .12);
+    --accent-soft-2: oklch(from var(--theme) l c h / .18);
+    --accent-border: oklch(from var(--theme) l c h / .40);
+    --accent-ring: oklch(from var(--theme) l c h / .14);
+    --bg-selected: oklch(from var(--theme) l c h / .12);
+    --selection-bg: oklch(from var(--theme) l c h / .30);
+    --ring: 0 0 0 1px var(--accent-ring), 0 0 8px oklch(from var(--theme) l c h / .20);
+  }
+}

@@ -363,6 +363,19 @@ pub struct Config {
     #[serde(default = "d_true")]
     pub lite_mode: bool,
 
+    // ---- 外观 ----
+    /// 主题：`dark` | `light` | `system`（跟随 Windows 应用模式）。
+    /// 默认暗色（程序一贯的样子）。只影响前端 `body[data-theme]`，
+    /// 不参与任何后端行为（外观功能会话）。
+    #[serde(default = "d_appearance_theme", skip_serializing_if = "String::is_empty")]
+    pub appearance_theme: String,
+    /// 主色调 `#rrggbb`。空串 = 跟随默认 #7c5cff（高级紫）。
+    /// 前端把它覆盖到 `--theme`，按钮渐变 / 光晕 / LOGO 全部联动。
+    /// **不 skip 空串**：main.rs 有个守卫测试要求每个 schema 字段都能在
+    /// 序列化后的 Config 里找到（config_map_covers_all_tool_keys）。
+    #[serde(default)]
+    pub accent_color: String,
+
     // ---- 版本 ----
     /// 配置格式版本，从 1 开始。老配置没有这个字段时按 1 处理
     #[serde(default = "d_version")]
@@ -454,6 +467,9 @@ fn d_click_folder() -> String {
 fn d_version() -> u32 {
     1
 }
+fn d_appearance_theme() -> String {
+    "dark".to_string()
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -531,6 +547,8 @@ impl Default for Config {
             extension_bridge_secret: String::new(),
             autostart: false,
             lite_mode: true,
+            appearance_theme: d_appearance_theme(),
+            accent_color: String::new(),
             version: d_version(),
         }
     }
@@ -1291,5 +1309,21 @@ mod tests {
         }
         assert!(obj.contains_key("vendor_profiles"));
         assert!(obj.contains_key("active_engine"));
+    }
+
+    /// 外观字段（外观功能会话）：老配置缺省 → 暗色 + 跟随默认主色；
+    /// 显式值原样读写。ADR-013：只增字段不破坏旧配置。
+    #[test]
+    fn appearance_fields_default_and_roundtrip() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.appearance_theme, "dark");
+        assert!(c.accent_color.is_empty());
+
+        let c2: Config = serde_json::from_str(
+            r##"{"appearance_theme":"system","accent_color":"#3b82f6"}"##,
+        )
+        .unwrap();
+        assert_eq!(c2.appearance_theme, "system");
+        assert_eq!(c2.accent_color, "#3b82f6");
     }
 }

@@ -309,6 +309,7 @@ for (const b of document.querySelectorAll("button.cat")) {
 }
 
 (async function init() {
+  Theme.apply(); // 外观：主题三态 + 主色调
   el("title").textContent = TITLES[filter] || "全部";
   // 先取界面开关再渲染：删除按钮的提示要在第一批行建出来之前就定好。
   try {

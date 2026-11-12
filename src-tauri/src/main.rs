@@ -719,7 +719,22 @@ fn save_tool_config(
         }
     }
 
-    // 10) DNS / 证书校验 / RPC 端口都是 aria2 的**启动参数**：运行中的 sidecar
+    // 10) 外观变了（主题 / 主色调）：广播给所有窗口，theme.js 收到后即时换肤。
+    //     纯前端生效，无服务 / 引擎依赖；没开着的窗口下次 init 时自然读到新值。
+    if ["appearance_theme", "accent_color"]
+        .iter()
+        .any(|k| patch.contains_key(*k))
+    {
+        let _ = app.emit(
+            "appearance:changed",
+            serde_json::json!({
+                "theme": cfg.appearance_theme,
+                "accent": cfg.accent_color,
+            }),
+        );
+    }
+
+    // 11) DNS / 证书校验 / RPC 端口都是 aria2 的**启动参数**：运行中的 sidecar
     //     读不到新值。提示一句，用户才知道要不要手动重启引擎。
     if ["dns_servers", "check_certificate", "rpc_port"]
         .iter()

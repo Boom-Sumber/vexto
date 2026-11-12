@@ -5,6 +5,7 @@
 <title>收到传输请求</title>
 <link rel="stylesheet" href="tokens.css" />
 <link rel="stylesheet" href="theme-dark.css" />
+<link rel="stylesheet" href="theme-light.css" />
 <link rel="stylesheet" href="base.css" />
 <style>
   /* 模态对话框：透明窗口里只画一张卡片（用户参考稿）。 */
@@ -261,10 +262,12 @@
   <div id="empty" class="empty hidden">没有待确认的传输请求。</div>
 </div>
 
+<script src="theme.js"></script>
 <script src="icons.js"></script>
 <script>
 const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
+Theme.apply(); // 外观：主题三态 + 主色调
 let current = null;
 let receiveDir = "";
 

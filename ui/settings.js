@@ -296,6 +296,8 @@ function renderField(f) {
       return fieldSwitch(f);
     case "select":
       return fieldSelect(f);
+    case "color":
+      return fieldColor(f);
     case "hotkey":
       return fieldHotkey(f);
     case "button":
@@ -1135,6 +1137,48 @@ function fieldSelect(f) {
   return w;
 }
 
+/// 主色调（外观功能）：一排预设色块 + 「自定义」原生取色。
+/// 色块颜色是**数据**（后端色板给的用户可选值），不是 UI 装饰色，
+/// 所以这里用内联 style 上色不违反「裸色值不出现在 CSS」的口径。
+/// 点已选中的色块 = 恢复默认（存空串）；自定义取色随时可换任意色。
+function fieldColor(f) {
+  const [w, ctrl] = fieldRow(f);
+  const row = document.createElement("div");
+  row.className = "swatches";
+
+  const cur = String(val(f.key) || "");
+  const active = cur || f.presets?.[0]?.[0] || "";
+
+  for (const [value, name] of f.presets || []) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch" + (value === active ? " on" : "");
+    b.style.background = value;
+    b.title = name;
+    b.setAttribute("aria-label", name);
+    b.addEventListener("click", () => {
+      // 再点一下当前色 = 清空回默认；否则换色
+      commit(f.key, value === active ? "" : value);
+    });
+    row.append(b);
+  }
+
+  // 自定义：原生 <input type="color">，包一层当「色块」看。
+  // 当前值不在预设里时，让它显示当前自定义色。
+  const custom = document.createElement("label");
+  custom.className = "swatch custom";
+  custom.title = "自定义";
+  const pick = document.createElement("input");
+  pick.type = "color";
+  pick.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : "#7c5cff";
+  pick.addEventListener("input", () => commit(f.key, pick.value));
+  custom.append(pick);
+  row.append(custom);
+
+  ctrl.append(row);
+  return w;
+}
+
 // ── 热键捕获状态机（规格见 docs/stages/S2-配置与设置中心.md §2.6.3 / ADR-018）──
 const MODS = ["Ctrl", "Shift", "Alt"];              // 白名单，顺序即归一化顺序
 const MOD_KEYS = { Control: "Ctrl", Shift: "Shift", Alt: "Alt" };
@@ -1335,6 +1379,11 @@ function commit(key, value) {
   // 这里统一刷，避免在每个 list 分支里各写一遍；函数内部按签名去重，
   // 所以逐字输入不会反复动 DOM。
   refreshEngineSelects();
+  // 外观字段（主题 / 主色调）改动要能**未保存就预览**：theme.js 在文档上
+  // 收这个事件、按 key 现算现应用。这里只广播「有改动」，不认识任何 key。
+  document.dispatchEvent(
+    new CustomEvent("vexto:committed", { detail: { key, value } }),
+  );
 }
 
 /// 把 pending 里的所有改动一次交出去。返回是否成功。
@@ -1462,6 +1511,7 @@ function runIntent(intent) {
 // ── 启动 ─────────────────────────────────────────────────────────────────
 
 async function boot() {
+  Theme.apply(); // 外观：主题三态 + 主色调（本页改动经 commit 事件即时预览）
   await reloadTools();
 
   // 托盘点了某个工具、或从别处跳过来：定位到它
