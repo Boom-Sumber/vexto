@@ -19,6 +19,11 @@
 //   ② `fieldList()` 删除当前实例时顺位到第一项——要先改 `active_engine`，
 //      不这么做下拉会短暂指到一个已不存在的 id。
 // 其它工具、其它字段一律仍走 schema，不认识这些键也就不会被影响。见 ADR-031。
+//
+// **会话 51（UI v2）**：字段包装层从「两栏 grid」换成 demo 的卡片行
+// （`.card > .setting-row > .meta(标题+描述) + .ctrl(控件)`），描述直接取
+// 字段的 `help`（原来是「?」悬浮）。分发 / 取值 / 联动 / 保存 / 热键状态机
+// / 弹窗全部原样；「?」图标只保留给没有标题行的按钮字段。
 
 const T = window.__TAURI__;
 const invoke = T.core.invoke;
@@ -77,12 +82,22 @@ function renderSidebar() {
     b.className = "tool" + (t.id === state.toolId ? " on" : "") + (t.enabled ? "" : " off");
     b.dataset.toolId = t.id;
 
-    const dot = document.createElement("span");
-    dot.className = "dot";
+    // 图标来自 list_tools 的 icon 字段（纯展示，ADR-015 口径不变：
+    // 前端仍不认识任何工具名，没给图标就退回圆点）。
+    let lead;
+    if (t.icon && Icons.has(t.icon)) {
+      lead = document.createElement("span");
+      lead.className = "t-ico";
+      lead.innerHTML = Icons.svg(t.icon, 17);
+    } else {
+      lead = document.createElement("span");
+      lead.className = "dot";
+    }
     const name = document.createElement("span");
+    name.className = "t-name";
     name.textContent = t.name;
 
-    b.append(dot, name);
+    b.append(lead, name);
     b.addEventListener("click", () => selectTool(t.id));
     nav.append(b);
   }
@@ -207,9 +222,38 @@ function renderFields() {
   engineSelectNodes = [];
   const sec = currentSection();
   if (!sec) return;
+
+  // v2 卡片式分组（demo 语言）：group 标题断开当前卡片；普通字段进卡片行；
+  // list 自成卡片（.list-row，不嵌进分组卡）；note 跟随所在卡片，无卡片时裸排。
+  let card = null;
+  const ensureCard = () => {
+    if (!card) {
+      card = document.createElement("div");
+      card.className = "card";
+      box.append(card);
+    }
+    return card;
+  };
+
   for (const f of sec.fields) {
+    if (f.type === "group") {
+      card = null;
+      box.append(fieldGroup(f));
+      continue;
+    }
+    if (f.type === "list") {
+      card = null;
+      const node = renderField(f);
+      if (node) box.append(node);
+      continue;
+    }
     const node = renderField(f);
-    if (node) box.append(node);
+    if (!node) continue;
+    if (f.type === "note" && !card) {
+      box.append(node);
+      continue;
+    }
+    ensureCard().append(node);
   }
   applyShowIf();
 }
@@ -266,12 +310,41 @@ function wrapField(f, extraClass) {
   return w;
 }
 
-function labelNode(text, help) {
-  const l = document.createElement("span");
-  l.className = "field-label";
-  l.append(document.createTextNode(text));
-  if (help) l.append(helpIcon(help));
-  return l;
+/// 卡片行的左栏：标题 + 描述。描述取字段的 `help`——原来是「?」悬浮说明，
+/// v2 升级为可见文案；没有 help 就只有标题。
+function metaNode(f) {
+  const m = document.createElement("div");
+  m.className = "meta";
+  const t = document.createElement("div");
+  t.className = "t";
+  t.textContent = f.label || "";
+  m.append(t);
+  if (f.help) {
+    const d = document.createElement("div");
+    d.className = "d";
+    d.textContent = f.help;
+    m.append(d);
+  }
+  return m;
+}
+
+/// 控件列：一行卡片里右侧的所有东西（输入框、预设排、结果框…）。
+function ctrlNode() {
+  const c = document.createElement("div");
+  c.className = "ctrl";
+  return c;
+}
+
+/// 把一个字段包成 demo 的卡片行，返回 [wrapper, ctrl]。
+/// `show_if` 仍挂在 wrapper 上（applyShowIf 按 data-show-if 显隐整行）。
+function fieldRow(f, extraClass) {
+  const w = wrapField(f, extraClass);
+  const row = document.createElement("div");
+  row.className = "setting-row";
+  const ctrl = ctrlNode();
+  row.append(metaNode(f), ctrl);
+  w.append(row);
+  return [w, ctrl];
 }
 
 /// 「?」图标：鼠标悬停 / 键盘聚焦时在全局浮层里显示说明。
@@ -425,8 +498,9 @@ function newItemId() {
   return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// 一条摘要文本：select 显示选项文字、switch 显示中文，其余原样
-function summaryText(f, it) {
+// 一条摘要：select 显示选项文字、switch 显示中文，其余原样。
+// 返回数组——卡片行把第一段当标题、其余段当描述（v2 的两行结构）。
+function summaryParts(f, it) {
   const keys = (f.summary && f.summary.length
     ? f.summary
     : (f.item_fields || []).slice(0, 2).map((x) => x.key));
@@ -442,7 +516,7 @@ function summaryText(f, it) {
     }
     if (v != null && String(v).trim() !== "") parts.push(String(v));
   }
-  return parts.join(" · ") || "未命名";
+  return parts;
 }
 
 // 项内联动：只看这一项自己的字段，不跨项、不读全局 pending
@@ -487,7 +561,17 @@ function itemControl(fld, value, onChange) {
 
 function fieldList(f) {
   const w = wrapField(f, "list");
-  w.append(labelNode(f.label || "", f.help));
+  // 列表字段的标签画成小节标题（demo 的 .subhead）；自成一组卡片，不进分组卡。
+  const sh = document.createElement("div");
+  sh.className = "subhead";
+  sh.textContent = f.label || "";
+  w.append(sh);
+  if (f.help) {
+    const d = document.createElement("div");
+    d.className = "subhead-desc";
+    d.textContent = f.help;
+    w.append(d);
+  }
 
   const body = document.createElement("div");
   body.className = "list-body";
@@ -522,7 +606,10 @@ function fieldList(f) {
   function refreshSummary(id) {
     const it = readItems().find((x) => x.id === id);
     const n = sums.get(id);
-    if (it && n) n.textContent = summaryText(f, it);
+    if (!it || !n) return;
+    const parts = summaryParts(f, it);
+    n.nm.textContent = parts[0] || "未命名";
+    if (n.de) n.de.textContent = parts.slice(1).join(" · ");
   }
 
   function fillDetail(box, it) {
@@ -571,11 +658,29 @@ function fieldList(f) {
     arrow.setAttribute("aria-label", "展开");
     head.append(arrow);
 
-    const sum = document.createElement("span");
-    sum.className = "li-sum";
-    sum.textContent = summaryText(f, it);
-    sums.set(it.id, sum);
-    head.append(sum);
+    // 图标磁贴：列表项是通用形状，统一用 file——前端不许按字段名挑图标（ADR-015）
+    const ico = document.createElement("span");
+    ico.className = "li-ico";
+    ico.innerHTML = Icons.svg("file", 16);
+    head.append(ico);
+
+    // 两行摘要：第一段当标题，其余段当描述（demo 的 .list-row 结构）
+    const parts = summaryParts(f, it);
+    const info = document.createElement("div");
+    info.className = "li-info";
+    const nm = document.createElement("span");
+    nm.className = "li-name";
+    nm.textContent = parts[0] || "未命名";
+    info.append(nm);
+    let de = null;
+    if (parts.length > 1) {
+      de = document.createElement("span");
+      de.className = "li-desc";
+      de.textContent = parts.slice(1).join(" · ");
+      info.append(de);
+    }
+    sums.set(it.id, { nm, de });
+    head.append(info);
 
     // 「测试」在「删除」左侧：先用这套配置实测一句，不写入配置。
     // 状态球单独留到最后 append：会话 34 起它要在「删除」**右侧**。
@@ -690,7 +795,7 @@ function fieldList(f) {
     const add = document.createElement("button");
     add.type = "button";
     add.className = "btn list-add";
-    add.textContent = "添加";
+    add.innerHTML = Icons.svg("plus", 15) + "<span>添加</span>";
     add.addEventListener("click", addItem);
     body.append(add);
   }
@@ -799,8 +904,7 @@ function openFormDialog(title, fields, testAction, onSave) {
 
 
 function fieldInput(f, inputType) {
-  const w = wrapField(f);
-  const l = labelNode(f.label || "", f.help);
+  const [w, ctrl] = fieldRow(f);
   const inp = document.createElement("input");
   inp.type = inputType;
   inp.value = val(f.key) == null ? "" : String(val(f.key));
@@ -817,7 +921,7 @@ function fieldInput(f, inputType) {
     }
   });
 
-  w.append(l, inp);
+  ctrl.append(inp);
 
   // 预设按钮（目前只有「默认 User-Agent」用）：点一下把值填进同一个输入框并保存。
   // 走和手填完全一样的 commit 路径，所以后端校验、回读、状态行刷新都一致。
@@ -836,14 +940,13 @@ function fieldInput(f, inputType) {
       });
       row.append(b);
     }
-    w.append(row);
+    ctrl.append(row);
   }
   return w;
 }
 
 function fieldNumber(f) {
-  const w = wrapField(f);
-  const l = labelNode(f.label || "", f.help);
+  const [w, ctrl] = fieldRow(f);
 
   const row = document.createElement("div");
   row.className = "num-row" + (f.unit ? " has-unit" : "");
@@ -885,23 +988,32 @@ function fieldNumber(f) {
     commit(f.key, n);
   });
 
-  w.append(l, row);
+  ctrl.append(row);
   return w;
 }
 
 function fieldSwitch(f) {
-  const w = wrapField(f, "switch");
+  const [w, ctrl] = fieldRow(f, "switch");
   const inp = document.createElement("input");
   inp.type = "checkbox";
   inp.checked = !!val(f.key);
-  const l = labelNode(f.label || "", f.help);
-  // 点标题也能切换
-  l.addEventListener("click", () => {
+  const track = document.createElement("span");
+  track.className = "track";
+  const thumb = document.createElement("span");
+  thumb.className = "thumb";
+  // v2：勾选框换成 pill 开关外观（demo 口径）。仍是 <input type=checkbox>
+  // + change 事件，保存路径零改动。控件类名用 switch-pill——包装层也带
+  // "switch" 这个 extraClass，裸 .switch 选择器会命中它（实测踩过）。
+  const lab = document.createElement("label");
+  lab.className = "switch-pill";
+  lab.append(inp, track, thumb);
+  // 点标题也能切换（保留原交互；meta 和开关是两个节点，不会重复触发）
+  w.querySelector(".meta").addEventListener("click", () => {
     inp.checked = !inp.checked;
     inp.dispatchEvent(new Event("change"));
   });
   inp.addEventListener("change", () => commit(f.key, inp.checked));
-  w.append(inp, l);
+  ctrl.append(lab);
   return w;
 }
 
@@ -962,8 +1074,7 @@ function refreshEngineSelects() {
 }
 
 function fieldSelect(f) {
-  const w = wrapField(f);
-  const l = labelNode(f.label || "", f.help);
+  const [w, ctrl] = fieldRow(f);
   const sel = document.createElement("select");
 
   if (f.dynamic) {
@@ -984,7 +1095,7 @@ function fieldSelect(f) {
     }
   }
   sel.addEventListener("change", () => commit(f.key, sel.value));
-  w.append(l, sel);
+  ctrl.append(sel);
   return w;
 }
 
@@ -1054,8 +1165,7 @@ function endCapture(save) {
 function cancelCapture() { endCapture(false); }
 
 function fieldHotkey(f) {
-  const w = wrapField(f);
-  const l = labelNode(f.label || "", f.help);
+  const [w, ctrl] = fieldRow(f);
   const inp = document.createElement("input");
   inp.type = "text";
   inp.className = "capture";
@@ -1065,7 +1175,7 @@ function fieldHotkey(f) {
   inp.placeholder = "点击设置";
   inp.addEventListener("click", () => beginCapture(inp, f.key));
   inp.addEventListener("focus", () => beginCapture(inp, f.key));
-  w.append(l, inp);
+  ctrl.append(inp);
   return w;
 }
 

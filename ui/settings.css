@@ -1,9 +1,9 @@
-/* 设置页：只写布局。
+/* 设置页 v2：卡片行 + 描述（demo《新UIdemo》语言）。
  * 颜色 / 字号 / 圆角 / 输入框 / 按钮全部来自 tokens.css + theme-dark.css + base.css，
- * 本文件不出现任何色值（docs/13-UI-DESIGN-SYSTEM.md §13.3）。
+ * 本文件除状态球（ADR-033 定稿色）外不出现裸色值（docs/13-UI-DESIGN-SYSTEM.md §13.3）。
  */
 
-/* ── 左栏 + 右栏 ───────────────────────────────────────────────────────── */
+/* ── 左栏（侧栏）+ 右栏 ───────────────────────────────────────────────── */
 
 .app {
   flex: 1 1 auto;
@@ -16,17 +16,24 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-bar);
-  border-right: 1px solid var(--border-subtle);
-  padding: var(--sp-3) var(--sp-2) var(--sp-2);
+  background: var(--bg-side);
+  border-right: 1px solid var(--border-default);
+  padding: var(--sp-4) 14px var(--sp-2);
 }
 
+/* 品牌磁贴：Vexto.svg 蒙版（.logo-mask 在 base.css），渐变跟随 --theme */
 .brand {
-  padding: 0 var(--sp-2) var(--sp-3);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 2px 8px var(--sp-4);
+}
+.brand .logo { width: 30px; height: 30px; flex: none; }
+.brand .brand-name {
+  font-size: var(--fs-base);
+  font-weight: 700;
   letter-spacing: .04em;
+  color: var(--text-primary);
 }
 
 .tools {
@@ -34,46 +41,65 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
-/* 工具项：整行可点，选中用主题色描边 + 淡底 */
+/* 工具项：图标 + 文字；选中 = 主题色淡底 + 左侧渐变指示条（demo 口径） */
 .tool {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 11px;
   width: 100%;
-  padding: var(--sp-2) 10px;
-  border: 1px solid transparent;
+  padding: 10px 12px;
+  border: 0;
   border-radius: var(--r-md);
   background: none;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  letter-spacing: .02em;
   text-align: left;
   cursor: pointer;
   user-select: none;
   transition: background var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
+              color var(--dur-fast) var(--ease-out);
 }
 .tool:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tool.on {
-  background: var(--bg-selected);
-  border-color: var(--accent);
-  color: var(--text-primary);
+.tool.on { background: var(--accent-soft); color: var(--text-primary); }
+.tool.on::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
+.tool .t-ico { display: inline-flex; flex: none; opacity: .85; }
+.tool.on .t-ico { opacity: 1; color: var(--accent); }
+.tool .t-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* 停用的工具灰掉，但仍可点开看（ADR-015：设置页永远能进） */
 .tool.off { color: var(--text-disabled); }
-.tool.off .dot { background: var(--text-disabled); }
+.tool.off .t-ico { opacity: .5; }
 
+/* 没有图标的工具退回圆点（icons.js 里缺名时的兜底） */
 .dot {
-  flex: 0 0 6px;
-  width: 6px;
-  height: 6px;
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--text-disabled);
 }
+.tool.on .dot { background: var(--accent); }
 
 /* ── 右侧 ─────────────────────────────────────────────────────────────── */
 
@@ -86,35 +112,72 @@
 
 .pane-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-4) var(--sp-6) var(--sp-2);
+  padding: var(--sp-5) var(--sp-8) var(--sp-2);
 }
 
 .pane-title { flex: 1; min-width: 0; }
 
 h1 {
-  margin: 0 0 var(--sp-1);
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: .02em;
   color: var(--text-primary);
 }
 
 .hint {
-  margin: 0;
+  margin: var(--sp-1) 0 0;
   color: var(--text-muted);
-  font-size: var(--fs-xs);
-  line-height: var(--lh-loose);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
 }
 .hint b { color: var(--text-secondary); font-weight: 600; }
 
+/* 状态 pill：绿点 + 文案；停用灰、警告黄（demo status-line） */
 .status-line {
-  margin: var(--sp-1) 0 0;
-  font-size: var(--fs-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: var(--sp-2) 0 0;
+  max-width: 100%;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
   color: var(--success);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: .02em;
 }
-.status-line.warn { color: var(--warning); }
-.status-line.off { color: var(--text-disabled); }
+.status-line::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 4px var(--success-bg);
+}
+.status-line.warn {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+.status-line.warn::before {
+  background: var(--warning);
+  box-shadow: 0 0 0 4px var(--warning-bg);
+}
+.status-line.off {
+  background: var(--bg-input);
+  border-color: var(--border-default);
+  color: var(--text-disabled);
+}
+.status-line.off::before {
+  background: var(--text-disabled);
+  box-shadow: none;
+}
 
 /* 工具级启用开关 */
 .enable {
@@ -131,7 +194,7 @@ h1 {
 
 /* 错误横幅（热键被占用、保存警告等） */
 .tool-status {
-  margin: 0 var(--sp-6) var(--sp-2);
+  margin: 0 var(--sp-8) var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: var(--danger-bg);
   border: 1px solid var(--danger-border);
@@ -146,65 +209,100 @@ h1 {
 .pane-body {
   flex: 1;
   overflow-y: auto;
-  padding: 0 var(--sp-6) var(--sp-4);
+  padding: var(--sp-2) var(--sp-8) var(--sp-5);
 }
 
-/* ── 标签栏 ───────────────────────────────────────────────────────────── */
+/* ── 标签栏（demo tabs）───────────────────────────────────────────────── */
 
 .tabs {
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
   display: flex;
-  gap: var(--sp-1);
-  margin-bottom: var(--sp-4);
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-5);
   padding-top: 2px;
   background: var(--bg-app);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .tab {
   margin-bottom: -1px;
-  padding: 7px var(--sp-3);
+  padding: 10px 2px;
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  letter-spacing: .02em;
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease-out),
               border-color var(--dur-fast) var(--ease-out);
 }
-.tab:hover { color: var(--text-secondary); }
-.tab.on { color: var(--text-primary); border-bottom-color: var(--accent); }
+.tab:hover { color: var(--text-primary); }
+.tab.on { color: var(--text-primary); border-bottom-color: var(--accent); font-weight: 600; }
 
-/* ── 字段：两栏（标签在左、控件在右）────────────────────────────────────
- * 会话 25 按参考界面改成两栏。用 grid 而不是 flex，是为了让「一个字段占多行」
- * （输入框 + 预设按钮、按钮 + 结果框）自动叠在控件列里，不用为每种组合再包一层。
- * 标签固定在 row 1，所以多行字段的标签仍然和第一行控件对齐。
+/* ── 卡片行：标题 + 描述在左、控件在右（demo .card / .setting-row）───────
+ * group 标题断开卡片；普通字段进卡片行；list 自成卡片、note 跟随所在卡片。
+ * （卡片怎么切由 settings.js 的 renderFields 决定，这里只管样式。）
  */
 
-.field {
-  display: grid;
-  grid-template-columns: var(--w-field-label) minmax(0, 1fr);
-  column-gap: var(--sp-3);
-  row-gap: 6px;
-  align-items: center;
-  margin: 0 0 var(--sp-3);
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  padding: 2px var(--sp-4);
+  margin: 0 0 var(--sp-5);
 }
 
-.field-label {
-  grid-column: 1;
-  grid-row: 1;
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  line-height: var(--lh-normal);
-  /* 标签太长时在标签列里换行，绝不把控件列挤窄 */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.setting-row:last-child { border-bottom: none; }
+
+.setting-row .meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.meta .t {
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  letter-spacing: .01em;
+  line-height: var(--lh-tight);
   overflow-wrap: anywhere;
 }
+.meta .d {
+  margin-top: 3px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+/* 开关行的标题点击会切换开关（settings.js 挂的） */
+.field.switch .meta { cursor: pointer; user-select: none; }
 
-/* 字段旁的「?」：说明不再单独占一行，悬停 / 聚焦时显示全局浮层 */
+/* 控件列：默认固定弹性宽度，开关 / 单控件行自动收窄 */
+.ctrl {
+  flex: 0 1 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ctrl input:not([type="checkbox"]):not([type="radio"]),
+.ctrl select,
+.ctrl textarea {
+  width: 100%;
+}
+.field.switch .ctrl { flex: 0 0 auto; }
+.field.action .ctrl { flex: 1 1 auto; flex-direction: row; align-items: center; }
+
+/* 字段旁的「?」：只保留给没有标题行的按钮字段 */
 .field-help {
   display: inline-flex;
   align-items: center;
@@ -229,6 +327,11 @@ h1 {
   align-items: center;
   gap: var(--sp-2);
 }
+.field.action { margin: 0 0 var(--sp-2); }
+.field.action > .setting-row { border-bottom: none; }
+/* 按钮不要被拉满整列 */
+.field.action .btn { justify-self: start; }
+.field.action .ctrl { align-items: flex-start; }
 
 #help-tip {
   position: fixed;
@@ -249,14 +352,7 @@ h1 {
 }
 #help-tip.on { opacity: 1; }
 
-/* 控件列：除标签外的所有子元素都落在第 2 列 */
-.field > *:not(.field-label) {
-  grid-column: 2;
-}
-
-/* 带单位的数字：输入框 + 后缀。宽度收窄——参考图里的步进框就是窄的，
- * 拉满整列会让人以为要填一大段文字。
- * 单位必须让开右侧 22px 的自绘步进区，否则「KB/s」会压在箭头上。 */
+/* 带单位的数字：输入框 + 后缀 + 自绘步进 */
 .num-row {
   position: relative;
   max-width: 150px;
@@ -283,49 +379,91 @@ input.capturing {
   cursor: default;
 }
 
-/* 开关：标签在左列，勾选框在右列靠左（与参考界面一致） */
-.field.switch .field-label { cursor: pointer; }
-.field.switch input[type="checkbox"] { justify-self: start; }
+/* ── pill 开关（demo .switch 的视觉；类名用 switch-pill——字段包装层也带
+ *    "switch" extraClass，裸 .switch 会命中包装层，实测踩过）。
+ *    仍是 checkbox，保存路径不变。 */
 
-/* 说明文字：没有标签，按标签列宽度缩进，读起来仍属于上面那一项 */
+.switch-pill {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex: none;
+  cursor: pointer;
+}
+.switch-pill input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.switch-pill .track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.switch-pill .thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e9e9ef;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  transition: transform var(--dur-normal) var(--ease-out);
+}
+.switch-pill input:checked ~ .track {
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+}
+.switch-pill input:checked ~ .thumb { transform: translateX(18px); }
+.switch-pill input:focus-visible ~ .track { box-shadow: var(--ring); }
+
+/* 说明文字：跟随所在卡片，无卡片时裸排 */
 .field.note {
-  display: block;
-  margin: 0 0 var(--sp-3);
-  padding-left: calc(var(--w-field-label) + var(--sp-3));
-  color: var(--text-dim);
-  font-size: var(--fs-xs);
+  margin: 0;
+  padding: var(--sp-3) 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
   line-height: var(--lh-loose);
   white-space: pre-wrap;
+  border-bottom: 1px solid var(--border-subtle);
 }
+#fields > .field.note:last-child { border-bottom: none; }
 
-.field.action { margin: 0 0 var(--sp-3); }
-/* 按钮不要被 grid 拉满整列（stretch 会让「发送测试通知」变成一条长条） */
-.field.action > .btn { justify-self: start; }
+/* ── 可重复的一组配置（list）：demo .list-row 磁贴卡片 ─────────────────── */
 
-/* ── 可重复的一组配置（list）─────────────────────────────────────────── */
-/*
- * 卡片列表要占满整行：两栏布局里「标签列 + 一组卡片」会把卡片挤成一条。
- * 所以这一种字段退化成单列——标签在上、卡片在下。
- *
- * 注意 `.field > :not(.field-label) { grid-column: 2 }` 那条通用规则：
- * 它会把卡片区推到**隐式第二列**，template 只写一列也没用（第一列被
- * label 撑开、第二列被卡片撑开，看上去还是两栏）。必须显式放回第 1 列。
- */
+.field.list { display: block; margin: 0 0 var(--sp-5); }
 
-.field.list {
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+.subhead {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
-
-.field.list > .list-body {
-  grid-column: 1;
-  grid-row: 2;
+.subhead-desc {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  line-height: var(--lh-normal);
 }
 
 .list-body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
 
 .list-empty {
@@ -334,19 +472,35 @@ input.capturing {
 }
 
 .list-item {
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-md);
-  background: var(--bg-input);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
 }
-/* 展开时描边提亮，和收起的卡片区分开 */
-.list-item.open { border-color: var(--accent); }
+.list-item:hover { border-color: var(--border-strong); }
+/* 展开时用主题色描边，和收起的卡片区分开 */
+.list-item.open { border-color: var(--accent-border); }
 
 .li-head {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-2) 0 var(--sp-1);
-  min-height: 38px;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  min-height: 52px;
+}
+
+/* 图标磁贴：列表项是通用形状，统一 file 图标（前端不按字段名挑图标） */
+.li-ico {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  background: var(--bg-app);
+  border: 1px solid var(--border-default);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
 }
 
 /* 展开箭头：一个自绘的「›」，open 时转 90° */
@@ -376,18 +530,31 @@ input.capturing {
 .li-arrow:hover { color: var(--text-primary); }
 .list-item.open .li-arrow { transform: rotate(90deg); }
 
-.li-sum {
+.li-info {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.li-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-md);
-  color: var(--text-primary);
+}
+.li-desc {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .li-detail {
-  padding: var(--sp-1) var(--sp-3) var(--sp-3);
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -398,6 +565,7 @@ input.capturing {
   gap: var(--sp-2);
   margin-top: var(--sp-2);
 }
+.li-row:first-child { margin-top: var(--sp-3); }
 
 .li-label {
   font-size: var(--fs-sm);
@@ -409,19 +577,21 @@ input.capturing {
 .li-switch { justify-self: start; }
 
 .list-add { align-self: flex-start; }
-/* 卡片头：「测试」在「删除」左侧，两者都是同一排的小按钮 */
-.li-test { flex: 0 0 auto; margin-right: var(--sp-2); }
-.li-del { flex: 0 0 auto; }
+.list-add svg { width: 15px; height: 15px; }
+/* 卡片头：「测试」在「删除」左侧，同一排的小按钮 */
+.li-test, .li-del {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 12px;
+  font-size: var(--fs-sm);
+}
+.li-test { margin-right: var(--sp-2); }
 /* 弹窗里的实测结论框（复用 .result 的绿 / 红配色，只写「测试通过 / 失败」） */
 .fm-body .result { margin-top: var(--sp-4); }
 
 /* 卡片头状态发光小球：绿=通过 / 红=失败 / 灰=未测试，位于「删除」**右侧**
- * （会话 34 从删除左侧挪过来，DOM 顺序见 fieldList().card()）。
- * 会话 33 起卡片里不再插结果文本框，测试结论全靠这颗球。
- *
- * 直径跟着按钮走：--h-control = 32px，这里 28px，比按钮外框「略小一点」，
- * 和 32px 的「测试 / 删除」按钮同一排不会显得头重脚轻。别写死 9px。
- * 光晕 6px + 1px spread 刚好小于 .li-head 右侧的 8px padding，不会被裁。 */
+ * （会话 34 定稿，DOM 顺序见 fieldList().card()；颜色也是那时定的，勿改）。
+ * 直径跟着按钮走：--h-control = 32px，这里 28px。 */
 .li-status {
   flex: 0 0 auto;
   width: calc(var(--h-control) - 4px);
@@ -460,20 +630,19 @@ input.capturing {
   text-align: right;
 }
 
-/* 开关行和其它行共用 104px 标签列：标签右对齐、勾选框靠控件列左侧。
+/* 开关行和其它行共用 104px 标签列：标签右对齐、开关靠控件列左侧。
  * 曾经给这行单独换过「1fr auto」两栏，结果标签贴到弹窗左边缘、开关被推到
  * 最右，和上面几行完全不对齐（会话 31 截图复核发现）。 */
 .fm-switch input[type="checkbox"] { justify-self: start; }
 
-/* ── 分组标题 ─────────────────────────────────────────────────────────── */
+/* ── 分组标题（demo .group-title：纯文字，卡片自己带边框）──────────────── */
 
 .group-title {
   margin: var(--sp-5) 0 var(--sp-3);
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: 600;
+  letter-spacing: .02em;
 }
 /* 页签里的第一个分组不要多出一截顶部留白 */
 #fields > .group-title:first-child { margin-top: 0; }
@@ -504,7 +673,7 @@ input.capturing {
   color: var(--text-primary);
 }
 
-/* 「测试一下」的结果框 */
+/* 动作 / 测试的结果框 */
 .result {
   margin-top: 10px;
   padding: var(--sp-2) var(--sp-3);
@@ -528,8 +697,8 @@ input.capturing {
   justify-content: space-between;
   gap: var(--sp-3);
   min-height: var(--h-titlebar);
-  padding: var(--sp-2) var(--sp-6);
-  border-top: 1px solid var(--border-subtle);
+  padding: var(--sp-2) var(--sp-8);
+  border-top: 1px solid var(--border-default);
   background: var(--bg-bar);
 }
 #status { font-size: var(--fs-sm); color: var(--success); }
@@ -549,7 +718,7 @@ input.capturing {
   align-items: center;
   justify-content: center;
   /* 遮罩压暗但不纯黑：保持窗口内的层次感 */
-  background: rgba(0, 0, 0, .45);
+  background: var(--bg-overlay);
 }
 
 .modal-card {
@@ -558,7 +727,7 @@ input.capturing {
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
   border-radius: var(--r-lg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  box-shadow: var(--shadow-window);
 }
 
 .modal-card h2 {

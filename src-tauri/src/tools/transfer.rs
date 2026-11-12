@@ -23,6 +23,10 @@ impl Tool for Transfer {
         "同一局域网内跨设备传文件"
     }
 
+    fn icon(&self) -> &'static str {
+        "transfer"
+    }
+
     fn enabled(&self) -> bool {
         config::load().enable_transfer
     }

@@ -18,6 +18,10 @@ impl Tool for About {
         "版本与许可"
     }
 
+    fn icon(&self) -> &'static str {
+        "info"
+    }
+
     fn enabled(&self) -> bool {
         true
     }

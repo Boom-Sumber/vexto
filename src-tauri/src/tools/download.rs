@@ -45,6 +45,10 @@ impl Tool for Download {
         "HTTP / BT / magnet 下载"
     }
 
+    fn icon(&self) -> &'static str {
+        "download"
+    }
+
     fn enabled(&self) -> bool {
         config::load().enable_download
     }

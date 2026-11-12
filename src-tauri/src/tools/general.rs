@@ -22,6 +22,10 @@ impl Tool for General {
         "所有工具共用的设置"
     }
 
+    fn icon(&self) -> &'static str {
+        "gear"
+    }
+
     fn enabled(&self) -> bool {
         true
     }

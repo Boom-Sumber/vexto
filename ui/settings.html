@@ -21,9 +21,13 @@
   </header>
 
   <div class="app">
-    <!-- 左侧：工具列表。内容全部由 list_tools 生成，这里不写死任何一个工具名（ADR-015） -->
+    <!-- 左侧：工具列表。内容全部由 list_tools 生成，这里不写死任何一个工具名（ADR-015）。
+         品牌磁贴用 Vexto.svg 蒙版（.logo-mask），渐变跟随 --theme。 -->
     <aside class="sidebar">
-      <div class="brand">Vexto</div>
+      <div class="brand">
+        <span class="logo logo-mask" aria-hidden="true"></span>
+        <span class="brand-name">Vexto</span>
+      </div>
       <nav id="tools" class="tools"></nav>
     </aside>
 

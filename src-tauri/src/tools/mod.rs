@@ -335,6 +335,12 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &'static str;
     /// 一句话说明这个工具干什么
     fn desc(&self) -> &'static str;
+    /// 设置页侧栏的图标名（ui/icons.js 的注册名）。
+    /// 空 = 前端退回圆点。**纯展示字段**：不参与任何行为，前端也不允许
+    /// 按工具名分支（图标跟着数据走，ADR-015 口径不变）。
+    fn icon(&self) -> &'static str {
+        ""
+    }
     /// 设置页左侧是否可用（`false` 时灰掉但仍能点开看）
     fn enabled(&self) -> bool;
     fn set_enabled(&self, on: bool) -> Result<(), String>;

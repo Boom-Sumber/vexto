@@ -82,6 +82,10 @@ impl Tool for Translate {
         "划词翻译与截图翻译"
     }
 
+    fn icon(&self) -> &'static str {
+        "globe"
+    }
+
     fn enabled(&self) -> bool {
         config::load().enable_translate
     }

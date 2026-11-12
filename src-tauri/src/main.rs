@@ -56,6 +56,8 @@ struct ToolOut {
     id: &'static str,
     name: &'static str,
     desc: &'static str,
+    /// 设置页侧栏图标（ui/icons.js 注册名；空 = 前端退回圆点）。纯展示。
+    icon: &'static str,
     enabled: bool,
     /// 设置页右上角要不要画「启用」开关（通用 / 关于是 false）
     switchable: bool,
@@ -490,6 +492,7 @@ fn list_tools() -> Vec<ToolOut> {
             id: t.id(),
             name: t.name(),
             desc: t.desc(),
+            icon: t.icon(),
             enabled: t.enabled(),
             switchable: t.switchable(),
             status_line: t.status_line(),
