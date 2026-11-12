@@ -83,6 +83,9 @@ struct Globals {
     /// `"会话|file_id"` → 文件名：`FileFailed` 事件只带 file_id，不带名字，
     /// 不查这张表 UI 上会多出一行叫 `f1` 的幽灵条目。
     session_file_names: Mutex<HashMap<String, String>>,
+    /// 会话 → 待发文件 (名字, 本机路径)：发送侧进度事件里只有文件名，
+    /// 历史记录要「打开文件」就得知道源路径。
+    session_files: Mutex<HashMap<String, Vec<(String, String)>>>,
 }
 
 /// 发现侧的两件东西，只在服务运行期间有效。
@@ -112,6 +115,7 @@ fn globals() -> &'static Globals {
         session_peer: Mutex::new(HashMap::new()),
         session_ip: Mutex::new(HashMap::new()),
         session_file_names: Mutex::new(HashMap::new()),
+        session_files: Mutex::new(HashMap::new()),
     })
 }
 
@@ -157,96 +161,166 @@ pub(crate) fn remember_session_peer(session_id: &str, alias: &str) {
     }
 }
 
+/// 记「这个会话要发哪些文件」：发送侧事件里只有文件名，历史要能打开源文件。
+pub(crate) fn remember_session_files(session_id: &str, files: &[(String, String)]) {
+    let mut m = lock(&globals().session_files);
+    m.insert(session_id.to_string(), files.to_vec());
+    if m.len() > 32 {
+        let stale: Vec<String> = m.keys().take(m.len() - 32).cloned().collect();
+        for k in stale {
+            m.remove(&k);
+        }
+    }
+}
+
 fn record_progress(view: &ProgressView) {
     let peer = lock(&globals().session_peer)
         .get(&view.session_id)
         .cloned()
         .unwrap_or_default();
 
-    let mut list = lock(&globals().active);
-    let sid = view.session_id.clone();
+    let mut finished: Option<ActiveTransfer> = None;
+    {
+        let mut list = lock(&globals().active);
+        let sid = view.session_id.clone();
 
-    if !list.iter().any(|t| t.session_id == sid) {
-        // 新会话：先把已结束的老会话清掉，页面只显示「本次」
-        list.retain(|t| !matches!(t.status.as_str(), "done" | "failed" | "cancelled"));
-        list.push(ActiveTransfer {
-            session_id: sid.clone(),
-            direction: view.direction.clone(),
-            peer: peer.clone(),
-            status: "active".into(),
-            message: None,
-            bytes: 0,
-            total: 0,
-            speed_bps: None,
-            files: Vec::new(),
-        });
-        if list.len() > 4 {
-            list.remove(0);
+        if !list.iter().any(|t| t.session_id == sid) {
+            // 新会话：先把已结束的老会话清掉，页面只显示「本次」
+            list.retain(|t| !matches!(t.status.as_str(), "done" | "failed" | "cancelled"));
+            list.push(ActiveTransfer {
+                session_id: sid.clone(),
+                direction: view.direction.clone(),
+                peer: peer.clone(),
+                status: "active".into(),
+                message: None,
+                bytes: 0,
+                total: 0,
+                speed_bps: None,
+                files: Vec::new(),
+                recorded: false,
+            });
+            if list.len() > 4 {
+                list.remove(0);
+            }
         }
-    }
-    let Some(t) = list.iter_mut().find(|t| t.session_id == sid) else {
-        return;
-    };
-    if t.peer.is_empty() && !peer.is_empty() {
-        t.peer = peer;
-    }
-    if t.direction.is_empty() {
-        t.direction = view.direction.clone();
-    }
+        let Some(t) = list.iter_mut().find(|t| t.session_id == sid) else {
+            return;
+        };
+        if t.peer.is_empty() && !peer.is_empty() {
+            t.peer = peer;
+        }
+        if t.direction.is_empty() {
+            t.direction = view.direction.clone();
+        }
 
-    // 会话级事件：发送侧会用空 file_name 发 preparing / 终态，
-    // 完成时也会发一条 `N 个文件` 的汇总。都不该变成「文件行」。
-    let session_level = view.file_name.is_empty() || view.file_name.ends_with(" 个文件");
-    if session_level {
-        if !view.status.is_empty() {
-            t.status = view.status.clone();
-        }
-        if view.message.is_some() {
-            t.message = view.message.clone();
-        }
-        if view.speed_bps.is_some() {
-            t.speed_bps = view.speed_bps;
-        }
-        if view.total > 0 {
-            t.total = view.total;
-            t.bytes = view.bytes;
-        }
-        return;
-    }
-
-    match t.files.iter_mut().find(|f| f.name == view.file_name) {
-        Some(f) => {
-            f.bytes = view.bytes;
+        // 会话级事件：发送侧会用空 file_name 发 preparing / 终态，
+        // 完成时也会发一条 `N 个文件` 的汇总。都不该变成「文件行」。
+        let session_level = view.file_name.is_empty() || view.file_name.ends_with(" 个文件");
+        if session_level {
+            if !view.status.is_empty() {
+                t.status = view.status.clone();
+            }
+            if view.message.is_some() {
+                t.message = view.message.clone();
+            }
+            if view.speed_bps.is_some() {
+                t.speed_bps = view.speed_bps;
+            }
             if view.total > 0 {
-                f.total = view.total;
+                t.total = view.total;
+                t.bytes = view.bytes;
             }
-            if matches!(view.status.as_str(), "done" | "failed" | "cancelled") {
-                f.status = view.status.clone();
+        } else {
+            // 接收侧的「完成」事件把落盘路径放在 message 里，正好当 path 用
+            let done_path = if view.status == "done" {
+                view.message
+                    .as_deref()
+                    .filter(|m| m.contains('\\') || m.contains('/'))
+                    .map(str::to_string)
+            } else {
+                None
+            };
+            let send_path = lock(&globals().session_files)
+                .get(&sid)
+                .and_then(|list| {
+                    list.iter()
+                        .find(|(n, _)| n == &view.file_name)
+                        .map(|(_, p)| p.clone())
+                });
+
+            match t.files.iter_mut().find(|f| f.name == view.file_name) {
+                Some(f) => {
+                    f.bytes = view.bytes;
+                    if view.total > 0 {
+                        f.total = view.total;
+                    }
+                    if matches!(view.status.as_str(), "done" | "failed" | "cancelled") {
+                        f.status = view.status.clone();
+                    }
+                    if let Some(p) = done_path.or_else(|| send_path.clone()) {
+                        if f.path.is_empty() {
+                            f.path = p;
+                        }
+                    }
+                }
+                None => t.files.push(ActiveFile {
+                    name: view.file_name.clone(),
+                    bytes: view.bytes,
+                    total: view.total,
+                    status: if view.status == "done" {
+                        "active".into()
+                    } else {
+                        view.status.clone()
+                    },
+                    path: done_path.or(send_path).unwrap_or_default(),
+                }),
             }
+
+            if let Some(p) = &view.message {
+                if t.message.is_none() {
+                    t.message = Some(p.clone());
+                }
+            }
+            if view.speed_bps.is_some() {
+                t.speed_bps = view.speed_bps;
+            }
+
+            // 会话内所有文件都完成了 → 会话也算完成（接收侧没有会话级终态事件）
+            if !t.files.is_empty() && t.files.iter().all(|f| f.status == "done") {
+                t.status = "done".into();
+            }
+            t.total = t.files.iter().map(|f| f.total).sum();
+            t.bytes = t.files.iter().map(|f| f.bytes).sum();
         }
-        None => t.files.push(ActiveFile {
-            name: view.file_name.clone(),
-            bytes: view.bytes,
-            total: view.total,
-            status: if view.status == "done" { "active".into() } else { view.status.clone() },
-        }),
+
+        // 终态：落一条历史（每个会话只落一次）
+        if matches!(t.status.as_str(), "done" | "failed" | "cancelled") && !t.recorded {
+            t.recorded = true;
+            finished = Some(t.clone());
+        }
     }
 
-    if let Some(p) = &view.message {
-        if t.message.is_none() {
-            t.message = Some(p.clone());
-        }
+    if let Some(t) = finished {
+        super::history::append(super::history::HistoryEntry {
+            id: format!("{}-{}", t.session_id, super::history::now_ms()),
+            session_id: t.session_id.clone(),
+            direction: t.direction.clone(),
+            peer: t.peer.clone(),
+            status: t.status.clone(),
+            message: t.message.clone(),
+            total_bytes: t.total,
+            at_ms: super::history::now_ms(),
+            files: t
+                .files
+                .iter()
+                .map(|f| super::history::HistoryFile {
+                    name: f.name.clone(),
+                    size: f.total.max(f.bytes),
+                    path: f.path.clone(),
+                })
+                .collect(),
+        });
     }
-    if view.speed_bps.is_some() {
-        t.speed_bps = view.speed_bps;
-    }
-
-    // 会话内所有文件都完成了 → 会话也算完成（接收侧没有会话级终态事件）
-    if !t.files.is_empty() && t.files.iter().all(|f| f.status == "done") {
-        t.status = "done".into();
-    }
-    t.total = t.files.iter().map(|f| f.total).sum();
-    t.bytes = t.files.iter().map(|f| f.bytes).sum();
 }
 
 /// 当前 / 刚结束的传输快照（传输页开场拉一次，之后靠事件增量更新）。
@@ -873,6 +947,7 @@ async fn service_main(
     lock(&globals().session_peer).clear();
     lock(&globals().session_ip).clear();
     lock(&globals().session_file_names).clear();
+    lock(&globals().session_files).clear();
     *lock(&globals().state) = ServiceState::Stopped;
     crate::dlog::dlog("transfer: 服务已停止");
 }

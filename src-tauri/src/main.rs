@@ -1659,6 +1659,47 @@ fn transfer_cancel_receive(session_id: String) -> Result<(), String> {
     transfer::backend().cancel_receive(&session_id)
 }
 
+/// 一页传输历史（`page` 从 1 开始；越界会自动回到最后一页）。
+#[derive(serde::Serialize)]
+struct HistoryPage {
+    items: Vec<transfer::history::HistoryEntry>,
+    total: usize,
+    page: usize,
+    page_size: usize,
+}
+
+#[tauri::command]
+fn transfer_history_page(page: usize, page_size: usize) -> HistoryPage {
+    let (items, total) = transfer::history::page(page, page_size);
+    let size = page_size.clamp(1, 200);
+    // 后端可能把越界的页码收到最后一页，这里把「实际用的页码」算回给前端
+    let want = page.max(1);
+    let start = (want - 1) * size;
+    let page_out = if start >= total && total > 0 {
+        (total - 1) / size + 1
+    } else {
+        want
+    };
+    HistoryPage {
+        items,
+        total,
+        page: page_out,
+        page_size: size,
+    }
+}
+
+/// 删一条历史。返回是否删到了（前端据此决定要不要重取当前页）。
+#[tauri::command]
+fn transfer_history_remove(id: String) -> bool {
+    transfer::history::remove(&id)
+}
+
+/// 清空历史。
+#[tauri::command]
+fn transfer_history_clear() {
+    transfer::history::clear();
+}
+
 /// 接受 / 拒绝一条传入请求（§S4.7.2 确认框的两个按钮）。
 #[tauri::command]
 fn transfer_respond(session_id: String, accept: bool) -> Result<(), String> {
@@ -1819,6 +1860,9 @@ fn main() {
             transfer_refresh,
             transfer_active,
             transfer_cancel_receive,
+            transfer_history_page,
+            transfer_history_remove,
+            transfer_history_clear,
             transfer_respond,
             transfer_send,
             transfer_cancel_send,

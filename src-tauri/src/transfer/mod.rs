@@ -16,6 +16,7 @@
 
 pub mod backend;
 pub mod events;
+pub mod history;
 pub mod sanitize;
 pub mod send;
 pub mod server;

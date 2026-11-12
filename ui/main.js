@@ -394,9 +394,12 @@ function setSub(sub) {
   }
   el("paneSend").classList.toggle("hidden", sub !== "send");
   el("paneReceive").classList.toggle("hidden", sub !== "receive");
+  el("paneHistory").classList.toggle("hidden", sub !== "history");
   if (sub === "receive") {
     refreshPending();
     refreshLocalInfo();
+  } else if (sub === "history") {
+    hsLoad(1);
   }
 }
 
@@ -949,6 +952,238 @@ el("tpConfirmYes").addEventListener("click", () => {
   el("tpConfirm").classList.add("hidden");
   tpView.pendingCancel = null;
   if (s) tpDoCancel(s);
+});
+
+// ── 历史记录（S4 · 会话 45） ────────────────────────────────────────────
+//
+// 一条 = 一次会话（收或发）。数据在 `%APPDATA%\lightbox\transfer-history.json`，
+// 后端翻页（历史可能有几百条，不该整包丢给前端）。
+const hsView = { page: 1, pageSize: 20, total: 0, items: [], menuId: null };
+
+function hsPad(n) { return n < 10 ? "0" + n : String(n); }
+
+function fmtWhen(ms) {
+  const d = new Date(ms || 0);
+  if (Number.isNaN(d.getTime())) return "—";
+  return (
+    d.getFullYear() + "-" + hsPad(d.getMonth() + 1) + "-" + hsPad(d.getDate()) +
+    " " + hsPad(d.getHours()) + ":" + hsPad(d.getMinutes())
+  );
+}
+
+function hsStatusText(s) {
+  if (s === "done") return "已完成";
+  if (s === "failed") return "失败";
+  if (s === "cancelled") return "已取消";
+  return s || "—";
+}
+
+function hsDirOf(p) {
+  return String(p || "").replace(/[\\/][^\\/]*$/, "");
+}
+
+async function hsLoad(page) {
+  if (page) hsView.page = page;
+  try {
+    const r = await invoke("transfer_history_page", {
+      page: hsView.page,
+      pageSize: hsView.pageSize,
+    });
+    hsView.items = (r && r.items) || [];
+    hsView.total = (r && r.total) || 0;
+    hsView.page = (r && r.page) || 1;
+    hsRender();
+  } catch (e) {
+    tfNotice("读取历史失败：" + errText(e), true);
+  }
+}
+
+function hsRender() {
+  const box = el("hsList");
+  box.innerHTML = "";
+  el("hsEmpty").classList.toggle("hidden", hsView.items.length > 0);
+
+  for (const it of hsView.items) {
+    const row = document.createElement("div");
+    row.className = "hs-row";
+    row.innerHTML =
+      '<span class="hs-dir"></span>' +
+      '<div class="hs-meta"><div class="hs-name"></div><div class="hs-sub"></div></div>' +
+      '<span class="hs-badge"></span>' +
+      '<button class="hs-more" type="button" aria-haspopup="menu" aria-expanded="false"></button>';
+    const sending = it.direction === "send";
+    row.querySelector(".hs-dir").innerHTML = Icons.svg(sending ? "upload" : "download", 16);
+    row.querySelector(".hs-dir").title = sending ? "发送" : "接收";
+
+    const names = (it.files || []).map((f) => f.name).filter(Boolean);
+    const first = names[0] || "（会话）";
+    row.querySelector(".hs-name").textContent =
+      names.length > 1 ? first + " 等 " + names.length + " 个文件" : first;
+
+    const bits = [fmtBytes(it.total_bytes || 0)];
+    bits.push(sending ? "发送给 " + (it.peer || "对方") : "来自 " + (it.peer || "对方"));
+    bits.push(fmtWhen(it.at_ms));
+    row.querySelector(".hs-sub").textContent = bits.join("　·　");
+
+    const badge = row.querySelector(".hs-badge");
+    badge.textContent = hsStatusText(it.status);
+    if (it.status === "done") badge.classList.add("done");
+    else if (it.status === "failed") badge.classList.add("failed");
+
+    const more = row.querySelector(".hs-more");
+    more.innerHTML = Icons.svg("more", 16);
+    more.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      hsOpenMenu(it, more);
+    });
+    box.appendChild(row);
+  }
+
+  // 翻页
+  const pages = Math.max(1, Math.ceil(hsView.total / hsView.pageSize));
+  el("hsPager").classList.toggle("hidden", hsView.total === 0);
+  el("hsPageInfo").textContent =
+    "第 " + hsView.page + " / " + pages + " 页　·　共 " + hsView.total + " 条";
+  el("hsPrev").disabled = hsView.page <= 1;
+  el("hsNext").disabled = hsView.page >= pages;
+}
+
+function hsCloseMenu() {
+  el("hsMenu").classList.add("hidden");
+  for (const b of document.querySelectorAll(".hs-more")) b.setAttribute("aria-expanded", "false");
+  hsView.menuId = null;
+}
+
+function hsOpenMenu(item, anchor) {
+  const menu = el("hsMenu");
+  if (hsView.menuId === item.id && !menu.classList.contains("hidden")) {
+    hsCloseMenu();
+    return;
+  }
+  hsView.menuId = item.id;
+  const first = (item.files || [])[0] || {};
+  const hasPath = !!(first.path && first.path.length);
+
+  const entries = [
+    { key: "open", icon: "external", text: "打开文件", disabled: !hasPath },
+    { key: "reveal", icon: "folder", text: "打开所在目录", disabled: !hasPath },
+    { key: "info", icon: "info", text: "文件信息", disabled: false },
+    { key: "del", icon: "trash", text: "从历史删除", disabled: false, danger: true },
+  ];
+  menu.innerHTML = "";
+  for (const e of entries) {
+    const b = document.createElement("button");
+    b.type = "button";
+    if (e.danger) b.className = "danger";
+    b.innerHTML = Icons.svg(e.icon, 16) + "<span>" + e.text + "</span>";
+    if (e.disabled) {
+      b.disabled = true;
+      b.style.opacity = "0.45";
+      b.style.cursor = "default";
+    } else {
+      b.addEventListener("click", () => {
+        hsCloseMenu();
+        if (e.key === "open") invoke("open_path", { path: first.path }).catch((err) => tfNotice(errText(err), true));
+        else if (e.key === "reveal") invoke("open_path", { path: hsDirOf(first.path) }).catch((err) => tfNotice(errText(err), true));
+        else if (e.key === "info") hsShowInfo(item);
+        else if (e.key === "del") hsRemove(item);
+      });
+    }
+    menu.appendChild(b);
+  }
+
+  // 贴着按钮右下角弹出；贴边时往回收，别被窗口裁掉
+  menu.classList.remove("hidden");
+  const r = anchor.getBoundingClientRect();
+  const mw = menu.offsetWidth || 184;
+  const mh = menu.offsetHeight || 160;
+  let left = r.right - mw;
+  let top = r.bottom + 4;
+  if (left < 8) left = 8;
+  if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 4);
+  menu.style.left = left + "px";
+  menu.style.top = top + "px";
+  anchor.setAttribute("aria-expanded", "true");
+}
+
+function hsShowInfo(item) {
+  const body = el("hsInfoBody");
+  body.innerHTML = "";
+  const rows = [];
+  const files = item.files || [];
+  rows.push(["方向", item.direction === "send" ? "发送" : "接收"]);
+  rows.push(["对端", item.peer || "—"]);
+  rows.push(["结果", hsStatusText(item.status)]);
+  rows.push(["时间", fmtWhen(item.at_ms)]);
+  rows.push(["总大小", fmtBytes(item.total_bytes || 0)]);
+  if (files.length > 1) rows.push(["文件数", files.length + " 个"]);
+  for (const f of files) {
+    rows.push(["文件名", f.name || "—"]);
+    rows.push(["大小", fmtBytes(f.size || 0)]);
+    rows.push(["路径", f.path || "（未记录）"]);
+  }
+  // 备注多数时候就是落盘路径，和上面「路径」重复，就不显示了
+  const paths = files.map((f) => f.path).filter(Boolean);
+  if (item.message && !paths.includes(item.message)) rows.push(["备注", item.message]);
+
+  for (const [k, v] of rows) {
+    const d = document.createElement("div");
+    d.className = "hs-kv-row";
+    const kk = document.createElement("div");
+    kk.className = "k";
+    kk.textContent = k;
+    const vv = document.createElement("div");
+    vv.className = "v";
+    vv.textContent = v;
+    d.append(kk, vv);
+    body.appendChild(d);
+  }
+  el("hsInfo").classList.remove("hidden");
+}
+
+async function hsRemove(item) {
+  try {
+    await invoke("transfer_history_remove", { id: item.id });
+    tfNotice("已从历史删除");
+    await hsLoad();
+  } catch (e) {
+    tfNotice("删除失败：" + errText(e), true);
+  }
+}
+
+el("hsInfoClose").addEventListener("click", () => el("hsInfo").classList.add("hidden"));
+document.addEventListener("click", () => hsCloseMenu());
+el("hsPageSize").addEventListener("change", () => {
+  hsView.pageSize = parseInt(el("hsPageSize").value, 10) || 20;
+  hsLoad(1);
+});
+el("hsPrev").addEventListener("click", () => hsLoad(hsView.page - 1));
+el("hsNext").addEventListener("click", () => hsLoad(hsView.page + 1));
+el("hsClear").addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  // 危险操作二次确认（§13.7）：第一次点变成「确认清空」，3 秒后自己撤回
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.classList.add("armed");
+    btn.textContent = "确认清空";
+    setTimeout(() => {
+      if (btn.dataset.armed !== "1") return;
+      btn.dataset.armed = "0";
+      btn.classList.remove("armed");
+      btn.textContent = "清空历史";
+    }, 3000);
+    return;
+  }
+  btn.dataset.armed = "0";
+  btn.classList.remove("armed");
+  btn.textContent = "清空历史";
+  try {
+    await invoke("transfer_history_clear");
+    tfNotice("历史已清空");
+    await hsLoad(1);
+  } catch (e) {
+    tfNotice("清空失败：" + errText(e), true);
+  }
 });
 
 (async function initTransfer() {

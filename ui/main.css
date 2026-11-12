@@ -268,6 +268,14 @@
   color: var(--danger);
 }
 
+/* 同一套二次确认，给「清空历史」这类不在 .acts 里的按钮用（13-UI §13.7） */
+.btn.armed,
+.btn.armed:hover {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 /* 文件已被删除：整行变灰 + 文件名加删除线，一眼能看出「记录还在、文件没了」。
    只弱化视觉，不禁用按钮：「打开目录」仍然能定位到那个目录。 */
 .row.deleted .name {
@@ -775,6 +783,10 @@
 .tp-card {
   width: 440px;
   max-width: calc(100% - var(--sp-8) * 2);
+  /* 内容多时（历史里的文件信息）由内部列表滚动，按钮钉在底部，
+     不要整卡滚动——那样「关闭」会被裁掉一半 */
+  max-height: calc(100% - var(--sp-8) * 2);
+  overflow: hidden;
   padding: var(--sp-6);
   display: flex;
   flex-direction: column;
@@ -808,4 +820,135 @@
 .tp-danger:hover {
   background: var(--danger-hover);
   border-color: var(--danger-hover);
+}
+
+/* 历史记录（S4 · 会话 45） ─────────────────────────────────────────── */
+/* 顶部两个控件别被挤成两行（「清空历史」曾折成「清空/历史」） */
+#paneHistory .head .tools .btn,
+#paneHistory .head .tools .input {
+  white-space: nowrap;
+}
+.hs-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.hs-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+}
+.hs-dir { flex: 0 0 auto; display: inline-flex; color: var(--text-muted); }
+.hs-meta { flex: 1 1 auto; min-width: 0; }
+.hs-name {
+  font-size: var(--fs-base);
+  font-weight: 500;
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hs-sub {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--ls-normal);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hs-badge {
+  flex: 0 0 auto;
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+  background: var(--bg-input);
+}
+.hs-badge.done { color: var(--accent); background: var(--accent-soft); }
+.hs-badge.failed { color: var(--danger); background: var(--danger-bg); }
+
+.hs-more {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--w-icon-btn);
+  height: var(--w-icon-btn);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.hs-more:hover { background: var(--bg-hover); color: var(--text-primary); }
+.hs-more:active { background: var(--bg-active); }
+.hs-more[aria-expanded="true"] { background: var(--bg-selected); color: var(--text-primary); }
+
+.hs-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0 var(--sp-2);
+}
+.hs-pager .num { font-size: var(--fs-sm); color: var(--text-muted); }
+
+/* 行内菜单：fixed 定位，跟着按钮走 */
+.hs-menu {
+  position: fixed;
+  z-index: var(--z-popup);
+  min-width: 184px;
+  padding: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+}
+.hs-menu.hidden { display: none; }
+.hs-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  text-align: left;
+  cursor: pointer;
+}
+.hs-menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.hs-menu button.danger { color: var(--danger); }
+.hs-menu button.danger:hover { background: var(--danger-bg); color: var(--danger); }
+
+/* 文件信息弹窗的键值表：唯一可滚的区域，按钮不会被挤出去 */
+.hs-kv {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.hs-kv .hs-kv-row { display: flex; flex-direction: column; gap: var(--sp-1); }
+.hs-kv .k { font-size: var(--fs-sm); color: var(--text-muted); }
+.hs-kv .v {
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+  word-break: break-all;
 }

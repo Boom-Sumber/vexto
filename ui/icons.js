@@ -28,6 +28,11 @@ window.Icons = (function () {
       '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/>' +
       '<path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
     info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
+    // 行内「更多」菜单入口。按 §13.5 不许用 ⋯ 字符
+    more:
+      '<circle cx="6" cy="12" r="1.4"/>' +
+      '<circle cx="12" cy="12" r="1.4"/>' +
+      '<circle cx="18" cy="12" r="1.4"/>',
     help:
       '<circle cx="12" cy="12" r="9"/>' +
       '<path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-.8.4-1.2 1-1.2 1.8v.5"/>' +

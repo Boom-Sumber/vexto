@@ -131,6 +131,19 @@ pub fn send_files(
 
     // 传输页要显示「发给谁」：进度事件里只有 session_id，这里记一笔。
     server::remember_session_peer(&send_id, &target_name);
+    // 历史记录要能「打开文件 / 打开所在目录」：把源路径也登记上
+    let named_paths: Vec<(String, String)> = files
+        .iter()
+        .map(|p| {
+            (
+                p.file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                p.to_string_lossy().to_string(),
+            )
+        })
+        .collect();
+    server::remember_session_files(&send_id, &named_paths);
 
     rt.spawn(async move {
         let total: u64 = files

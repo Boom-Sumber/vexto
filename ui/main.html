@@ -32,10 +32,11 @@
         </button>
       </nav>
 
-      <!-- 互传的二级导航：发送 / 接收 -->
+      <!-- 互传的二级导航：发送 / 接收 / 历史 -->
       <div class="subnav hidden" id="subTransfer">
         <button class="sub-item active" type="button" data-sub="send">发送</button>
         <button class="sub-item" type="button" data-sub="receive">接收</button>
+        <button class="sub-item" type="button" data-sub="history">历史</button>
       </div>
 
       <div class="side-sec" id="catsWrap">
@@ -141,6 +142,45 @@
           <div class="section-title">待确认的接收请求</div>
           <div id="reqList" class="tf-reqs"></div>
           <div id="reqEmpty" class="empty">没有待确认的请求。</div>
+        </div>
+      </div>
+
+      <!-- 历史：收 / 发记录，可行内操作 + 信息弹窗 + 翻页 -->
+      <div id="paneHistory" class="pane hidden">
+        <header class="head">
+          <h1>历史记录</h1>
+          <div class="tools">
+            <select id="hsPageSize" class="input" aria-label="每页条数">
+              <option value="10">每页 10 条</option>
+              <option value="20" selected>每页 20 条</option>
+              <option value="50">每页 50 条</option>
+            </select>
+            <button id="hsClear" class="btn" type="button">清空历史</button>
+          </div>
+        </header>
+
+        <div class="page-body">
+          <div id="hsList" class="hs-list"></div>
+          <div id="hsEmpty" class="empty">还没有传输记录。<br />收发文件之后会出现在这里。</div>
+          <div id="hsPager" class="hs-pager hidden">
+            <button id="hsPrev" class="btn" type="button">上一页</button>
+            <span id="hsPageInfo" class="num"></span>
+            <button id="hsNext" class="btn" type="button">下一页</button>
+          </div>
+        </div>
+
+        <!-- 行内「⋮」菜单：位置跟着按钮走，点空白处收起（图标是 icons.js 的 more） -->
+        <div id="hsMenu" class="hs-menu hidden" role="menu"></div>
+
+        <!-- 文件信息 -->
+        <div id="hsInfo" class="tp-modal hidden">
+          <div class="tp-card" role="dialog" aria-modal="true" aria-labelledby="hsInfoTitle">
+            <div class="tp-card-title" id="hsInfoTitle">文件信息</div>
+            <div class="hs-kv" id="hsInfoBody"></div>
+            <div class="tp-card-acts">
+              <button id="hsInfoClose" class="btn btn-primary" type="button">关闭</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

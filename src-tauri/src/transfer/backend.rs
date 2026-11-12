@@ -132,6 +132,10 @@ pub struct ActiveFile {
     pub total: u64,
     /// `active` / `done` / `failed` / `cancelled`
     pub status: String,
+    /// 本机路径（接收=落盘路径，发送=源文件路径）。拿不到就是空串，
+    /// 历史记录靠它做「打开文件 / 打开所在目录」。
+    #[serde(default)]
+    pub path: String,
 }
 
 /// 一次传输会话的快照（传输页数据源）。
@@ -152,6 +156,9 @@ pub struct ActiveTransfer {
     pub total: u64,
     pub speed_bps: Option<u64>,
     pub files: Vec<ActiveFile>,
+    /// 是否已经落过历史（后端内部用，不发给前端）
+    #[serde(skip)]
+    pub recorded: bool,
 }
 
 /// 一次发送的句柄（取消用）。
