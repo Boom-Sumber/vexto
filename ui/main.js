@@ -36,6 +36,15 @@ const TITLES = {
   deleted: "已删除",
 };
 
+// 空态图标（icons.js 注册名；会话 55：空态从纯文字升级为图标 + 文案）
+const EMPTY_ICON = {
+  all: "download",
+  running: "bolt",
+  failed: "alert-triangle",
+  complete: "check-circle",
+  deleted: "trash",
+};
+
 const EMPTY = {
   all: "还没有下载任务。<br />按下载热键，或点右上角「新建」开始。",
   running: "没有正在进行的任务。",
@@ -225,9 +234,19 @@ function render(snap) {
   for (const k of ["all", "running", "failed", "complete", "deleted"]) {
     el("c-" + k).textContent = n[k];
   }
+  // 主菜单「下载」上的徽标：进行中数量，0 时隐藏（会话 55，复用 countByCat）
+  const badge = el("badgeDownload");
+  badge.textContent = n.running;
+  badge.classList.toggle("hidden", !n.running);
 
   el("empty").classList.toggle("hidden", visible > 0);
-  if (visible === 0) el("empty").innerHTML = EMPTY[filter] || EMPTY.all;
+  if (visible === 0) {
+    el("empty").innerHTML =
+      '<span class="empty-ico">' +
+      (Icons.raw(EMPTY_ICON[filter] || "download", 30) || "") +
+      "</span>" +
+      (EMPTY[filter] || EMPTY.all);
+  }
 
   const g = snap.global || {};
   el("global").textContent = "↓ " + fmtSpeed(g.download_speed) + "　↑ " + fmtSpeed(g.upload_speed);

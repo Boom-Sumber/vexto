@@ -113,6 +113,14 @@ window.Icons = (function () {
       '<path d="M22 2 11 13"/>' +
       '<path d="M22 2 15 22l-4-9-9-4z"/>',
     bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+    // 会话 55：工具窗空态 / 失败分类用
+    "alert-triangle":
+      '<path d="M10.3 4.2 2.9 17a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/>' +
+      '<path d="M12 9.5v4M12 17h.01"/>',
+    history:
+      '<path d="M4 12a8 8 0 1 0 2.3-5.6"/>' +
+      '<path d="M4 4v4h4"/>' +
+      '<path d="M12 8v4l2.5 2.5"/>',
   };
 
   // 设计稿给的两个「实心/彩色」图标：viewBox 是 1024，颜色写死或跟 currentColor，

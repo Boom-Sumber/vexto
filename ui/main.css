@@ -18,36 +18,56 @@
   flex-direction: column;
 }
 
-/* ── 左侧导航 ─────────────────────────────────────────────────────────── */
+/* ── 左侧导航（会话 55 · demo 侧栏：brand 磁贴 + 主菜单 + 上下文二级） ── */
 
 .side {
   flex: 0 0 var(--w-sidebar);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--bg-bar);
-  border-right: 1px solid var(--border-subtle);
+  padding: var(--sp-4) 14px var(--sp-2);
+  background: var(--bg-side);
+  border-right: 1px solid var(--border-default);
+}
+
+/* 品牌磁贴（与设置页同款）：Vexto.svg 蒙版 + 渐变跟随 --theme */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 2px 8px var(--sp-4);
+}
+.brand .logo { width: 30px; height: 30px; flex: none; }
+.brand .brand-name {
+  font-size: var(--fs-base);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--text-primary);
 }
 
 .nav {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
-  padding: var(--sp-3) var(--sp-2) var(--sp-1);
+  gap: 3px;
 }
 
+/* 主菜单项：字号加粗加大（与设置侧栏同口径），选中 = 主题色淡底 +
+   左侧渐变指示条（demo 口径） */
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 11px;
   width: 100%;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid transparent;
+  padding: 10px 12px;
+  border: 0;
   border-radius: var(--r-md);
   background: none;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: .05em;
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -56,27 +76,76 @@
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .nav-item.active {
-  background: var(--bg-selected);
-  color: var(--accent);
-  font-weight: 500;
+  background: var(--accent-soft);
+  color: var(--text-primary);
 }
-.nav-item.active:hover { background: var(--bg-selected); }
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+}
 
-.nav-ico { display: inline-flex; flex: 0 0 auto; }
+.nav-ico { display: inline-flex; flex: 0 0 auto; opacity: .85; }
+.nav-item.active .nav-ico { opacity: 1; color: var(--accent); }
+.nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 主菜单徽标：进行中的任务数（0 时 JS 隐藏） */
+.nav-badge {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nav-badge.hidden { display: none; }
 
-/* 互传专属二级导航：发送 / 接收 */
+/* ── 上下文二级导航（下载分类 / 互传子页共用一套视觉）───────────────── */
 .subnav {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
-  padding: 0 var(--sp-2) var(--sp-2) var(--sp-5);
+  gap: 2px;
+  padding: var(--sp-3) 0 0 var(--sp-2);
+  min-height: 0;
+  overflow-y: auto;
 }
 .subnav.hidden { display: none; }
 
-.sub-item {
-  padding: var(--sp-1) var(--sp-3);
-  border: none;
-  border-radius: var(--r-sm);
+.sub-title {
+  padding: 0 var(--sp-2) var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-disabled);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.sub-item,
+.cat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 7px 10px 7px 14px;
+  border: 0;
+  border-radius: var(--r-md);
   background: none;
   color: var(--text-muted);
   font-family: inherit;
@@ -87,57 +156,32 @@
   transition: background var(--dur-fast) var(--ease-out),
               color var(--dur-fast) var(--ease-out);
 }
-.sub-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-.sub-item.active { color: var(--accent); font-weight: 500; background: none; }
+.sub-item:hover,
+.cat:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-/* ── 左侧分类 ─────────────────────────────────────────────────────────── */
-
-.side-sec {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  padding: var(--sp-3) var(--sp-2) 0;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.side-title {
-  padding: 0 var(--sp-2) var(--sp-1);
-  font-size: var(--fs-sm);
+/* 选中：主题色文字 + 左侧短指示条 */
+.sub-item.active,
+.cat.active {
+  background: var(--bg-hover);
+  color: var(--accent);
   font-weight: 600;
-  color: var(--text-dim);
-  letter-spacing: .04em;
+}
+.sub-item.active::before,
+.cat.active::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
 }
 
 .cats { display: flex; flex-direction: column; gap: 2px; }
 
-.cat {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  width: 100%;
-  padding: 7px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  text-align: left;
-  cursor: pointer;
-  user-select: none;
-  transition: background var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out),
-              border-color var(--dur-fast) var(--ease-out);
-}
-.cat:hover { background: var(--bg-hover); color: var(--text-primary); }
-.cat.active {
-  background: var(--bg-selected);
-  border-color: var(--accent);
-  color: var(--text-primary);
-}
-
+/* 分类计数徽标 */
 .cat span {
   min-width: 20px;
   padding: 0 6px;
@@ -148,19 +192,19 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.cat.active span { background: var(--accent); color: var(--accent-text); }
+.cat.active span { background: var(--accent-soft-2); color: var(--accent); }
 
-/* 侧栏底部：全局上下行速度 */
+/* 侧栏底部：速度脚栏（demo 口径，等宽数字） */
 .side-foot {
   margin-top: auto;
-  padding: var(--sp-3);
+  padding: var(--sp-3) var(--sp-2) var(--sp-1);
   border-top: 1px solid var(--border-subtle);
   color: var(--text-dim);
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
 
-/* ── 顶部 ─────────────────────────────────────────────────────────────── */
+/* ── 顶部（demo page-head：无底色、大标题、操作靠右）────────────────── */
 
 .head {
   flex: 0 0 auto;
@@ -168,36 +212,42 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-5);
-  background: var(--bg-bar);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--sp-5) var(--sp-6) var(--sp-4);
 }
 
 .head h1 {
   margin: 0;
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: .02em;
   color: var(--text-primary);
 }
 
 .tools { display: flex; gap: var(--sp-2); }
 .tools .btn .ico { color: inherit; }
 
-.error { margin: var(--sp-2) var(--sp-5) 0; }
+.error { margin: 0 var(--sp-6) var(--sp-2); }
 
-/* ── 任务列表 ─────────────────────────────────────────────────────────── */
+/* ── 任务列表（demo 卡片化：任务行 = 圆角卡片，悬停描边）────────────── */
 
 .list {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: var(--sp-1) var(--sp-5) var(--sp-3);
+  padding: 0 var(--sp-6) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
 .row {
-  padding: var(--sp-3) 0 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
-.row:last-child { border-bottom: none; }
+.row:hover { border-color: var(--border-strong); }
+.row:last-child { border-bottom: 1px solid var(--border-subtle); }
 
 .row-top {
   display: flex;
@@ -288,30 +338,37 @@
 .row.deleted .bar > i { background: var(--border-strong); }
 .row.deleted .acts .btn { color: var(--text-disabled); }
 
+/* 空态：大图标 + 文案（demo 图标空状态） */
 .empty {
   flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--sp-4);
   text-align: center;
   color: var(--text-dim);
   font-size: var(--fs-sm);
   line-height: var(--lh-loose);
   padding: var(--sp-5) var(--sp-4);
 }
+.empty-ico {
+  display: inline-flex;
+  color: var(--text-disabled);
+  opacity: .8;
+}
 /* .empty 与 .hidden 同为单类选择器，必须提高特异性，
    否则「有任务」时空状态提示仍会挂在列表下面。 */
 .empty.hidden { display: none; }
 
-/* ── 底部状态 ─────────────────────────────────────────────────────────── */
+/* ── 底部状态栏 ───────────────────────────────────────────────────────── */
 
 .foot {
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
   gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-5);
-  background: var(--bg-bar);
+  padding: var(--sp-2) var(--sp-6);
   border-top: 1px solid var(--border-subtle);
   color: var(--text-dim);
   font-size: var(--fs-xs);
@@ -333,7 +390,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--sp-6) var(--sp-8) var(--sp-8);
+  padding: var(--sp-1) var(--sp-6) var(--sp-6);
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);

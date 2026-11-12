@@ -23,25 +23,27 @@
 
   <div class="app">
     <aside class="side">
+      <!-- 品牌磁贴：Vexto.svg 蒙版（.logo-mask 在 base.css），渐变跟随 --theme -->
+      <div class="brand">
+        <span class="logo logo-mask" aria-hidden="true"></span>
+        <span class="brand-name">Vexto</span>
+      </div>
+
       <!-- 一级导航：下载任务列表 / 局域网互传（S4b）。互传停用时隐藏「互传」。 -->
       <nav class="nav">
         <button class="nav-item active" type="button" data-view="download">
-          <span class="nav-ico" data-icon="download"></span><span>下载</span>
+          <span class="nav-ico" data-icon="download"></span><span class="nav-label">下载</span>
+          <span class="nav-badge hidden" id="badgeDownload" title="进行中的任务数">0</span>
         </button>
         <button class="nav-item" type="button" data-view="transfer">
-          <span class="nav-ico" data-icon="transfer"></span><span>互传</span>
+          <span class="nav-ico" data-icon="transfer"></span><span class="nav-label">互传</span>
         </button>
       </nav>
 
-      <!-- 互传的二级导航：发送 / 接收 / 历史 -->
-      <div class="subnav hidden" id="subTransfer">
-        <button class="sub-item active" type="button" data-sub="send">发送</button>
-        <button class="sub-item" type="button" data-sub="receive">接收</button>
-        <button class="sub-item" type="button" data-sub="history">历史</button>
-      </div>
-
-      <div class="side-sec" id="catsWrap">
-        <div class="side-title">分类</div>
+      <!-- 上下文二级导航：随主菜单切换。下载 → 分类（计数徽标）；
+           互传 → 发送 / 接收 / 历史。 -->
+      <div class="subnav" id="catsWrap">
+        <div class="sub-title">分类</div>
         <nav class="cats">
           <button class="cat active" type="button" data-cat="all">全部 <span id="c-all">0</span></button>
           <button class="cat" type="button" data-cat="running">进行中 <span id="c-running">0</span></button>
@@ -51,6 +53,14 @@
         </nav>
       </div>
 
+      <div class="subnav hidden" id="subTransfer">
+        <div class="sub-title">互传</div>
+        <button class="sub-item active" type="button" data-sub="send">发送</button>
+        <button class="sub-item" type="button" data-sub="receive">接收</button>
+        <button class="sub-item" type="button" data-sub="history">历史</button>
+      </div>
+
+      <!-- 底部速度脚栏：全局上下行速度 -->
       <div class="side-foot">
         <span id="global" class="num">↓ 0 B/s　↑ 0 B/s</span>
       </div>
@@ -69,6 +79,7 @@
 
       <main id="list" class="list"></main>
       <div id="empty" class="empty">
+        <span class="empty-ico" data-icon="download"></span>
         还没有下载任务。<br />按下载热键，或点右上角「新建」开始。
       </div>
 
@@ -120,7 +131,10 @@
 
           <div class="section-title">附近的设备</div>
           <div id="peerList" class="device-list"></div>
-          <div id="peerEmpty" class="empty">没有发现设备。确认对方也开着 LocalSend / Vexto，且在同一 WiFi。</div>
+          <div id="peerEmpty" class="empty">
+            <span class="empty-ico" data-icon="transfer"></span>
+            没有发现设备。确认对方也开着 LocalSend / Vexto，且在同一 WiFi。
+          </div>
 
         </div>
       </div>
@@ -177,7 +191,10 @@
 
         <div class="page-body">
           <div id="hsList" class="hs-list"></div>
-          <div id="hsEmpty" class="empty">还没有传输记录。<br />收发文件之后会出现在这里。</div>
+          <div id="hsEmpty" class="empty">
+            <span class="empty-ico" data-icon="history"></span>
+            还没有传输记录。<br />收发文件之后会出现在这里。
+          </div>
           <div id="hsPager" class="hs-pager hidden">
             <button id="hsPrev" class="btn" type="button">上一页</button>
             <span id="hsPageInfo" class="num"></span>
