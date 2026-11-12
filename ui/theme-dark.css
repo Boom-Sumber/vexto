@@ -64,8 +64,11 @@
   --border-default: var(--c-gray-700);
   --border-strong: var(--c-gray-600);
 
-  /* ── 主题色：改这里就是换主色 ─────────────────────────────────────── */
-  --accent: var(--c-violet-500);
+  /* ── 主题色：改这里就是换主色 ───────────────────────────────────────
+     --theme 是唯一入口：UI 的 --accent、Vexto.svg 的渐变、接收页 LOGO 都取它。
+     改一个值三处同步变化；浅/深/透明档由文件末尾的 @supports 相对色现算。 */
+  --theme: var(--c-violet-500);
+  --accent: var(--theme);
   --accent-hover: var(--c-violet-400);
   --accent-active: var(--c-violet-600);
   --accent-soft: rgba(124, 92, 255, .16);
@@ -96,4 +99,19 @@
   /* ── 原生控件用的图标（data URI 不能引用 CSS 变量，颜色只能在这里写死） ──
    * select 的箭头改成自绘后不再受系统白色箭头影响；换主题时改这一行即可。 */
   --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%236f7789' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+/* 主题色的浅/深/透明档从 --theme 现算（CSS Color 5 相对色）。
+   换主色时不用再手工改一串常量；旧版 WebView2 不认 oklch(from …) 时整块跳过，
+   上面那组静态值就是兜底，不影响任何控件。 */
+@supports (color: oklch(from red l c h)) {
+  [data-theme="dark"] {
+    --accent-hover: oklch(from var(--theme) calc(l + 0.10) c h);
+    --accent-active: oklch(from var(--theme) calc(l - 0.08) c h);
+    --accent-soft: oklch(from var(--theme) l c h / .16);
+    --accent-ring: oklch(from var(--theme) l c h / .12);
+    --bg-selected: oklch(from var(--theme) l c h / .14);
+    --selection-bg: oklch(from var(--theme) l c h / .42);
+    --ring: 0 0 0 1px var(--accent-ring), 0 0 8px oklch(from var(--theme) l c h / .22);
+  }
 }

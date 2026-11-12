@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>LightBox 下载</title>
+<title>Vexto 下载</title>
 <link rel="stylesheet" href="tokens.css" />
 <link rel="stylesheet" href="theme-dark.css" />
 <link rel="stylesheet" href="base.css" />
@@ -119,7 +119,7 @@
 
           <div class="section-title">附近的设备</div>
           <div id="peerList" class="device-list"></div>
-          <div id="peerEmpty" class="empty">没有发现设备。确认对方也开着 LocalSend / LightBox，且在同一 WiFi。</div>
+          <div id="peerEmpty" class="empty">没有发现设备。确认对方也开着 LocalSend / Vexto，且在同一 WiFi。</div>
 
         </div>
       </div>
@@ -137,7 +137,9 @@
 
         <div class="page-body rv-body">
           <div class="rv-hero">
-            <img class="rv-logo" src="logo.png" alt="LightBox" />
+            <!-- 程序 LOGO：形状来自 Vexto.svg（CSS 蒙版），渐变跟随 --theme；
+                 不写内联 <svg>，符合 13 §13.5。只替换 LOGO，其余接收页元素不动。 -->
+            <div class="rv-logo" role="img" aria-label="Vexto"></div>
             <div class="rv-name" id="localAlias">—</div>
             <div class="rv-addr" id="localAddr">—</div>
           </div>

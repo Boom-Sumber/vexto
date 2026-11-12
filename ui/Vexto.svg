@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"
+     role="img" aria-label="Vexto logo">
+  <title>Vexto</title>
+  <!-- 主题色只有一个来源：ui/theme-dark.css 里的主题色变量。
+       渐变两端都从该变量取色，第二端按 oklch(from … l+0.12 / c*1.0 / h+3) 现算。
+       嵌入带该变量的文档或内联使用时随主题色实时变化；
+       独立打开、或被 img 标签与 CSS 蒙版加载时，用兜底色渲染。
+       注意：SVG 里不要写外链样式 import，Chromium 在 image 模式下会拒绝加载整个文件。
+       接收页 LOGO 用本文件做矢量蒙版，渐变由 main.css 的 rv-logo 取同一变量算出。 -->
+  <defs>
+    <linearGradient id="vexto-gradient" gradientUnits="userSpaceOnUse" x1="81.50" y1="0" x2="940.96" y2="0">
+      <!-- 每个 stop 写两份：前一份是不支持 var()/相对色时的兜底，后一份是主题色计算。 -->
+      <stop offset="0" style="stop-color:#7c5cff; stop-color:var(--theme, #7c5cff)"/>
+      <stop offset="1" style="stop-color:#23b4ed; stop-color:oklch(from var(--theme, #7c5cff) calc(l + 0.12) calc(c * 1.0) calc(h + 3))"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#vexto-gradient)" fill-rule="evenodd" d="M 87 142.613 C 84.98 144.891 81.009 142.977 80.81 146.319 L 378.433 795.033 A 146.324 146.324 0 0 0 643.033 794.604 L 918.004 194.822 C 937.959 148.529 947.619 144.166 933 142.613 L 734 142.613 C 692.808 146.968 691.192 174.613 681.17 195.144 L 520.081 585.282 C 508.218 610.111 499.419 572.239 497.545 573.162 L 340.626 195.009 C 330.308 170.612 326.279 147.01 289 142.613 L 87 142.613 Z M 457.746 730.737 a 53.569 53.569 0 1 0 107.137 0 a 53.569 53.569 0 1 0 -107.137 0 Z"/>
+</svg>

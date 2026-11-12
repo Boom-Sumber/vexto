@@ -21,7 +21,7 @@
 //! - Cookie 只进 aria2 的请求头，**不写日志、不进界面**。
 //!
 //! 唤醒限制：扩展只会用 native messaging 唤起 Rayburst / Motrix 的主机名。
-//! 我们不冒充别人的身份，所以 LightBox 没运行时扩展唤不起来，浏览器会自己
+//! 我们不冒充别人的身份，所以 Vexto 没运行时扩展唤不起来，浏览器会自己
 //! 下载 —— 要接管就保持托盘常驻（可开机自启）。
 
 use std::io::{ErrorKind, Read, Write};

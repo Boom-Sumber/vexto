@@ -32,7 +32,7 @@ impl Tool for About {
     }
 
     fn status_line(&self) -> String {
-        format!("LightBox {}", env!("CARGO_PKG_VERSION"))
+        format!("Vexto {}", env!("CARGO_PKG_VERSION"))
     }
 
     fn sections(&self) -> Vec<Section> {
@@ -40,7 +40,7 @@ impl Tool for About {
             "about",
             "关于",
             vec![
-                Field::note("LightBox（轻匣）· 一个常驻托盘的轻量工具箱"),
+                Field::note("Vexto · 一个常驻托盘的轻量工具箱"),
                 Field::note("翻译 · 截图 OCR · 下载 · 局域网互传"),
                 Field::note("Rust + Tauri 2，纯静态前端，MIT 许可"),
                 Field::note("划词翻译参考 Pot（GPL-3.0），本项目未拷贝其源码。"),

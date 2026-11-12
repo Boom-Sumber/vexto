@@ -5,7 +5,7 @@
 //!
 //! 特殊项有四个：「翻译选中文字」（带当前热键提示，热键注册失败时是唯一的手动
 //! 入口）、「查看下载…」（S3b 主窗口）、「设置…」（打开设置页第一个工具）、
-//! 「退出 LightBox」。工具项仍全部由注册表生成，配置入口不变。
+//! 「退出 Vexto」。工具项仍全部由注册表生成，配置入口不变。
 //!
 //! 菜单 id 约定：工具项是 `tool:<id>`，其余是固定字符串。
 
@@ -82,7 +82,7 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     items.push(Box::new(MenuItem::with_id(
         app,
         "quit",
-        "退出 LightBox",
+        "退出 Vexto",
         true,
         None::<&str>,
     )?));
@@ -92,7 +92,7 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &refs)?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("LightBox — 划词翻译")
+        .tooltip("Vexto — 划词翻译")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| {

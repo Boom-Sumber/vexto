@@ -45,7 +45,7 @@ impl TransferConfig {
     /// 从全局配置映射。空 `device_alias` 用计算机名兜底。
     pub fn from_app(cfg: &config::Config) -> Self {
         let alias = if cfg.device_alias.trim().is_empty() {
-            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "LightBox".to_string())
+            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Vexto".to_string())
         } else {
             cfg.device_alias.trim().to_string()
         };

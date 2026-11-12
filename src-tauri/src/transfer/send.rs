@@ -193,7 +193,7 @@ pub fn send_files(
         // 2) 发起传输
         let cfg = config::load();
         let alias = if cfg.device_alias.trim().is_empty() {
-            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "LightBox".to_string())
+            std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Vexto".to_string())
         } else {
             cfg.device_alias.trim().to_string()
         };

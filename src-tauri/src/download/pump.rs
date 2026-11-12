@@ -151,7 +151,7 @@ fn fire_after_done(action: &str, cmd: &str) {
                 "/t",
                 "60",
                 "/c",
-                "LightBox：下载已全部完成，60 秒后关机（要取消请运行 shutdown /a）",
+                "Vexto：下载已全部完成，60 秒后关机（要取消请运行 shutdown /a）",
             ])
             .spawn()
             .map(|_| ()),

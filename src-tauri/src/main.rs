@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//! LightBox 入口。
+//! Vexto 入口。
 //!
 //! S2：多引擎 + 工具注册表 + schema 驱动的设置 IPC。
 //!

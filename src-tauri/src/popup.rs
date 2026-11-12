@@ -273,7 +273,7 @@ fn create_popup(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let (cx, cy) = cursor();
     let (x, y) = clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32);
     WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App("popup.html".into()))
-        .title("LightBox")
+        .title("Vexto")
         .inner_size(POPUP_W, POPUP_H_MIN)
         .position(x as f64, y as f64)
         .decorations(false)
@@ -645,7 +645,7 @@ pub fn open_settings(app: &AppHandle) {
     }
 
     let r = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
-        .title("LightBox 设置")
+        .title("Vexto 设置")
         // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。设置页字段多、路径长，
         // 仍然 resizable(true)，边缘缩放由前端 `titlebar.js` 的 8 向热区接管。
         .decorations(false)
@@ -693,7 +693,7 @@ pub fn open_main_window(app: &AppHandle) {
     }
 
     let r = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("main.html".into()))
-        .title("LightBox 下载")
+        .title("Vexto 下载")
         // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。任务列表可按
         // 文件名长短拉宽，所以保留 resizable，边缘缩放由 titlebar.js 接管。
         .decorations(false)
@@ -892,7 +892,7 @@ pub fn close_new_task(app: &AppHandle) {
 ///
 /// **顺序是「先开后关」**：两个窗口共用同一个 WebView2 环境，先 `destroy()`
 /// 再建新窗口会让新窗口的 WebView 停在 `about:blank`（本机实测：窗口标题是
-/// 「LightBox 下载」，页面 body 为空）。先建新窗口、再销毁旧窗口，环境始终
+/// 「Vexto 下载」，页面 body 为空）。先建新窗口、再销毁旧窗口，环境始终
 /// 有一个活着的宿主，导航正常。代价是任务栏里有两三帧两个窗口同时存在。
 pub fn close_new_task_and_show_list(app: &AppHandle) {
     open_main_window(app);

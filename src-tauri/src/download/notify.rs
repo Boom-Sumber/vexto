@@ -127,7 +127,7 @@ fn lookup(body: &str) -> Option<String> {
 pub fn test(app: &tauri::AppHandle) -> Result<(), String> {
     app.notification()
         .builder()
-        .title("LightBox")
+        .title("Vexto")
         .body("看到这条说明系统通知是通的。")
         .show()
         .map_err(|e| format!("发送测试通知失败：{e}"))
