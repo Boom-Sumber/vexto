@@ -1,0 +1,92 @@
+/* 通用框选浮层（S7）：OCR 与截图共用。
+ * 只画：暗幕 / 选框 / 处理中提示 / 结果卡。Esc 取消是硬性口径。 */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 暗幕：开始拖框前盖住全屏；松开鼠标后立刻藏起来，
+   否则截屏会把遮罩一起截进去（后端另有 350ms 兜底等待）。 */
+#dim {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-overlay);
+  cursor: crosshair;
+}
+#dim.hidden { display: none; }
+
+/* 选框：拖动时跟手 */
+#box {
+  position: absolute;
+  display: none;
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+  z-index: 2;
+}
+#box.on { display: block; }
+
+/* 卡片（处理中 / 结果 / 错误共用一张）：小、浮在选区附近或屏幕中上 */
+#card {
+  position: absolute;
+  z-index: 3;
+  max-width: 420px;
+  display: none;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-float);
+}
+#card.on { display: block; }
+
+.card-tag {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  letter-spacing: .04em;
+}
+.original {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.translated {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-loose);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+/* 截图结果：路径可能很长，用小号字 + 可折行 */
+.shot-path {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 96px;
+  overflow-y: auto;
+}
+.card-error { color: var(--danger); }
+.card-acts {
+  margin-top: var(--sp-3);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+.loading-dots {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}

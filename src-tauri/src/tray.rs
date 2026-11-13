@@ -12,13 +12,15 @@
 use crate::QUITTING;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::AppHandle;
 
 /// 留存「翻译选中文字」这一项，热键改动后要跟着改它的文案。
 /// 泛型参数是 Tauri 的 Runtime（桌面端固定 `Wry`），静态量里必须写全。
 static TRANSLATE_ITEM: Mutex<Option<MenuItem<tauri::Wry>>> = Mutex::new(None);
+/// 「区域截图」菜单项，热键改动后要跟着改文案（与 TRANSLATE_ITEM 同口径）。
+static SHOT_ITEM: Mutex<Option<MenuItem<tauri::Wry>>> = Mutex::new(None);
 
 /// 工具菜单项的 id 前缀。
 pub const TOOL_PREFIX: &str = "tool:";
@@ -39,6 +41,27 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     )?;
     *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate_item.clone());
     items.push(Box::new(translate_item));
+
+    // 截图子菜单（S7）：三个模式。工具未启用时点任何一项都跳到设置页的
+    // 「截图」分区——不静默无反应，也不在未启用时注册热键 / 建浮层。
+    let shot_hotkey = crate::config::load().hotkey_screenshot;
+    let shot_region = MenuItem::with_id(
+        app,
+        "shot-region",
+        format!("区域截图（{shot_hotkey}）").as_str(),
+        true,
+        None::<&str>,
+    )?;
+    *SHOT_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(shot_region.clone());
+    let shot_full = MenuItem::with_id(app, "shot-full", "全屏截图", true, None::<&str>)?;
+    let shot_window = MenuItem::with_id(app, "shot-window", "活动窗口截图", true, None::<&str>)?;
+    let shot_menu = Submenu::with_items(
+        app,
+        "截图",
+        true,
+        &[&shot_region, &shot_full, &shot_window],
+    )?;
+    items.push(Box::new(shot_menu));
 
     // 「查看下载…」与「局域网互传…」是固定项，不是注册表里的工具项：
     // `tool:download` / `tool:transfer` 按 ADR-015 仍然负责打开设置页对应分区，
@@ -104,6 +127,21 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
             }
             match id.as_str() {
                 "translate" => crate::translate_selection(app.clone()),
+                "shot-region" => {
+                    if crate::config::load().enable_screenshot {
+                        crate::popup::open_shot_overlay(app);
+                    } else {
+                        crate::open_settings_at(app, "screenshot");
+                    }
+                }
+                "shot-full" => crate::screenshot::tray_capture(
+                    app,
+                    crate::screenshot::Mode::FullScreen,
+                ),
+                "shot-window" => crate::screenshot::tray_capture(
+                    app,
+                    crate::screenshot::Mode::ActiveWindow,
+                ),
                 "downloads" => crate::open_download_window(app),
                 "transfer" => crate::open_transfer_window(app),
                 "settings" => crate::open_settings(app),
@@ -135,6 +173,17 @@ pub fn update_hotkey_label(app: &AppHandle, hotkey: &str) {
     if let Some(item) = guard.as_ref() {
         if let Err(e) = item.set_text(translate_label(hotkey)) {
             crate::dlog::dlog(&format!("tray: 更新热键文案失败：{e}"));
+        }
+    }
+    let _ = app;
+}
+
+/// 截图热键改动后更新「区域截图」菜单项。
+pub fn update_shot_hotkey_label(app: &AppHandle, hotkey: &str) {
+    let guard = SHOT_ITEM.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(item) = guard.as_ref() {
+        if let Err(e) = item.set_text(format!("区域截图（{hotkey}）")) {
+            crate::dlog::dlog(&format!("tray: 更新截图热键文案失败：{e}"));
         }
     }
     let _ = app;

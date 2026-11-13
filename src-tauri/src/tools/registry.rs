@@ -3,7 +3,7 @@
 //! 加一个新工具就两件事：①在 `src/tools/` 下实现 `Tool` ②在这个文件里加一行。
 //! 托盘、设置页左侧列表、模块开关、状态摘要全部从这里读，前端零改动（ADR-015）。
 
-use super::{about::About, download::Download, general::General, transfer::Transfer, Tool};
+use super::{about::About, download::Download, general::General, screenshot::Screenshot, transfer::Transfer, Tool};
 use super::translate_tool::Translate;
 
 /// 所有工具，按设置页左侧列表的顺序返回。
@@ -13,6 +13,7 @@ pub fn all() -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(General),
         Box::new(Translate),
+        Box::new(Screenshot),
         Box::new(Download),
         Box::new(Transfer),
         Box::new(About),
@@ -40,6 +41,12 @@ mod tests {
             assert!(!id.is_empty(), "工具 id 不能为空");
             assert!(seen.insert(id), "工具 id 重复：{id}");
         }
+    }
+
+    /// S7 截图工具必须真的注册进注册表，否则设置页左侧不会出现这一项。
+    #[test]
+    fn screenshot_tool_is_registered() {
+        assert!(super::by_id("screenshot").is_some());
     }
 
     /// 每个工具都必须至少有一个 Section，否则设置页点进去是空白。

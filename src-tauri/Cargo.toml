@@ -61,15 +61,28 @@ uiautomation = "0.25"
 # 内部用的对齐（0.62 → windows-future 0.3）。
 windows-future = "0.3"
 
+# S7 截图：PNG 编码。`png 0.18.1` 本来就在依赖树里（tauri 的 image-png /
+# image 传递依赖），这里只是提升为直接依赖，**不新增下载**（ADR-040）。
+# 长图用 `Writer::stream_writer()` 逐行写，不用 image 的整图编码 API。
+png = "0.18"
+
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    # DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)：活动窗口截图去掉
+    # 不可见阴影的边界（S7）。同一个 windows crate，只开 feature，不新增下载。
+    "Win32_Graphics_Dwm",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Com",
     "Win32_System_DataExchange",
     "Win32_System_Threading",
     "Win32_System_ProcessStatus",
+    # GetLocalTime：截图文件名用本地时间（S7），不引 chrono。
+    "Win32_System_SystemInformation",
+    # PrintWindow(PW_RENDERFULLCONTENT)：活动窗口截图（S7）。windows 0.62 把
+    # PrintWindow 绑在 Xps 模块下；只开 feature，不新增下载。
+    "Win32_Storage_Xps",
     # SHGetKnownFolderPath(FOLDERID_Downloads)：取系统真实的「下载」文件夹。
     # 不能直接拼 %USERPROFILE%\Downloads —— 用户可能把下载文件夹重定向到 D 盘。
     "Win32_UI_Shell",

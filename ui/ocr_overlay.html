@@ -7,92 +7,9 @@
 <link rel="stylesheet" href="theme-dark.css" />
 <link rel="stylesheet" href="theme-light.css" />
 <link rel="stylesheet" href="base.css" />
-<style>
-  /* OCR 框选 overlay（S5）：覆盖整个虚拟屏幕的透明窗口。
-   * 只画：暗幕 / 选框 / 识别中提示 / 结果卡。Esc 取消是硬性口径（06 §6.4.4 #4）。 */
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    overflow: hidden;
-    user-select: none;
-  }
-
-  /* 暗幕：开始拖框前盖住全屏；松开鼠标后立刻藏起来，
-     否则截屏会把遮罩一起截进去（后端另有 350ms 兜底等待）。 */
-  #dim {
-    position: absolute;
-    inset: 0;
-    background: var(--bg-overlay);
-    cursor: crosshair;
-  }
-  #dim.hidden { display: none; }
-
-  /* 选框：拖动时跟手 */
-  #box {
-    position: absolute;
-    display: none;
-    border: 1px dashed var(--accent);
-    background: var(--accent-soft);
-    pointer-events: none;
-    z-index: 2;
-  }
-  #box.on { display: block; }
-
-  /* 卡片（识别中 / 结果 / 错误共用一张）：小、浮在选区附近或屏幕中上 */
-  #card {
-    position: absolute;
-    z-index: 3;
-    max-width: 420px;
-    display: none;
-    padding: var(--sp-4) var(--sp-5);
-    border: 1px solid var(--border-default);
-    border-radius: var(--r-lg);
-    background: var(--bg-panel);
-    box-shadow: var(--shadow-float);
-  }
-  #card.on { display: block; }
-
-  .card-tag {
-    font-size: var(--fs-xs);
-    color: var(--text-muted);
-    letter-spacing: .04em;
-  }
-  .original {
-    margin-top: var(--sp-2);
-    font-size: var(--fs-sm);
-    line-height: var(--lh-normal);
-    color: var(--text-secondary);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 120px;
-    overflow-y: auto;
-  }
-  .translated {
-    margin-top: var(--sp-2);
-    font-size: var(--fs-lg);
-    line-height: var(--lh-loose);
-    color: var(--text-primary);
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 220px;
-    overflow-y: auto;
-  }
-  .card-error { color: var(--danger); }
-  .card-acts {
-    margin-top: var(--sp-3);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--sp-2);
-  }
-  .loading-dots {
-    margin-top: var(--sp-2);
-    font-size: var(--fs-sm);
-    color: var(--text-dim);
-  }
-</style>
+<link rel="stylesheet" href="region_select.css" />
 </head>
-<body data-theme="dark">
+<body data-theme="dark" data-purpose="ocr">
   <div id="dim"></div>
   <div id="box"></div>
 
@@ -100,6 +17,7 @@
     <div id="card-tag" class="card-tag"></div>
     <div id="card-original" class="original"></div>
     <div id="card-text" class="translated"></div>
+    <div id="shotPath" class="shot-path" style="display:none"></div>
     <div id="card-acts" class="card-acts">
       <button id="copyBtn" class="btn" type="button">复制译文</button>
       <button id="closeBtn" class="btn btn-primary" type="button">关闭</button>
@@ -108,112 +26,6 @@
 
 <script src="theme.js"></script>
 <script src="icons.js"></script>
-<script>
-const invoke = window.__TAURI__.core.invoke;
-const el = (id) => document.getElementById(id);
-let translated = "";
-// 结果卡复用加载卡的锚点：框选落点附近，避免识别完成后跳到屏幕中上。
-let anchorX = 0, anchorY = 0;
-
-// Esc 取消：框选中、识别中、出结果后都生效（06 #4：不产生结果、不耗配额）
-window.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") { invoke("ocr_cancel").catch(() => {}); }
-});
-
-// 启动：页面就绪即显示（后端 visible(false) 防白屏，这里是 reveal 点）
-Theme.apply();
-window.__windowReady && window.__windowReady();
-
-// ── 框选 ──────────────────────────────────────────────────────────────
-let dragging = false;
-let sx = 0, sy = 0;
-
-el("dim").addEventListener("mousedown", (ev) => {
-  if (ev.button !== 0) return;
-  dragging = true;
-  sx = ev.clientX; sy = ev.clientY;
-  const box = el("box");
-  box.style.left = sx + "px";
-  box.style.top = sy + "px";
-  box.style.width = "0px";
-  box.style.height = "0px";
-  box.classList.add("on");
-});
-window.addEventListener("mousemove", (ev) => {
-  if (!dragging) return;
-  const box = el("box");
-  const x = Math.min(sx, ev.clientX), y = Math.min(sy, ev.clientY);
-  box.style.left = x + "px";
-  box.style.top = y + "px";
-  box.style.width = Math.abs(ev.clientX - sx) + "px";
-  box.style.height = Math.abs(ev.clientY - sy) + "px";
-});
-window.addEventListener("mouseup", (ev) => {
-  if (!dragging) return;
-  dragging = false;
-  el("box").classList.remove("on");
-  const w = Math.abs(ev.clientX - sx), h = Math.abs(ev.clientY - sy);
-  // 太小的框当误触：安静收场（不弹卡、不耗配额）
-  if (w < 8 || h < 8) { invoke("ocr_cancel").catch(() => {}); return; }
-
-  // 立刻藏暗幕（截屏不能把遮罩截进去），再交给后端
-  el("dim").classList.add("hidden");
-  showLoading(ev.clientX, ev.clientY);
-  invoke("ocr_submit_region", {
-    x: Math.min(sx, ev.clientX),
-    y: Math.min(sy, ev.clientY),
-    w, h,
-    dpr: window.devicePixelRatio || 1,
-  }).catch((e) => showResult({ ok: false, error: String(e) }));
-});
-
-// ── 卡片 ──────────────────────────────────────────────────────────────
-function placeCard(px, py) {
-  const card = el("card");
-  card.classList.add("on");
-  // 尽量贴选区；超出屏幕边缘就往回收
-  const r = card.getBoundingClientRect();
-  const x = Math.min(px, window.innerWidth - r.width - 12);
-  const y = Math.min(py, window.innerHeight - r.height - 12);
-  card.style.left = Math.max(12, x) + "px";
-  card.style.top = Math.max(12, y) + "px";
-}
-function showLoading(px, py) {
-  // 框选落点作为结果卡锚点；+14/+18 与划词弹窗的鼠标偏移一致。
-  anchorX = px + 14;
-  anchorY = py + 18;
-  el("card-tag").textContent = "截图翻译";
-  el("card-original").textContent = "";
-  el("card-original").style.display = "none";
-  el("card-text").className = "loading-dots";
-  el("card-text").textContent = "识别中…";
-  el("card-acts").style.display = "none";
-  placeCard(anchorX, anchorY);
-}
-function showResult(p) {
-  el("card-original").style.display = "";
-  el("card-acts").style.display = "";
-  el("card-tag").textContent = p.ok ? "截图翻译 · " + (p.from || "") : "截图翻译";
-  if (p.ok) {
-    translated = p.translated || "";
-    el("card-original").textContent = p.original || "";
-    el("card-text").className = "translated";
-    el("card-text").textContent = p.translated || "";
-    placeCard(anchorX, anchorY);
-  } else {
-    translated = "";
-    el("card-original").textContent = "";
-    el("card-text").className = "translated card-error";
-    el("card-text").textContent = p.error || "识别失败";
-    placeCard(anchorX, anchorY);
-  }
-}
-window.__TAURI__.event.listen("ocr:result", (e) => showResult(e.payload || {}));
-
-el("copyBtn").addEventListener("click", () => {
-  if (translated) invoke("copy_text", { text: translated }).catch(() => {});
-});
-el("closeBtn").addEventListener("click", () => invoke("ocr_cancel").catch(() => {}));
-</script>
+<script src="region_select.js"></script>
 </body>
 </html>

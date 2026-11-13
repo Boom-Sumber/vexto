@@ -189,6 +189,29 @@ pub struct Config {
     #[serde(default)]
     pub enable_ocr: bool,
 
+    // ---- 截图（S7）----
+    /// 区域截图热键（S7 才真正注册）
+    #[serde(default = "d_hotkey_screenshot")]
+    pub hotkey_screenshot: String,
+    /// 截图工具总开关。默认关（ADR-040：未启用时零进程零线程）。
+    #[serde(default)]
+    pub enable_screenshot: bool,
+    /// 截图保存目录。留空 = 系统「图片」下的 Vexto 子目录。
+    #[serde(default)]
+    pub screenshot_dir: String,
+    /// 截图后的动作：`both`（复制图片并保存）/ `clipboard` / `path`（保存并复制路径）/ `save`
+    #[serde(default = "d_shot_after")]
+    pub screenshot_after_action: String,
+    /// 滚动截图默认模式：`auto`（全自动）/ `manual`（半自动）
+    #[serde(default = "d_scroll_mode")]
+    pub scroll_mode: String,
+    /// 滚动方式：`message` / `wheel` / `key` / `pagedown` / `manual`
+    #[serde(default = "d_scroll_action")]
+    pub scroll_action: String,
+    /// 钉屏单窗多图（false = 每图一窗，内存占用更高）
+    #[serde(default = "d_true")]
+    pub pinscreen_single_window: bool,
+
     // ---- 行为 ----
     #[serde(default = "d_popup_timeout")]
     pub popup_timeout_ms: u64,
@@ -408,6 +431,18 @@ fn d_hotkey_download() -> String {
 fn d_hotkey_input() -> String {
     "Ctrl+Alt+I".to_string()
 }
+fn d_hotkey_screenshot() -> String {
+    "Ctrl+Alt+A".to_string()
+}
+fn d_shot_after() -> String {
+    "both".to_string()
+}
+fn d_scroll_mode() -> String {
+    "auto".to_string()
+}
+fn d_scroll_action() -> String {
+    "message".to_string()
+}
 fn d_true() -> bool {
     true
 }
@@ -498,10 +533,17 @@ impl Default for Config {
             hotkey_ocr: d_hotkey_ocr(),
             hotkey_download: d_hotkey_download(),
             hotkey_input: d_hotkey_input(),
+            hotkey_screenshot: d_hotkey_screenshot(),
             enable_translate: true,
             enable_download: false,
             enable_transfer: false,
             enable_ocr: false,
+            enable_screenshot: false,
+            screenshot_dir: String::new(),
+            screenshot_after_action: d_shot_after(),
+            scroll_mode: d_scroll_mode(),
+            scroll_action: d_scroll_action(),
+            pinscreen_single_window: true,
             popup_timeout_ms: d_popup_timeout(),
             auto_copy: false,
             cache_enabled: true,
@@ -1009,6 +1051,12 @@ mod tests {
         assert_eq!(c.to2, "en");
         assert_eq!(c.lang_detect, "local");
         assert_eq!(c.hotkey_input, "Ctrl+Alt+I");
+        assert_eq!(c.hotkey_screenshot, "Ctrl+Alt+A");
+        assert!(!c.enable_screenshot);
+        assert_eq!(c.screenshot_after_action, "both");
+        assert_eq!(c.scroll_mode, "auto");
+        assert_eq!(c.scroll_action, "message");
+        assert!(c.pinscreen_single_window);
         assert!(c.enable_translate);
         assert!(!c.enable_download);
         assert!(c.cache_enabled);

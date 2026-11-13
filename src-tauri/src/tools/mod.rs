@@ -16,6 +16,7 @@ pub mod about;
 pub mod download;
 pub mod general;
 pub mod registry;
+pub mod screenshot;
 pub mod transfer;
 pub mod translate_tool;
 

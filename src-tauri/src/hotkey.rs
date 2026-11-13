@@ -62,8 +62,13 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
     let is_fkey = (2..=3).contains(&mk.len())
         && mk.starts_with('F')
         && mk[1..].parse::<u8>().is_ok_and(|n| (1..=12).contains(&n));
-    if !is_alpha_num && !is_fkey {
-        return Err(format!("主键「{main}」不支持，只能是 0-9、A-Z、F1-F12"));
+    // S7：截图最自然的键。仍受 ADR-018 的「1–2 个修饰键」约束，
+    // 单独按 PrintScreen 不算合法热键（那会覆盖 Win11 的系统截图键）。
+    let is_print_screen = matches!(mk.as_str(), "PRINTSCREEN" | "PRTSC" | "PRTSCR");
+    if !is_alpha_num && !is_fkey && !is_print_screen {
+        return Err(format!(
+            "主键「{main}」不支持，只能是 0-9、A-Z、F1-F12、PrintScreen"
+        ));
     }
 
     // 固定顺序归一化，保证同一个组合只有一种写法落进配置
@@ -72,7 +77,8 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
         .filter(|m| got.contains(m))
         .copied()
         .collect();
-    let normalized = format!("{}+{}", ordered.join("+"), mk);
+    let main_norm = if is_print_screen { "PrintScreen" } else { mk.as_str() };
+    let normalized = format!("{}+{}", ordered.join("+"), main_norm);
 
     // 兜底：真让库再解析一次，它认不出的组合不要存进配置
     tauri_plugin_global_shortcut::Shortcut::from_str(&normalized)
@@ -192,6 +198,24 @@ mod hotkey_tests {
             let s = format!("Ctrl+F{n}");
             assert_eq!(validate_hotkey(&s).unwrap(), s, "F{n} 应该被接受");
         }
+    }
+
+    #[test]
+    fn legal_print_screen() {
+        // S7：PrintScreen 可作主键，但仍要带 1–2 个修饰键
+        assert_eq!(
+            validate_hotkey("Ctrl+PrintScreen").unwrap(),
+            "Ctrl+PrintScreen"
+        );
+        assert_eq!(
+            validate_hotkey("ctrl+printscreen").unwrap(),
+            "Ctrl+PrintScreen"
+        );
+        assert_eq!(
+            validate_hotkey("Alt+Shift+PrtSc").unwrap(),
+            "Shift+Alt+PrintScreen"
+        );
+        assert!(validate_hotkey("PrintScreen").is_err(), "裸 PrintScreen 仍不合法");
     }
 
     #[test]

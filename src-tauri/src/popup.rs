@@ -27,6 +27,8 @@ pub const CONFIRM_LABEL: &str = "transfer_confirm";
 
 /// S5 OCR 框选 overlay：覆盖整个虚拟屏幕的透明窗口（暗幕 + 十字光标）。
 pub const OCR_LABEL: &str = "ocr_overlay";
+/// S7 截图框选 overlay。与 OCR 共用 `region_select`，只是 label / 页面不同。
+pub const SHOT_LABEL: &str = "shot_overlay";
 
 /// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
 /// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
@@ -125,7 +127,8 @@ const OUTSIDE_POLL_MS: u64 = 30;
 /// renderer 名额，设置窗口就渲染不出任何东西 —— 表现为纯白空白页；
 /// 随后关闭弹窗时 WebView2 环境状态被搅乱，主线程卡死、程序"无响应"。
 /// 省下来的那点内存（实测约 40 MB）远不值一个打不开的设置页。
-const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
+pub(crate) const WEBVIEW_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
 /// 最近一次要渲染的内容。前端加载完成前发的 `popup-render` 会丢，留一份给它补发。
 static PENDING: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
@@ -815,48 +818,21 @@ pub fn open_transfer_confirm(app: &AppHandle) {
     }
 }
 
-/// 打开 S5 OCR 框选 overlay：覆盖整个虚拟屏幕的透明窗口（暗幕 + 十字光标）。
-/// 已存在则聚焦（正常流程关闭即销毁，ADR-007，理论上不会再进来）。
+/// 打开 S5 OCR 框选 overlay。实现已抽到 `region_select`，OCR 的事件名与
+/// 行为保持不变（ADR-041）。
 /// **必须在主线程调用**（热键回调本身就在事件循环线程，直接调即可）。
-///
-/// 多显示器：用物理坐标摆位（虚拟屏幕原点可能是负数，逻辑坐标会摆错）。
-/// 混合 DPI 的多屏是 MVP 之外的边界，先按单值 dpr 处理（前端上报）。
 pub fn open_ocr_overlay(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(OCR_LABEL) {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return;
-    }
-    let (vx, vy, vw, vh) = crate::ocr::virtual_screen();
-    let r = WebviewWindowBuilder::new(
-        app,
-        OCR_LABEL,
-        WebviewUrl::App("ocr_overlay.html".into()),
-    )
-    .title("截图翻译")
-    .decorations(false)
-    .shadow(false)
-    .transparent(true)
-    .always_on_top(true)
-    .resizable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .skip_taskbar(true)
-    // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
-    .visible(false)
-    .additional_browser_args(WEBVIEW_ARGS)
-    .build();
+    crate::region_select::open(app, crate::region_select::Purpose::Ocr);
+}
 
-    match r {
-        Ok(win) => {
-            // 物理坐标摆位：盖满虚拟屏幕（含负原点的副屏）
-            let _ = win.set_position(tauri::PhysicalPosition::new(vx, vy));
-            let _ = win.set_size(tauri::PhysicalSize::new(vw.max(1) as u32, vh.max(1) as u32));
-            let _ = win.show();
-            let _ = win.set_focus();
-        }
-        Err(e) => crate::dlog::dlog(&format!("create ocr overlay failed: {e}")),
-    }
+/// 打开 S7 截图框选 overlay。与 OCR 共用窗口 / 坐标 / 取消语义。
+pub fn open_shot_overlay(app: &AppHandle) {
+    crate::region_select::open(app, crate::region_select::Purpose::Shot);
+}
+
+/// 关掉截图 overlay（Esc / 成功交付后）。窗口 destroy，下次热键重建。
+pub fn close_shot_overlay(app: &AppHandle) {
+    crate::region_select::close(app, crate::region_select::Purpose::Shot);
 }
 
 /// 打开「新建任务」窗口。已存在则聚焦，并把新链接补发过去。**必须在主线程调用。**

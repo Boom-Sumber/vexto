@@ -21,6 +21,8 @@ mod lang;
 mod mem;
 mod ocr;
 mod popup;
+mod region_select;
+mod screenshot;
 mod tools;
 mod transfer;
 mod tray;
@@ -429,8 +431,14 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
 }
 
 /// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
-/// `hotkey_ocr` 自 S5 起真注册（工具启用时）；`hotkey_download` 已在 S3a 注册。
-const HOTKEY_KEYS: [&str; 4] = ["hotkey", "hotkey_input", "hotkey_download", "hotkey_ocr"];
+/// `hotkey_ocr` / `hotkey_screenshot` 只在工具启用时注册。
+const HOTKEY_KEYS: [&str; 5] = [
+    "hotkey",
+    "hotkey_input",
+    "hotkey_download",
+    "hotkey_ocr",
+    "hotkey_screenshot",
+];
 
 fn is_hotkey_key(k: &str) -> bool {
     HOTKEY_KEYS.contains(&k)
@@ -491,6 +499,14 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
             Box::new(|a: &AppHandle| crate::popup::open_ocr_overlay(a)),
         ));
     }
+    // S7 截图：区域截图热键，工具启用时才注册（ADR-040）。
+    if cfg.enable_screenshot {
+        list.push((
+            "截图热键",
+            cfg.hotkey_screenshot.clone(),
+            Box::new(|a: &AppHandle| crate::popup::open_shot_overlay(a)),
+        ));
+    }
     hotkey::register_all(app, list)
 }
 
@@ -546,6 +562,88 @@ fn ocr_cancel(app: AppHandle) {
     }
 }
 
+// ---------- 命令：S7 截图 ----------
+
+/// 截图框选完成。与 OCR 共用藏窗时序与坐标换算，但交付的是图片而不是 OCR：
+/// 抓图 → 按 `screenshot_after_action` 存盘 / 剪贴板 / 复制路径 →
+/// `shot:result` 事件回浮层。成功时前端 1.2 秒后自动关窗；失败时卡片留在
+/// 屏幕上显示原因（不静默吞错）。
+#[tauri::command]
+fn shot_submit_region(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    dpr: Option<f64>,
+    app: AppHandle,
+) {
+    let win = match app.get_webview_window(crate::popup::SHOT_LABEL) {
+        Some(w) => w,
+        None => return,
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        // 遮罩是前端画的：收到命令时它可能还没从屏幕上消失，等一拍再截。
+        std::thread::sleep(std::time::Duration::from_millis(350));
+
+        let (px, py, pw, ph) = crate::region_select::physical_rect(x, y, w, h, dpr);
+        let payload = match crate::screenshot::run(crate::screenshot::Mode::Region {
+            x: px,
+            y: py,
+            w: pw,
+            h: ph,
+        }) {
+            Ok(d) => serde_json::json!({
+                "ok": true,
+                "message": d.message,
+                "path": d.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                "copied_image": d.copied_image,
+                "copied_path": d.copied_path,
+            }),
+            Err(e) => serde_json::json!({ "ok": false, "error": e }),
+        };
+        let _ = win.emit("shot:result", payload);
+    });
+}
+
+/// 关掉截图 overlay（Esc / 成功后的自动关闭）。
+#[tauri::command]
+fn shot_cancel(app: AppHandle) {
+    crate::popup::close_shot_overlay(&app);
+}
+
+/// 全屏截图（托盘 / 设置页按钮）。不建浮层，抓完直接交付。
+#[tauri::command]
+async fn shot_full() -> SaveOut {
+    shot_capture(crate::screenshot::Mode::FullScreen).await
+}
+
+/// 活动窗口截图（托盘 / 设置页按钮）。
+#[tauri::command]
+async fn shot_window() -> SaveOut {
+    shot_capture(crate::screenshot::Mode::ActiveWindow).await
+}
+
+async fn shot_capture(mode: crate::screenshot::Mode) -> SaveOut {
+    let r = tauri::async_runtime::spawn_blocking(move || crate::screenshot::run(mode)).await;
+    match r {
+        Ok(Ok(d)) => SaveOut {
+            ok: true,
+            message: d.message,
+            warnings: vec![],
+        },
+        Ok(Err(e)) => SaveOut {
+            ok: false,
+            message: e,
+            warnings: vec![],
+        },
+        Err(e) => SaveOut {
+            ok: false,
+            message: format!("截图任务失败：{e}"),
+            warnings: vec![],
+        },
+    }
+}
+
 // ---------- 命令：设置页 ----------
 
 /// 设置页左列表的唯一数据源。
@@ -591,6 +689,18 @@ fn get_tool_config(tool_id: String) -> ToolConfigOut {
                     if s.trim().is_empty() {
                         v = Value::String(
                             crate::transfer::server::resolve_receive_dir(&cfg)
+                                .to_string_lossy()
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+            // 截图保存目录：与下载 / 互传同一口径，留空时显示系统「图片\Vexto」。
+            if k == "screenshot_dir" {
+                if let Some(s) = v.as_str() {
+                    if s.trim().is_empty() {
+                        v = Value::String(
+                            crate::screenshot::output::default_dir()
                                 .to_string_lossy()
                                 .to_string(),
                         );
@@ -694,8 +804,24 @@ fn save_tool_config(
         patch.insert("receive_dir".to_string(), Value::String(default));
     }
 
+    // 截图保存目录同理：清空后保存也回写成「图片\Vexto」。
+    if patch
+        .get("screenshot_dir")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.trim().is_empty())
+    {
+        patch.insert(
+            "screenshot_dir".to_string(),
+            Value::String(
+                crate::screenshot::output::default_dir()
+                    .to_string_lossy()
+                    .to_string(),
+            ),
+        );
+    }
+
     // 3) 目录字段：不存在就提示（不阻塞保存，用户可能马上就要去建）
-    for k in ["download_dir", "receive_dir"] {
+    for k in ["download_dir", "receive_dir", "screenshot_dir"] {
         if let Some(Value::String(s)) = patch.get(k) {
             let s = s.trim();
             if !s.is_empty() && !std::path::Path::new(s).is_dir() {
@@ -737,6 +863,7 @@ fn save_tool_config(
     //    开头会 unregister_all，只重注册单个的话，另一个会被静默注销掉
     //    （S1 起就埋着的雷）。`enable_ocr` 决定 OCR 热键要不要注册。
     let hotkey_reregister = patch.contains_key("enable_ocr")
+        || patch.contains_key("enable_screenshot")
         || HOTKEY_KEYS.iter().any(|k| patch.contains_key(*k));
     if hotkey_reregister {
         let errs = register_hotkeys(&app, &cfg);
@@ -745,6 +872,9 @@ fn save_tool_config(
         warnings.extend(errs);
         if let Some(h) = normalized.get("hotkey") {
             tray::update_hotkey_label(&app, h);
+        }
+        if let Some(h) = normalized.get("hotkey_screenshot") {
+            tray::update_shot_hotkey_label(&app, h);
         }
     }
 
@@ -893,6 +1023,13 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
             extension_bridge::restart(app.clone());
         } else {
             extension_bridge::stop();
+        }
+    }
+    if tool_id == "screenshot" {
+        // 截图启停同样改变热键集合；停用时把可能开着的框选浮层一起收掉。
+        warnings.extend(register_hotkeys(&app, &config::load()));
+        if !enabled {
+            crate::popup::close_shot_overlay(&app);
         }
     }
     SaveOut {
@@ -1951,6 +2088,11 @@ fn main() {
             open_settings_cmd,
             ocr_submit_region,
             ocr_cancel,
+            // 截图（S7）
+            shot_submit_region,
+            shot_cancel,
+            shot_full,
+            shot_window,
             // 下载主窗口（S3b 后端）
             download_snapshot,
             download_pause,
@@ -2232,6 +2374,7 @@ mod tests {
     fn hotkey_keys_are_recognized() {
         assert!(is_hotkey_key("hotkey"));
         assert!(is_hotkey_key("hotkey_ocr"));
+        assert!(is_hotkey_key("hotkey_screenshot"));
         assert!(is_hotkey_key("hotkey_download"));
         assert!(!is_hotkey_key("appid"));
     }

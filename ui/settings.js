@@ -1182,7 +1182,7 @@ function fieldColor(f) {
 // ── 热键捕获状态机（规格见 docs/stages/S2-配置与设置中心.md §2.6.3 / ADR-018）──
 const MODS = ["Ctrl", "Shift", "Alt"];              // 白名单，顺序即归一化顺序
 const MOD_KEYS = { Control: "Ctrl", Shift: "Shift", Alt: "Alt" };
-const MAIN_RE = /^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-2]))$/;   // 主键白名单
+const MAIN_RE = /^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-2])|PrintScreen)$/;   // 主键白名单（S7 加 PrintScreen）
 
 let capture = null;   // { el, prev, mods: [], key }
 
@@ -1220,7 +1220,7 @@ function onKeyDown(e) {
   }
   const main = e.code.startsWith("Key") ? e.code.slice(3)
              : e.code.startsWith("Digit") ? e.code.slice(5)
-             : e.code;                        // F1..F12 原样
+             : e.code;                        // F1..F12 / PrintScreen 原样
   capture.el.value = normalizeMods(capture.mods) + "+" + main;
   endCapture(true);
 }
