@@ -548,7 +548,7 @@ pub fn start_service(cfg: &TransferConfig) -> Result<(), String> {
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
 
     let handle = std::thread::Builder::new()
-        .name("lightbox-transfer".into())
+        .name("vexto-transfer".into())
         .spawn(move || service_thread(cfg, tx, stop_rx))
         .map_err(|_| "传输服务线程启动失败，请重试".to_string())?;
 
@@ -659,14 +659,14 @@ impl TransferBackend for LanflareBackend {
 
 // ---------- 配置解析 ----------
 
-/// 接收目录：配置里留空 → 系统「下载」下的 `LightBox` 子目录（设置页文案同款）。
+/// 接收目录：配置里留空 → 系统「下载」下的 `Vexto` 子目录（设置页文案同款，ADR-038）。
 ///
 /// 不能直接拼 `%USERPROFILE%\Downloads`（可能被重定向），复用下载模块
 /// `SHGetKnownFolderPath` 的实现（不改那边代码，只调它的 pub fn）。
 pub fn resolve_receive_dir(cfg: &config::Config) -> PathBuf {
     let raw = cfg.receive_dir.trim();
     if raw.is_empty() {
-        return PathBuf::from(crate::download::engine::default_download_dir()).join("LightBox");
+        return PathBuf::from(crate::download::engine::default_download_dir()).join("Vexto");
     }
     // 与 download::resolve_dir 同口径：剔换行、正斜杠归一成反斜杠。
     PathBuf::from(raw.replace(['\r', '\n'], "").replace('/', "\\"))
@@ -674,7 +674,7 @@ pub fn resolve_receive_dir(cfg: &config::Config) -> PathBuf {
 
 /// 持久化 TLS 身份（自签证书 + 私钥 + 指纹）。
 ///
-/// 存 `%APPDATA%\lightbox\transfer-identity.json`，**不进 config.json**：
+/// 存 `%APPDATA%\vexto\transfer-identity.json`（ADR-038），**不进 config.json**：
 /// 证书体是运行数据不是用户设置。fingerprint = 证书 SHA-256，
 /// 正是 LocalSend 协议「HTTPS 模式指纹」的定义（§S4.3.2）。
 fn identity_path() -> PathBuf {
@@ -1232,10 +1232,10 @@ mod tests {
     }
 
     #[test]
-    fn receive_dir_empty_resolves_to_lightbox_subdir() {
+    fn receive_dir_empty_resolves_to_vexto_subdir() {
         let cfg = config::Config::default();
         let p = resolve_receive_dir(&cfg);
-        assert!(p.ends_with("LightBox"), "留空应解析到 LightBox 子目录：{p:?}");
+        assert!(p.ends_with("Vexto"), "留空应解析到 Vexto 子目录：{p:?}");
     }
 
     #[test]

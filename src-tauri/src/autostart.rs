@@ -5,9 +5,10 @@
 //! `windows` crate 的注册表 API 本来就在依赖里（代理读 WinINET 用的同一个 feature）。
 //!
 //! 三条约定：
-//! - 值名固定 `LightBox`，**不带版本号**：升级换了 exe 路径时才能原地覆盖；
+//! - 值名固定 `Vexto`（ADR-038；更名前是 `LightBox`），**不带版本号**：
+//!   升级换了 exe 路径时才能原地覆盖；
 //! - 值内容是**带引号的绝对路径**——Windows 会在第一个空格处切命令行，
-//!   `C:\Program Files\LightBox\lightbox.exe` 不加引号会被当成 `C:\Program` + 参数；
+//!   `C:\Program Files\Vexto\Vexto.exe` 不加引号会被当成 `C:\Program` + 参数；
 //! - 只写 HKCU：不需要管理员权限，也不会影响这台机器上的其他用户。
 
 use windows::core::HSTRING;
@@ -20,8 +21,8 @@ use windows::Win32::System::Registry::{
 
 /// 当前用户的启动项。**不要**换成 HKLM：那需要管理员权限。
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-/// 注册表里的值名。任务管理器「启动」页会把它显示成 `LightBox`。
-const VALUE_NAME: &str = "LightBox";
+/// 注册表里的值名。任务管理器「启动」页会把它显示成 `Vexto`。
+const VALUE_NAME: &str = "Vexto";
 
 /// 要写进注册表的命令行：带引号的 exe 绝对路径。
 ///
@@ -190,7 +191,7 @@ mod tests {
     #[test]
     fn target_is_the_hkcu_run_key() {
         assert_eq!(RUN_KEY, r"Software\Microsoft\Windows\CurrentVersion\Run");
-        assert_eq!(VALUE_NAME, "LightBox");
+        assert_eq!(VALUE_NAME, "Vexto");
     }
 
     /// UTF-16 + 结尾 NUL：REG_SZ 必须显式带终止符，否则系统会读串。

@@ -24,9 +24,10 @@ pub fn is_enabled() -> bool {
     })
 }
 
+/// `%APPDATA%\vexto\debug.log`（ADR-038）。与配置文件同目录，迁移只带配置，
+/// 所以更名后日志从新文件开始写，老日志留在 `%APPDATA%\lightbox\debug.log`。
 pub fn log_path() -> PathBuf {
-    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(base).join("lightbox").join("debug.log")
+    crate::config::data_dir().join("debug.log")
 }
 
 /// 超过上限就把文件截成「最后 512 KB」。

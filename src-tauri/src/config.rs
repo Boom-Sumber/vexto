@@ -1,4 +1,4 @@
-//! 配置读写：`%APPDATA%\lightbox\config.json`。
+//! 配置读写：`%APPDATA%\vexto\config.json`（ADR-038；更名前是 `%APPDATA%\lightbox`）。
 //!
 //! **只增字段**（ADR-013）：新字段一律 `#[serde(default)]` 或 `#[serde(default = "...")]`，
 //! 这样老配置文件永远能被新版本读出来。反过来（同版本写的配置被老版本读）不做保证。
@@ -6,7 +6,8 @@
 //! S2 一次性把 S3–S5 要用的字段全定好，避免每个阶段都动一次这个文件。
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Once;
 
 /// 翻译模式取值。`engine_mode` 只认这三个，代码里一律用常量，避免拼错。
 pub const MODE_VENDOR_MT: &str = "vendor_mt";
@@ -201,7 +202,7 @@ pub struct Config {
     // ---- 路径 ----
     #[serde(default)]
     pub download_dir: String,
-    /// 局域网互传的接收目录。**留空 = 系统「下载」下的 LightBox 子目录**
+    /// 局域网互传的接收目录。**留空 = 系统「下载」下的 Vexto 子目录**
     /// （解析在 transfer/server.rs::resolve_receive_dir，不在保存时回填）。
     #[serde(default)]
     pub receive_dir: String,
@@ -554,17 +555,65 @@ impl Default for Config {
     }
 }
 
-pub fn config_path() -> PathBuf {
-    let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(base).join("lightbox").join("config.json")
+/// 数据目录名。ADR-038：更名 Vexto 后统一为 `vexto`（更名前是 `lightbox`）。
+pub const DATA_DIR_NAME: &str = "vexto";
+/// 更名前的老目录名。只在一次性迁移时读，之后不再写入（ADR-038）。
+pub const LEGACY_DATA_DIR_NAME: &str = "lightbox";
+
+fn appdata() -> PathBuf {
+    std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
-/// 日志目录（设置页「打开日志目录」用）。
+/// `%APPDATA%\vexto`
+pub fn data_dir() -> PathBuf {
+    appdata().join(DATA_DIR_NAME)
+}
+
+/// `%APPDATA%\lightbox`（更名前的目录，只读；迁移后原样保留，不删）
+pub fn legacy_data_dir() -> PathBuf {
+    appdata().join(LEGACY_DATA_DIR_NAME)
+}
+
+pub fn config_path() -> PathBuf {
+    data_dir().join("config.json")
+}
+
+/// 日志目录（设置页「打开日志目录」用）。与配置文件同目录。
 pub fn log_dir() -> PathBuf {
-    match config_path().parent() {
-        Some(p) => p.to_path_buf(),
-        None => PathBuf::from("."),
+    data_dir()
+}
+
+static MIGRATION: Once = Once::new();
+
+/// 一次性把老目录的 `config.json` 复制到新目录（ADR-038）。
+///
+/// **只搬配置**：互传身份（证书 / 私钥 / 指纹）不搬，新目录里自然重新生成；
+/// 传输历史、下载历史、aria2 会话、调试日志一律不带（清空重新开始）。
+/// 旧目录原样留着当只读兜底，本函数不删任何东西。幂等：新目录已有配置就跳过。
+pub fn migrate_legacy_data() {
+    MIGRATION.call_once(|| {
+        if let Err(e) = migrate_config_file(&config_path(), &legacy_data_dir().join("config.json"))
+        {
+            // 迁移失败不致命：load() 会回落到默认值，用户重填一次即可（与读配置失败同口径）。
+            crate::dlog::dlog(&format!("config: 迁移旧配置失败：{e}"));
+        }
+    });
+}
+
+/// 迁移动作本身，抽成纯函数便于单测（不读环境变量）。
+///
+/// 返回 `true` = 确实搬了；`false` = 新目录已有配置 / 老目录没有配置，无需搬。
+fn migrate_config_file(new: &Path, legacy: &Path) -> Result<bool, String> {
+    if new.exists() || !legacy.exists() {
+        return Ok(false);
     }
+    if let Some(dir) = new.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("无法创建数据目录：{e}"))?;
+    }
+    std::fs::copy(legacy, new).map_err(|e| format!("复制旧配置失败：{e}"))?;
+    Ok(true)
 }
 
 /// 读配置。文件不存在、读不动、JSON 坏掉，一律回落到默认值——
@@ -860,6 +909,8 @@ impl Config {
 }
 
 pub fn load() -> Config {
+    // 更名后第一次读配置时，把老目录的配置搬过来（幂等，ADR-038）。
+    migrate_legacy_data();
     let mut cfg = match std::fs::read_to_string(config_path()) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
         Err(_) => Config::default(),
@@ -882,10 +933,54 @@ pub fn save(cfg: &Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        migrate_engine, migrate_openai, migrate_vendors, Config, ModelProfile, VendorProfile,
-        LLM_ENGINE_SUFFIX, MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU,
-        VENDOR_YOUDAO,
+        migrate_config_file, migrate_engine, migrate_openai, migrate_vendors, Config,
+        ModelProfile, VendorProfile, DATA_DIR_NAME, LEGACY_DATA_DIR_NAME, LLM_ENGINE_SUFFIX,
+        MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
     };
+
+    /// ADR-038：数据目录叫 `vexto`，老目录 `lightbox` 只作为迁移来源存在。
+    #[test]
+    fn data_dir_is_vexto_and_legacy_is_lightbox() {
+        assert_eq!(DATA_DIR_NAME, "vexto");
+        assert_eq!(LEGACY_DATA_DIR_NAME, "lightbox");
+        assert!(super::config_path().ends_with(std::path::Path::new("vexto").join("config.json")));
+        assert!(super::legacy_data_dir().ends_with("lightbox"));
+    }
+
+    /// 老目录有配置、新目录没有 → 逐字节复制一份，老文件原样留着。
+    #[test]
+    fn migrates_legacy_config_byte_identical() {
+        let dir = std::env::temp_dir().join(format!("vexto-migrate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let legacy = dir.join("lightbox").join("config.json");
+        let new = dir.join("vexto").join("config.json");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        // 带 BOM 无关的普通字节：迁移必须是纯拷贝，不做任何解析/重排。
+        std::fs::write(&legacy, b"{\"appid\":\"x\"}\r\n").unwrap();
+
+        assert!(migrate_config_file(&new, &legacy).unwrap());
+        assert_eq!(std::fs::read(&new).unwrap(), b"{\"appid\":\"x\"}\r\n");
+        assert!(legacy.exists(), "老配置必须保留，不能搬走");
+
+        // 第二次调用不覆盖新配置（用户以后改过的设置不会被老文件扳回去）。
+        std::fs::write(&new, b"{\"appid\":\"new\"}").unwrap();
+        assert!(!migrate_config_file(&new, &legacy).unwrap());
+        assert_eq!(std::fs::read(&new).unwrap(), b"{\"appid\":\"new\"}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 老目录没有配置 → 什么都不做，也不该凭空建出新目录。
+    #[test]
+    fn no_legacy_config_creates_nothing() {
+        let dir = std::env::temp_dir().join(format!("vexto-migrate-none-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let legacy = dir.join("lightbox").join("config.json");
+        let new = dir.join("vexto").join("config.json");
+
+        assert!(!migrate_config_file(&new, &legacy).unwrap());
+        assert!(!dir.join("vexto").exists(), "没有可迁移的配置就不该建目录");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// 老版本只有 appid，新版本加了字段也必须能读出来（ADR-013）。
     #[test]

@@ -1,4 +1,4 @@
-//! 传输历史：`%APPDATA%\lightbox\transfer-history.json`。
+//! 传输历史：`%APPDATA%\vexto\transfer-history.json`（ADR-038）。
 //!
 //! 一条 = **一次会话**（收或发），最新的在最前面；最多留 [`MAX_ENTRIES`] 条，
 //! 超了从尾部砍。写入用「临时文件 + rename」，避免写一半断电留下半个 JSON。

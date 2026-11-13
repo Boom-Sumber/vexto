@@ -19,7 +19,7 @@ pub struct TransferConfig {
     pub alias: String,
     /// 服务端口（UDP 组播 + TCP 同号）。
     pub port: u16,
-    /// 接收目录（已解析：空值 → 系统「下载」下 LightBox 子目录）。
+    /// 接收目录（已解析：空值 → 系统「下载」下 Vexto 子目录）。
     pub receive_dir: PathBuf,
     /// 接收是否要求对方输入 PIN（校验链路在 S4b）。
     pub require_pin: bool,

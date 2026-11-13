@@ -1111,7 +1111,7 @@ el("tpConfirmYes").addEventListener("click", () => {
 
 // ── 历史记录（S4 · 会话 45） ────────────────────────────────────────────
 //
-// 一条 = 一次会话（收或发）。数据在 `%APPDATA%\lightbox\transfer-history.json`，
+// 一条 = 一次会话（收或发）。数据在 `%APPDATA%\vexto\transfer-history.json`，
 // 后端翻页（历史可能有几百条，不该整包丢给前端）。
 const hsView = { page: 1, pageSize: 20, total: 0, items: [], menuId: null };
 
