@@ -122,6 +122,11 @@ fn unique_path(dir: &Path, stem: &str) -> PathBuf {
     dir.join(format!("{stem} ({}).png", std::process::id()))
 }
 
+/// 长图 / 预览共用的下一个可用 PNG 路径（不覆盖已有文件）。
+pub(crate) fn next_png_path(dir: &Path) -> PathBuf {
+    unique_path(dir, &file_stem())
+}
+
 #[cfg(windows)]
 fn local_time() -> windows::Win32::Foundation::SYSTEMTIME {
     unsafe { windows::Win32::System::SystemInformation::GetLocalTime() }

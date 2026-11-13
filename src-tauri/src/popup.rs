@@ -29,6 +29,10 @@ pub const CONFIRM_LABEL: &str = "transfer_confirm";
 pub const OCR_LABEL: &str = "ocr_overlay";
 /// S7 截图框选 overlay。与 OCR 共用 `region_select`，只是 label / 页面不同。
 pub const SHOT_LABEL: &str = "shot_overlay";
+/// S7 滚动截图的框选 overlay（选区确定后立刻销毁，换成进度小窗）。
+pub const SCROLL_LABEL: &str = "scroll_overlay";
+/// 滚动截图的进度 / 停止小窗。放在选区之外，捕获期间不会被截进图。
+pub const SCROLL_CONTROL_LABEL: &str = "scroll_control";
 
 /// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
 /// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
@@ -833,6 +837,82 @@ pub fn open_shot_overlay(app: &AppHandle) {
 /// 关掉截图 overlay（Esc / 成功交付后）。窗口 destroy，下次热键重建。
 pub fn close_shot_overlay(app: &AppHandle) {
     crate::region_select::close(app, crate::region_select::Purpose::Shot);
+}
+
+/// 打开滚动截图框选 overlay。选完区域后由前端调 `scroll_start`。
+pub fn open_scroll_overlay(app: &AppHandle) {
+    crate::region_select::open(app, crate::region_select::Purpose::Scroll);
+}
+
+/// 关掉滚动截图框选 overlay。
+pub fn close_scroll_overlay(app: &AppHandle) {
+    crate::region_select::close(app, crate::region_select::Purpose::Scroll);
+}
+
+/// 滚动截图的进度 / 停止小窗。
+///
+/// 位置优先选虚拟屏幕四角中**不与选区相交**的那一个：捕获期间它一直在屏幕上，
+/// 落在选区里就会被拼进长图（06 §6.4.5 B11）。
+pub fn open_scroll_control(app: &AppHandle, sel: (i32, i32, i32, i32), dpr: f64) {
+    if let Some(w) = app.get_webview_window(SCROLL_CONTROL_LABEL) {
+        let _ = w.destroy();
+    }
+    let dpr = if dpr.is_finite() && dpr > 0.0 { dpr } else { 1.0 };
+    let logical_w = 300.0f64;
+    let logical_h = 176.0f64;
+    let pw = (logical_w * dpr).round() as i32;
+    let ph = (logical_h * dpr).round() as i32;
+    let margin = (16.0 * dpr).round() as i32;
+    let (vx, vy, vw, vh) = crate::ocr::virtual_screen();
+    let candidates = [
+        (vx + vw - pw - margin, vy + vh - ph - margin),
+        (vx + vw - pw - margin, vy + margin),
+        (vx + margin, vy + vh - ph - margin),
+        (vx + margin, vy + margin),
+    ];
+    let (sx, sy, sw, sh) = sel;
+    let (px, py) = candidates
+        .into_iter()
+        .find(|(x, y)| !overlaps((*x, *y, pw, ph), (sx, sy, sw, sh)))
+        .unwrap_or(candidates[0]);
+
+    let r = WebviewWindowBuilder::new(
+        app,
+        SCROLL_CONTROL_LABEL,
+        WebviewUrl::App("scroll_control.html".into()),
+    )
+    .title("滚动截图")
+    .decorations(false)
+    .always_on_top(true)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .skip_taskbar(true)
+    // 不抢焦点：抢了之后用户没法在目标窗口里继续滚（半自动模式）。
+    .focused(false)
+    .inner_size(logical_w, logical_h)
+    .additional_browser_args(WEBVIEW_ARGS)
+    .build();
+
+    match r {
+        Ok(win) => {
+            let _ = win.set_position(tauri::PhysicalPosition::new(px, py));
+        }
+        Err(e) => crate::dlog::dlog(&format!("create scroll control failed: {e}")),
+    }
+}
+
+fn overlaps(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
+    let (ax, ay, aw, ah) = a;
+    let (bx, by, bw, bh) = b;
+    ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
+}
+
+/// 关掉滚动截图进度窗。
+pub fn close_scroll_control(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(SCROLL_CONTROL_LABEL) {
+        let _ = w.destroy();
+    }
 }
 
 /// 打开「新建任务」窗口。已存在则聚焦，并把新链接补发过去。**必须在主线程调用。**

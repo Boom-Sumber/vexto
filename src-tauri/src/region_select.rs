@@ -9,12 +9,13 @@
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-use crate::popup::{OCR_LABEL, SHOT_LABEL, WEBVIEW_ARGS};
+use crate::popup::{OCR_LABEL, SCROLL_LABEL, SHOT_LABEL, WEBVIEW_ARGS};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Purpose {
     Ocr,
     Shot,
+    Scroll,
 }
 
 impl Purpose {
@@ -22,6 +23,7 @@ impl Purpose {
         match self {
             Purpose::Ocr => OCR_LABEL,
             Purpose::Shot => SHOT_LABEL,
+            Purpose::Scroll => SCROLL_LABEL,
         }
     }
 
@@ -29,6 +31,7 @@ impl Purpose {
         match self {
             Purpose::Ocr => "ocr_overlay.html",
             Purpose::Shot => "screenshot_overlay.html",
+            Purpose::Scroll => "scroll_overlay.html",
         }
     }
 
@@ -36,6 +39,7 @@ impl Purpose {
         match self {
             Purpose::Ocr => "截图翻译",
             Purpose::Shot => "截图",
+            Purpose::Scroll => "滚动截图",
         }
     }
 }

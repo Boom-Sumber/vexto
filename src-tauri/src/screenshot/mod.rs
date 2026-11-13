@@ -9,7 +9,10 @@
 //! 只有热键或托盘动作真正发生时才跑一次。
 
 pub mod capture;
+pub mod input;
 pub mod output;
+pub mod scroll;
+pub mod stitch;
 
 use crate::config::Config;
 use crate::ocr::CapturedImage;

@@ -4,11 +4,18 @@
 (function () {
   const invoke = window.__TAURI__.core.invoke;
   const el = (id) => document.getElementById(id);
-  const purpose = document.body.dataset.purpose === "shot" ? "shot" : "ocr";
+  const purpose =
+    document.body.dataset.purpose === "shot"
+      ? "shot"
+      : document.body.dataset.purpose === "scroll"
+        ? "scroll"
+        : "ocr";
   const api =
-    purpose === "shot"
-      ? { submit: "shot_submit_region", cancel: "shot_cancel", event: "shot:result" }
-      : { submit: "ocr_submit_region", cancel: "ocr_cancel", event: "ocr:result" };
+    purpose === "scroll"
+      ? { submit: "scroll_start", cancel: "scroll_cancel", event: "scroll:done" }
+      : purpose === "shot"
+        ? { submit: "shot_submit_region", cancel: "shot_cancel", event: "shot:result" }
+        : { submit: "ocr_submit_region", cancel: "ocr_cancel", event: "ocr:result" };
 
   let translated = "";
   // 结果卡复用加载卡的锚点：框选落点附近，避免完成后跳到屏幕中上。
@@ -63,12 +70,13 @@
 
     // 立刻藏暗幕（截屏不能把遮罩截进去），再交给后端。
     // 截图模式**不画「处理中」卡**：卡会出现在选区里被截进图；只在结果回来后再画。
+    // 滚动截图同理：选完就把窗口交给后端销毁，进度显示在选区之外的独立小窗。
     el("dim").classList.add("hidden");
-    if (purpose === "shot") {
+    if (purpose === "ocr") {
+      showLoading(ev.clientX, ev.clientY);
+    } else {
       anchorX = ev.clientX + 14;
       anchorY = ev.clientY + 18;
-    } else {
-      showLoading(ev.clientX, ev.clientY);
     }
     invoke(api.submit, {
       x: Math.min(sx, ev.clientX),
@@ -104,6 +112,8 @@
 
   function showResult(p) {
     if (purpose === "shot") return showShotResult(p);
+    // 滚动截图的结果由独立进度小窗展示；框选浮层此时已经销毁。
+    if (purpose === "scroll") return;
     el("card-original").style.display = "";
     el("card-acts").style.display = "";
     el("card-tag").textContent = p.ok ? "截图翻译 · " + (p.from || "") : "截图翻译";

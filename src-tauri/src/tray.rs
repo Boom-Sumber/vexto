@@ -42,7 +42,7 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
     *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate_item.clone());
     items.push(Box::new(translate_item));
 
-    // 截图子菜单（S7）：三个模式。工具未启用时点任何一项都跳到设置页的
+    // 截图子菜单（S7）：四个模式。工具未启用时点任何一项都跳到设置页的
     // 「截图」分区——不静默无反应，也不在未启用时注册热键 / 建浮层。
     let shot_hotkey = crate::config::load().hotkey_screenshot;
     let shot_region = MenuItem::with_id(
@@ -53,13 +53,14 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
         None::<&str>,
     )?;
     *SHOT_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(shot_region.clone());
+    let shot_scroll = MenuItem::with_id(app, "shot-scroll", "滚动截图", true, None::<&str>)?;
     let shot_full = MenuItem::with_id(app, "shot-full", "全屏截图", true, None::<&str>)?;
     let shot_window = MenuItem::with_id(app, "shot-window", "活动窗口截图", true, None::<&str>)?;
     let shot_menu = Submenu::with_items(
         app,
         "截图",
         true,
-        &[&shot_region, &shot_full, &shot_window],
+        &[&shot_region, &shot_scroll, &shot_full, &shot_window],
     )?;
     items.push(Box::new(shot_menu));
 
@@ -130,6 +131,13 @@ pub fn build(app: &AppHandle, hotkey: &str) -> tauri::Result<()> {
                 "shot-region" => {
                     if crate::config::load().enable_screenshot {
                         crate::popup::open_shot_overlay(app);
+                    } else {
+                        crate::open_settings_at(app, "screenshot");
+                    }
+                }
+                "shot-scroll" => {
+                    if crate::config::load().enable_screenshot {
+                        crate::popup::open_scroll_overlay(app);
                     } else {
                         crate::open_settings_at(app, "screenshot");
                     }

@@ -500,11 +500,19 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
         ));
     }
     // S7 截图：区域截图热键，工具启用时才注册（ADR-040）。
+    // 滚动截图进行中时，这个热键变成「停止」——半自动模式下用户双手在滚动，
+    // 不一定要去点小窗上的按钮。
     if cfg.enable_screenshot {
         list.push((
             "截图热键",
             cfg.hotkey_screenshot.clone(),
-            Box::new(|a: &AppHandle| crate::popup::open_shot_overlay(a)),
+            Box::new(|a: &AppHandle| {
+                if crate::screenshot::scroll::is_running() {
+                    crate::screenshot::scroll::request_stop();
+                } else {
+                    crate::popup::open_shot_overlay(a);
+                }
+            }),
         ));
     }
     hotkey::register_all(app, list)
@@ -642,6 +650,94 @@ async fn shot_capture(mode: crate::screenshot::Mode) -> SaveOut {
             warnings: vec![],
         },
     }
+}
+
+/// 滚动截图：浮层选完区域后调用。
+///
+/// 先销毁框选浮层——它盖在目标窗口上，既会挡滚轮又会被截进图；随后建一个
+/// 选区之外的小进度窗，主循环跑在工作线程（抓屏 / 拼行 / 编码都不该占事件循环）。
+#[tauri::command]
+fn scroll_start(x: f64, y: f64, w: f64, h: f64, dpr: Option<f64>, app: AppHandle) {
+    let (px, py, pw, ph) = crate::region_select::physical_rect(x, y, w, h, dpr);
+    crate::popup::close_scroll_overlay(&app);
+    let dpr = dpr.filter(|d| d.is_finite() && *d > 0.0).unwrap_or(1.0);
+
+    // 与 `open_settings_cmd` 同一个坑：在 IPC 回调里**同步**建第二个 WebView，
+    // controller 会卡在 0x0 —— 窗口有了、页面却是 about:blank（会话 16/18
+    // 各踩一次，会话 62 自测又踩一次）。排到工作线程睡 300ms 跨过当前事件
+    // 循环 tick，再回主线程建窗。
+    {
+        let app_win = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let a = app_win.clone();
+            let _ = app_win.run_on_main_thread(move || {
+                crate::popup::open_scroll_control(&a, (px, py, pw, ph), dpr);
+            });
+        });
+    }
+
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let cfg = config::load();
+        let mut on_progress = |p: crate::screenshot::scroll::Progress| {
+            let stage = match p.stage {
+                crate::screenshot::scroll::Stage::Capturing => "capturing",
+                crate::screenshot::scroll::Stage::Writing => "writing",
+            };
+            let _ = app2.emit_to(
+                crate::popup::SCROLL_CONTROL_LABEL,
+                "scroll:progress",
+                json!({
+                    "stage": stage,
+                    "frames": p.frames,
+                    "height": p.height,
+                    "added": p.added,
+                }),
+            );
+        };
+        let done = crate::screenshot::scroll::run(
+            crate::screenshot::scroll::Rect {
+                x: px,
+                y: py,
+                w: pw,
+                h: ph,
+            },
+            &cfg,
+            &mut on_progress,
+        );
+        crate::dlog::dlog(&format!("scroll: {}", done.message));
+        let _ = app2.emit_to(
+            crate::popup::SCROLL_CONTROL_LABEL,
+            "scroll:done",
+            json!({
+                "status": done.status.as_str(),
+                "message": done.message,
+                "path": done.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                "width": done.width,
+                "height": done.height,
+                "frames": done.frames,
+            }),
+        );
+    });
+}
+
+/// 停止滚动截图（小窗按钮 / 截图热键）。
+#[tauri::command]
+fn scroll_stop() {
+    crate::screenshot::scroll::request_stop();
+}
+
+/// 关掉滚动截图框选浮层（Esc / 太小的误触框）。
+#[tauri::command]
+fn scroll_cancel(app: AppHandle) {
+    crate::popup::close_scroll_overlay(&app);
+}
+
+/// 关掉滚动截图进度窗。
+#[tauri::command]
+fn scroll_close(app: AppHandle) {
+    crate::popup::close_scroll_control(&app);
 }
 
 // ---------- 命令：设置页 ----------
@@ -2093,6 +2189,11 @@ fn main() {
             shot_cancel,
             shot_full,
             shot_window,
+            // 滚动截图（S7 会话 62）
+            scroll_start,
+            scroll_stop,
+            scroll_cancel,
+            scroll_close,
             // 下载主窗口（S3b 后端）
             download_snapshot,
             download_pause,
