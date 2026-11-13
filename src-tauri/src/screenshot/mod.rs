@@ -11,6 +11,8 @@
 pub mod capture;
 pub mod input;
 pub mod output;
+pub mod pin;
+pub mod preview;
 pub mod scroll;
 pub mod stitch;
 

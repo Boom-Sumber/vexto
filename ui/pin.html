@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>钉屏</title>
+<style>
+/* 极简页面（S7 §S7.6 会话 63 步 3）：不加载 tokens / icons / base，只保留
+   拖动区、图片与一排小按钮，尽量压低单窗内存。 */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: move;
+}
+#img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .38);
+  pointer-events: none;
+}
+#bar {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(22, 22, 26, .8);
+  color: #eee;
+  font: 12px "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+body:hover #bar { opacity: 1; }
+button {
+  all: unset;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 50%;
+  color: #eee;
+  cursor: pointer;
+}
+button:hover { background: rgba(255, 255, 255, .18); }
+#idx {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #cfcfd6;
+}
+</style>
+</head>
+<body>
+  <div id="stage" data-tauri-drag-region>
+    <img id="img" alt="" draggable="false" />
+  </div>
+  <div id="bar" data-tauri-drag-region>
+    <button id="prev" title="上一张（←）">‹</button>
+    <span id="idx">1/1</span>
+    <button id="next" title="下一张（→）">›</button>
+    <button id="close" title="关闭（Esc）">×</button>
+  </div>
+<script src="pin.js"></script>
+</body>
+</html>

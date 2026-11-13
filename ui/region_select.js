@@ -18,6 +18,8 @@
         : { submit: "ocr_submit_region", cancel: "ocr_cancel", event: "ocr:result" };
 
   let translated = "";
+  // 截图成功后结果卡上「钉屏 / 预览」要用的文件路径（会话 63）。
+  let lastPath = "";
   // 结果卡复用加载卡的锚点：框选落点附近，避免完成后跳到屏幕中上。
   let anchorX = 0, anchorY = 0;
   let closeTimer = 0;
@@ -132,7 +134,8 @@
     }
   }
 
-  // 截图成功：后端已把图 / 路径交付完，这里只确认一下，1.2 秒后自动关窗。
+  // 截图成功：后端已把图 / 路径交付完，这里只确认一下。
+  // 4 秒后自动关窗；鼠标移到卡片上就取消自动关闭，给「钉屏 / 预览」留时间。
   // 失败：留在屏幕上显示原因，用户按 Esc / 关闭。
   function showShotResult(p) {
     el("card-original").style.display = "none";
@@ -140,6 +143,9 @@
     el("copyBtn").style.display = "none";
     el("card-tag").textContent = "截图";
     if (p.ok) {
+      lastPath = p.path || "";
+      el("pinBtn").style.display = lastPath ? "" : "none";
+      el("previewBtn").style.display = lastPath ? "" : "none";
       el("card-text").className = "translated";
       el("card-text").textContent = p.message || "已完成";
       const path = el("shotPath");
@@ -148,7 +154,7 @@
         path.style.display = p.path ? "block" : "none";
       }
       placeCard(anchorX, anchorY);
-      closeTimer = setTimeout(cancel, 1200);
+      closeTimer = setTimeout(cancel, 4000);
     } else {
       el("card-text").className = "translated card-error";
       el("card-text").textContent = p.error || "截图失败";
@@ -162,4 +168,20 @@
     if (translated) invoke("copy_text", { text: translated }).catch(() => {});
   });
   el("closeBtn").addEventListener("click", cancel);
+
+  // 钉屏 / 预览：先让后端加图，再关掉浮层（浮层是全屏置顶，会盖住新窗口）。
+  function openFromCard(cmd) {
+    if (!lastPath) return;
+    invoke(cmd, { path: lastPath })
+      .then(cancel)
+      .catch(cancel);
+  }
+  el("pinBtn").addEventListener("click", () => openFromCard("pin_add"));
+  el("previewBtn").addEventListener("click", () => openFromCard("preview_open"));
+  el("card").addEventListener("mouseenter", () => {
+    if (closeTimer) {
+      clearTimeout(closeTimer);
+      closeTimer = 0;
+    }
+  });
 })();

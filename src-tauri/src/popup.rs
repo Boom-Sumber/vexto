@@ -33,6 +33,10 @@ pub const SHOT_LABEL: &str = "shot_overlay";
 pub const SCROLL_LABEL: &str = "scroll_overlay";
 /// 滚动截图的进度 / 停止小窗。放在选区之外，捕获期间不会被截进图。
 pub const SCROLL_CONTROL_LABEL: &str = "scroll_control";
+/// 钉屏窗口（单窗多图，会话 63）。
+pub const PIN_LABEL: &str = "pin";
+/// 截图预览窗口：裁头尾 + 送存盘 / 剪贴板 / 钉屏 / OCR（会话 63）。
+pub const PREVIEW_LABEL: &str = "preview";
 
 /// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
 /// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
@@ -911,6 +915,92 @@ fn overlaps(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
 /// 关掉滚动截图进度窗。
 pub fn close_scroll_control(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(SCROLL_CONTROL_LABEL) {
+        let _ = w.destroy();
+    }
+}
+
+/// 打开 / 聚焦钉屏窗口。单窗多图：已有窗口时只切换图片并调整大小。
+/// **必须在主线程调用**（会话 62 坑 11：IPC 回调里同步建第二个 WebView 会 about:blank）。
+pub fn open_pin_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(PIN_LABEL) {
+        let _ = w.show();
+        let _ = w.set_focus();
+        crate::screenshot::pin::fit_window(&w);
+        crate::screenshot::pin::emit_state(&w);
+        return;
+    }
+    let r = WebviewWindowBuilder::new(app, PIN_LABEL, WebviewUrl::App("pin.html".into()))
+        .title("钉屏")
+        .decorations(false)
+        .shadow(false)
+        .transparent(true)
+        .always_on_top(true)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .skip_taskbar(true)
+        .inner_size(480.0, 360.0)
+        // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
+        .visible(false)
+        .additional_browser_args(WEBVIEW_ARGS)
+        .build();
+    match r {
+        Ok(win) => {
+            win.on_window_event(|ev| {
+                if matches!(ev, tauri::WindowEvent::Destroyed) {
+                    crate::screenshot::pin::on_window_destroyed();
+                }
+            });
+            crate::screenshot::pin::fit_window(&win);
+            let _ = win.center();
+        }
+        Err(e) => crate::dlog::dlog(&format!("create pin window failed: {e}")),
+    }
+}
+
+/// 关掉钉屏窗口（关闭按钮 / Esc）。销毁事件里统一清状态。
+pub fn close_pin_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(PIN_LABEL) {
+        let _ = w.destroy();
+    }
+}
+
+/// 打开 / 聚焦截图预览窗口。
+/// **必须在主线程调用**（同上，坑 11）。
+pub fn open_preview_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(PREVIEW_LABEL) {
+        let _ = w.show();
+        let _ = w.set_focus();
+        crate::screenshot::preview::emit_state(&w);
+        return;
+    }
+    let r = WebviewWindowBuilder::new(
+        app,
+        PREVIEW_LABEL,
+        WebviewUrl::App("preview.html".into()),
+    )
+    .title("截图预览")
+    .inner_size(980.0, 780.0)
+    .min_inner_size(640.0, 480.0)
+    .visible(false)
+    .center()
+    .additional_browser_args(WEBVIEW_ARGS)
+    .build();
+    match r {
+        Ok(win) => {
+            win.on_window_event(|ev| {
+                if matches!(ev, tauri::WindowEvent::Destroyed) {
+                    crate::screenshot::preview::on_window_destroyed();
+                }
+            });
+        }
+        Err(e) => crate::dlog::dlog(&format!("create preview window failed: {e}")),
+    }
+}
+
+/// 关掉预览窗口。
+pub fn close_preview_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(PREVIEW_LABEL) {
         let _ = w.destroy();
     }
 }

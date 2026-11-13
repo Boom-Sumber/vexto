@@ -1,0 +1,168 @@
+/* 截图预览（会话 63）：左边看图裁头尾，右边四个动作。
+ * 图片走 asset protocol（file path），不接收 base64。 */
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.pv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-bar);
+}
+
+.pv-title {
+  font-size: var(--fs-lg);
+  letter-spacing: var(--ls-normal);
+}
+
+.pv-info {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pv-viewport {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, .03) 25%, transparent 25%) 0 0 / 16px 16px,
+    linear-gradient(-45deg, rgba(255, 255, 255, .03) 25%, transparent 25%) 0 8px / 16px 16px;
+  background-color: var(--bg-app);
+}
+
+.pv-canvas {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#pv-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-float);
+}
+
+.pv-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: rgba(240, 86, 109, .28);
+  border-color: rgba(240, 86, 109, .75);
+  border-style: dashed;
+  border-width: 0;
+  pointer-events: none;
+}
+.pv-band.top { top: 0; border-bottom-width: 1px; }
+.pv-band.bottom { bottom: 0; border-top-width: 1px; }
+
+.pv-side {
+  width: 320px;
+  flex: none;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  overflow-y: auto;
+}
+
+.pv-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.pv-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.pv-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+}
+
+.pv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pv-msg {
+  min-height: 1.2em;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.pv-ocr {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+
+.pv-ocr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pv-ocr pre {
+  margin: 0;
+  padding: var(--sp-3);
+  flex: 1;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+}

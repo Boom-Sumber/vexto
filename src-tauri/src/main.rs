@@ -740,6 +740,135 @@ fn scroll_close(app: AppHandle) {
     crate::popup::close_scroll_control(&app);
 }
 
+// ---------- 命令：S7 钉屏 + 预览（会话 63） ----------
+
+/// 建第二个 WebView（钉屏 / 预览）必须排到主线程：IPC 回调里同步
+/// `WebviewWindowBuilder::build()` 会得到 `about:blank`（会话 62 坑 11）。
+fn schedule_window<F>(app: &AppHandle, f: F)
+where
+    F: FnOnce(&AppHandle) + Send + 'static,
+{
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let b = a.clone();
+        let _ = a.run_on_main_thread(move || f(&b));
+    });
+}
+
+/// 钉屏：把一张截图加进单窗多图钉屏窗口（已有窗口就切换过去）。
+#[tauri::command]
+fn pin_add(path: String, app: AppHandle) -> SimpleOut {
+    match crate::screenshot::pin::add(std::path::Path::new(&path)) {
+        Ok(_) => {
+            if let Some(win) = app.get_webview_window(crate::popup::PIN_LABEL) {
+                let _ = win.show();
+                let _ = win.set_focus();
+                crate::screenshot::pin::fit_window(&win);
+                crate::screenshot::pin::emit_state(&win);
+            } else {
+                schedule_window(&app, crate::popup::open_pin_window);
+            }
+            SimpleOut {
+                ok: true,
+                message: "已钉屏".into(),
+            }
+        }
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+/// 钉屏窗口内切换上一张 / 下一张。
+#[tauri::command]
+fn pin_step(delta: i32, app: AppHandle) -> SimpleOut {
+    if crate::screenshot::pin::step(delta).is_none() {
+        return SimpleOut {
+            ok: false,
+            message: "钉屏里还没有图片".into(),
+        };
+    }
+    if let Some(win) = app.get_webview_window(crate::popup::PIN_LABEL) {
+        crate::screenshot::pin::fit_window(&win);
+        crate::screenshot::pin::emit_state(&win);
+    }
+    SimpleOut {
+        ok: true,
+        message: String::new(),
+    }
+}
+
+#[tauri::command]
+fn pin_state() -> Value {
+    crate::screenshot::pin::state_value()
+}
+
+#[tauri::command]
+fn pin_close(app: AppHandle) {
+    crate::popup::close_pin_window(&app);
+}
+
+/// 打开截图预览（暂存 + asset protocol 放行，不发图片字节）。
+#[tauri::command]
+fn preview_open(path: String, app: AppHandle) -> SimpleOut {
+    match crate::screenshot::preview::stage_file(std::path::Path::new(&path)) {
+        Ok(staged) => {
+            crate::screenshot::preview::set_source(staged);
+            if let Some(win) = app.get_webview_window(crate::popup::PREVIEW_LABEL) {
+                let _ = win.show();
+                let _ = win.set_focus();
+                crate::screenshot::preview::emit_state(&win);
+            } else {
+                schedule_window(&app, crate::popup::open_preview_window);
+            }
+            SimpleOut {
+                ok: true,
+                message: "已打开预览".into(),
+            }
+        }
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+#[tauri::command]
+fn preview_state() -> Value {
+    crate::screenshot::preview::state_value()
+}
+
+/// 对预览图执行存盘 / 复制 / 钉屏 / OCR。裁切与解码都放到阻塞线程。
+#[tauri::command]
+async fn preview_action(head: u32, tail: u32, action: String, app: AppHandle) -> Value {
+    let wants_pin = action == "pin";
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::preview::apply(&action, head, tail)
+    })
+    .await;
+    if wants_pin && matches!(&result, Ok(Ok(_))) {
+        // 预览里点「钉屏」只把图加进了状态；窗口仍要按坑 11 排到主线程建。
+        schedule_window(&app, crate::popup::open_pin_window);
+    }
+    match result {
+        Ok(Ok(out)) => json!({
+            "ok": true,
+            "message": out.message,
+            "path": out.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+            "text": out.text,
+        }),
+        Ok(Err(e)) => json!({ "ok": false, "message": e }),
+        Err(e) => json!({ "ok": false, "message": format!("预览动作失败：{e}") }),
+    }
+}
+
+#[tauri::command]
+fn preview_close(app: AppHandle) {
+    crate::popup::close_preview_window(&app);
+}
+
 // ---------- 命令：设置页 ----------
 
 /// 设置页左列表的唯一数据源。
@@ -2154,6 +2283,11 @@ fn main() {
     // 必须在任何 HTTP 客户端构建之前：局域网传输目标豁免代理（风险 55/62 同类坑）。
     transfer::send::ensure_lan_no_proxy();
     tauri::Builder::default()
+        // 钉屏 / 预览的图片读取：只读暂存目录的自定义协议（ADR-044）。
+        // 不用 tauri 的 asset protocol——它会引入 `http-range`，与「零新 crate」冲突。
+        .register_uri_scheme_protocol("vextoimg", |_ctx, request| {
+            crate::screenshot::preview::serve_staged(request.uri().path())
+        })
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
@@ -2194,6 +2328,15 @@ fn main() {
             scroll_stop,
             scroll_cancel,
             scroll_close,
+            // 钉屏 + 预览（S7 会话 63）
+            pin_add,
+            pin_step,
+            pin_state,
+            pin_close,
+            preview_open,
+            preview_state,
+            preview_action,
+            preview_close,
             // 下载主窗口（S3b 后端）
             download_snapshot,
             download_pause,

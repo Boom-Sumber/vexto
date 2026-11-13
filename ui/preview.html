@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>截图预览</title>
+<link rel="stylesheet" href="tokens.css" />
+<link rel="stylesheet" href="theme-dark.css" />
+<link rel="stylesheet" href="theme-light.css" />
+<link rel="stylesheet" href="base.css" />
+<link rel="stylesheet" href="preview.css" />
+</head>
+<body data-theme="dark">
+  <header class="pv-head">
+    <div>
+      <div class="pv-title">截图预览</div>
+      <div id="pv-info" class="pv-info">正在读取…</div>
+    </div>
+    <button id="pv-close-top" class="btn btn-ghost" type="button">关闭</button>
+  </header>
+
+  <main class="pv-main">
+    <div class="pv-viewport">
+      <div id="pv-canvas" class="pv-canvas">
+        <img id="pv-img" alt="" draggable="false" />
+        <div id="pv-band-top" class="pv-band top"></div>
+        <div id="pv-band-bottom" class="pv-band bottom"></div>
+      </div>
+    </div>
+
+    <aside class="pv-side">
+      <div class="pv-field">
+        <div class="pv-label"><span>裁掉顶部</span><span id="pv-head-v">0 px</span></div>
+        <input id="pv-head" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <div class="pv-field">
+        <div class="pv-label"><span>裁掉底部</span><span id="pv-tail-v">0 px</span></div>
+        <input id="pv-tail" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <p class="pv-hint">拖动滑块裁掉 sticky header 或固定底栏；下面的按钮只作用于裁切后的区域。</p>
+
+      <div class="pv-actions">
+        <button id="pv-save" class="btn btn-primary" type="button">存盘</button>
+        <button id="pv-copy" class="btn" type="button">复制</button>
+        <button id="pv-pin" class="btn" type="button">钉屏</button>
+        <button id="pv-ocr" class="btn" type="button">识别文字</button>
+      </div>
+
+      <div id="pv-msg" class="pv-msg"></div>
+
+      <div id="pv-ocr-box" class="pv-ocr" hidden>
+        <div class="pv-ocr-head">
+          <span>识别结果</span>
+          <button id="pv-copy-text" class="btn btn-ghost" type="button">复制文字</button>
+        </div>
+        <pre id="pv-ocr-text"></pre>
+      </div>
+    </aside>
+  </main>
+
+<script src="theme.js"></script>
+<script src="preview.js"></script>
+</body>
+</html>

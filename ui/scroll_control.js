@@ -6,6 +6,7 @@
   const el = (id) => document.getElementById(id);
   let finished = false;
   let closeTimer = 0;
+  let lastPath = "";
 
   if (window.Theme) Theme.apply();
 
@@ -37,11 +38,31 @@
     el("scr-stop").hidden = true;
     const close = el("scr-close");
     close.hidden = false;
+    lastPath = p.path || "";
+    el("scr-preview").hidden = !lastPath;
+    el("scr-pin").hidden = !lastPath;
     // 成功才自动关；部分成功 / 失败留着让用户看清原因。
+    // 鼠标移到小窗上就取消自动关闭，给「预览 / 钉屏」留时间。
     if (status === "success") {
       closeTimer = setTimeout(() => invoke("scroll_close").catch(() => {}), 6000);
     }
   });
+
+  document.body.addEventListener("mouseenter", () => {
+    if (closeTimer) {
+      clearTimeout(closeTimer);
+      closeTimer = 0;
+    }
+  });
+
+  function openFromControl(cmd) {
+    if (!lastPath) return;
+    invoke(cmd, { path: lastPath })
+      .then(() => invoke("scroll_close"))
+      .catch(() => invoke("scroll_close").catch(() => {}));
+  }
+  el("scr-preview").addEventListener("click", () => openFromControl("preview_open"));
+  el("scr-pin").addEventListener("click", () => openFromControl("pin_add"));
 
   el("scr-stop").addEventListener("click", () => {
     el("scr-stop").disabled = true;
