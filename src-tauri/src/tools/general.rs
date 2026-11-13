@@ -71,9 +71,11 @@ impl Tool for General {
                         ("system", "跟随系统"),
                     ],
                 )
-                .help("「跟随系统」跟着 Windows 的应用模式走（设置 → 个性化 → 颜色）。"),
+                .auto_apply()
+                .help("「跟随系统」跟着 Windows 的应用模式走（设置 → 个性化 → 颜色）。改完立即生效，不用点保存。"),
                 Field::color("accent_color", "主色调", ACCENT_PRESETS)
-                    .help("按钮、光晕、LOGO 渐变都会跟着变。点已选中的色块恢复默认；「自定义」用系统取色器随便挑。"),
+                .auto_apply()
+                .help("按钮、光晕、LOGO 渐变都会跟着变。点已选中的色块恢复默认；「自定义」用系统取色器随便挑。改完立即生效，不用点保存。"),
                 Field::group("启动"),
                 Field::switch("autostart", "开机自动启动"),
                 Field::group("性能"),

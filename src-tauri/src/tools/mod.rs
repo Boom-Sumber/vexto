@@ -138,6 +138,10 @@ pub struct Field {
     /// 字段旁的「?」悬浮说明。设置页不再单独画说明行。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help: Option<&'static str>,
+    /// true = 改完**立即保存生效**，不进设置页的「未保存」列表（会话 57 用户裁定：
+    /// 外观类字段所见即所得，不该再弹保存/放弃）。数据驱动，前端不认 key 名。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_apply: bool,
 }
 
 impl Field {
@@ -148,12 +152,19 @@ impl Field {
             kind,
             show_if: None,
             help: None,
+            auto_apply: false,
         }
     }
 
     /// 给字段挂一段「?」悬浮说明。设置页不再用独立的说明行。
     pub fn help(mut self, text: &'static str) -> Self {
         self.help = Some(text);
+        self
+    }
+
+    /// 改完立即保存生效（外观类字段）。设置页对带此标记的字段不走 pending。
+    pub fn auto_apply(mut self) -> Self {
+        self.auto_apply = true;
         self
     }
 
@@ -444,6 +455,30 @@ mod tests {
         assert_eq!(v["type"], "color");
         assert_eq!(v["presets"][0][0], "#7c5cff");
         assert_eq!(v["presets"][0][1], "高级紫");
+    }
+
+    /// auto_apply 只该出现在显式标记的字段上（外观类），其余字段不带这个键。
+    #[test]
+    fn auto_apply_is_omitted_when_false() {
+        let v: Value = serde_json::to_value(Field::switch("a", "A")).unwrap();
+        assert!(v.get("auto_apply").is_none(), "不该出现 auto_apply：{v}");
+        let v: Value = serde_json::to_value(Field::color("b", "B", &[]).auto_apply()).unwrap();
+        assert_eq!(v["auto_apply"], true);
+    }
+
+    /// general 的两个外观字段必须标记 auto_apply（会话 57 用户裁定：改完即存），
+    /// 且除它们之外不该有别的字段带标记。
+    #[test]
+    fn appearance_fields_are_auto_apply() {
+        let t = super::registry::by_id("general").expect("general tool");
+        let flagged: Vec<&str> = t
+            .sections()
+            .iter()
+            .flat_map(|s| s.fields.iter())
+            .filter(|f| f.auto_apply)
+            .map(|f| f.key)
+            .collect();
+        assert_eq!(flagged, vec!["appearance_theme", "accent_color"]);
     }
 
     /// `show_if` 只在设置过时才出现，避免前端拿到 `null` 还要判空。

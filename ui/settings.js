@@ -1132,7 +1132,7 @@ function fieldSelect(f) {
       sel.append(o);
     }
   }
-  sel.addEventListener("change", () => commit(f.key, sel.value));
+  sel.addEventListener("change", () => commit(f.key, sel.value, { autoApply: !!f.auto_apply }));
   ctrl.append(sel);
   return w;
 }
@@ -1158,7 +1158,7 @@ function fieldColor(f) {
     b.setAttribute("aria-label", name);
     b.addEventListener("click", () => {
       // 再点一下当前色 = 清空回默认；否则换色
-      commit(f.key, value === active ? "" : value);
+      commit(f.key, value === active ? "" : value, { autoApply: !!f.auto_apply });
     });
     row.append(b);
   }
@@ -1171,7 +1171,7 @@ function fieldColor(f) {
   const pick = document.createElement("input");
   pick.type = "color";
   pick.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : "#7c5cff";
-  pick.addEventListener("input", () => commit(f.key, pick.value));
+  pick.addEventListener("input", () => commit(f.key, pick.value, { autoApply: !!f.auto_apply }));
   custom.append(pick);
   row.append(custom);
 
@@ -1361,12 +1361,42 @@ function stableJson(v) {
     .map((k) => JSON.stringify(k) + ":" + stableJson(v[k])).join(",") + "}";
 }
 
-/// 一个字段被改动：只记待保存，**不打请求**。
+/// 一个字段被改动：默认只记待保存、**不打请求**；带 `opts.autoApply`（字段
+/// schema 里标了 `auto_apply`，如外观两项）则**改完立即落盘生效**，完全不进
+/// 「未保存」列表——所见即所得，不再弹保存/放弃（会话 57 用户裁定）。
+// autoApply 的防抖计时器（按 key 分桶；见 commit 内注释）
+const autoApplyTimers = {};
 ///
 /// 会话 32：只在值真的变了才进 pending。以前 blur 一下、下拉重选同一个值
 /// 都会写一条改动，用户什么都没改也看到「有 N 项未保存」；改回原值也要
 /// 把这条 pending 撤掉，而不是留着一个和磁盘一致的「假改动」。
-function commit(key, value) {
+function commit(key, value, opts = {}) {
+  if (opts.autoApply) {
+    if (stableJson(state.values[key]) !== stableJson(value)) {
+      state.values[key] = value; // val() 立刻读到新值（联动 / 指纹一致）
+      // 取色器拖动会连续触发 input：250ms 内的改动合并成一次落盘，
+      // 预览（vexto:committed → theme.js）仍然是每个事件即时生效。
+      clearTimeout(autoApplyTimers[key]);
+      autoApplyTimers[key] = setTimeout(() => {
+        delete autoApplyTimers[key];
+        invoke("save_tool_config", {
+          toolId: state.toolId,
+          values: { [key]: value },
+        })
+          .then((res) => {
+            if (!res || !res.ok) showBanner((res && res.message) || "外观保存失败");
+          })
+          .catch((e) => showBanner("外观保存失败：" + errText(e)));
+      }, 250);
+    }
+    applyShowIf();
+    renderDirty();
+    refreshEngineSelects();
+    document.dispatchEvent(
+      new CustomEvent("vexto:committed", { detail: { key, value } }),
+    );
+    return;
+  }
   const original = state.values[key];
   if (stableJson(original) === stableJson(value)) {
     delete state.pending[key];
