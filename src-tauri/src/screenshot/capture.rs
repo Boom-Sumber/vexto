@@ -36,6 +36,15 @@ pub fn capture_full_screen() -> Result<CapturedImage, String> {
     capture_region(x, y, w, h)
 }
 
+/// 活动窗口的最小边长。Z 序里有一堆 1×1 / 几十像素的辅助窗口（输入法、
+/// 托盘提示、硬件加速 helper），它们 `IsWindowVisible` 也是 true；不按尺寸
+/// 过滤就会截到「一个黑点」（会话 61 真机复测实际踩到，1×1 PNG）。
+const MIN_WINDOW_SIDE: i32 = 32;
+
+fn size_ok(w: i32, h: i32) -> bool {
+    w >= MIN_WINDOW_SIDE && h >= MIN_WINDOW_SIDE
+}
+
 /// 活动窗口：前台窗口的可见边界。
 ///
 /// 最小化窗口没有可见像素，直接给中文原因，不产出黑图（06 §6.4.5 A9）。
@@ -45,6 +54,9 @@ pub fn capture_active_window() -> Result<CapturedImage, String> {
         let rect = window_bounds(hwnd)?;
         let w = rect.right - rect.left;
         let h = rect.bottom - rect.top;
+        if !size_ok(w, h) {
+            return Err("活动窗口太小（可能是系统辅助窗口），请换一个窗口再试".into());
+        }
 
         // 先试 PrintWindow：被遮挡的窗口也能取到内容。
         // 有些窗口（部分游戏 / 硬件加速表面）会返回 true 但全黑，此时回退 BitBlt。
@@ -79,6 +91,13 @@ unsafe fn target_window() -> Option<HWND> {
 
 unsafe fn is_capturable(hwnd: HWND) -> bool {
     if hwnd.0.is_null() || !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+        return false;
+    }
+    // 1×1 / 小尺寸辅助窗口不算「活动窗口」：它们可见但截出来就是一个黑点。
+    let mut rect = RECT::default();
+    if GetWindowRect(hwnd, &mut rect).is_err()
+        || !size_ok(rect.right - rect.left, rect.bottom - rect.top)
+    {
         return false;
     }
     let mut pid = 0u32;
@@ -199,5 +218,14 @@ mod tests {
         assert!(looks_blank(&img));
         img.pixels[0] = 1;
         assert!(!looks_blank(&img));
+    }
+
+    /// 1×1 辅助窗口必须被尺寸过滤掉（真机复测踩过：截出来是一个黑点）。
+    #[test]
+    fn tiny_windows_are_rejected() {
+        assert!(!size_ok(1, 1));
+        assert!(!size_ok(31, 200));
+        assert!(size_ok(32, 32));
+        assert!(size_ok(1920, 1080));
     }
 }
