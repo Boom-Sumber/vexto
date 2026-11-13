@@ -166,7 +166,7 @@ impl Tool for Translate {
                 vec![
                     Field::group("截图翻译"),
                     Field::switch("enable_ocr", "启用截图翻译")
-                        .help("截图翻译的框选与 OCR 在 S5 实现，这里先把开关和热键配好。"),
+                        .help("按热键框选屏幕区域 → 系统自带 OCR 识别 → 走当前翻译引擎出译文。中文识别需要系统装有中文 OCR 语言包（设置 → 时间和语言 → 语言）。"),
                     Field::hotkey("hotkey_ocr", "截图热键"),
                 ],
             ),

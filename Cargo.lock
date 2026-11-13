@@ -2446,6 +2446,7 @@ dependencies = [
  "uiautomation",
  "whatlang",
  "windows",
+ "windows-future",
 ]
 
 [[package]]

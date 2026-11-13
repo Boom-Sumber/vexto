@@ -57,6 +57,10 @@ whatlang = "0.18"
 arboard = "3"
 uiautomation = "0.25"
 
+# S5 OCR：AsyncStatus 类型 + OcrEngine 轮询等待。版本必须跟 windows crate
+# 内部用的对齐（0.62 → windows-future 0.3）。
+windows-future = "0.3"
+
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -81,6 +85,13 @@ windows = { version = "0.62", features = [
     # MultiByteToWideChar：文件名不是 UTF-8 时按系统 ANSI 代码页（简中为 936）
     # 兜底解码，否则中文站点给的百分号文件名会变成一串 U+FFFD。
     "Win32_Globalization",
+    # ── WinRT（S5 OCR）：Windows.Media.Ocr 系统自带识别引擎（离线，中文要语言包）
+    # + SoftwareBitmap / DataWriter 传像素 + Globalization 列可用语言。
+    "Foundation",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage_Streams",
 ] }
 
 # release profile 在 workspace 根 Cargo.toml —— 写在成员包里不生效。

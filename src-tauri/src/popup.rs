@@ -25,6 +25,9 @@ pub const NEW_TASK_LABEL: &str = "new-task";
 /// 收到传输请求的确认小窗（S4b，§S4.7.2）。
 pub const CONFIRM_LABEL: &str = "transfer_confirm";
 
+/// S5 OCR 框选 overlay：覆盖整个虚拟屏幕的透明窗口（暗幕 + 十字光标）。
+pub const OCR_LABEL: &str = "ocr_overlay";
+
 /// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
 /// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
 #[derive(Clone, Debug, serde::Serialize)]
@@ -809,6 +812,50 @@ pub fn open_transfer_confirm(app: &AppHandle) {
             });
         }
         Err(e) => crate::dlog::dlog(&format!("create transfer confirm failed: {e}")),
+    }
+}
+
+/// 打开 S5 OCR 框选 overlay：覆盖整个虚拟屏幕的透明窗口（暗幕 + 十字光标）。
+/// 已存在则聚焦（正常流程关闭即销毁，ADR-007，理论上不会再进来）。
+/// **必须在主线程调用**（热键回调本身就在事件循环线程，直接调即可）。
+///
+/// 多显示器：用物理坐标摆位（虚拟屏幕原点可能是负数，逻辑坐标会摆错）。
+/// 混合 DPI 的多屏是 MVP 之外的边界，先按单值 dpr 处理（前端上报）。
+pub fn open_ocr_overlay(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(OCR_LABEL) {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let (vx, vy, vw, vh) = crate::ocr::virtual_screen();
+    let r = WebviewWindowBuilder::new(
+        app,
+        OCR_LABEL,
+        WebviewUrl::App("ocr_overlay.html".into()),
+    )
+    .title("截图翻译")
+    .decorations(false)
+    .shadow(false)
+    .transparent(true)
+    .always_on_top(true)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .skip_taskbar(true)
+    // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
+    .visible(false)
+    .additional_browser_args(WEBVIEW_ARGS)
+    .build();
+
+    match r {
+        Ok(win) => {
+            // 物理坐标摆位：盖满虚拟屏幕（含负原点的副屏）
+            let _ = win.set_position(tauri::PhysicalPosition::new(vx, vy));
+            let _ = win.set_size(tauri::PhysicalSize::new(vw.max(1) as u32, vh.max(1) as u32));
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+        Err(e) => crate::dlog::dlog(&format!("create ocr overlay failed: {e}")),
     }
 }
 

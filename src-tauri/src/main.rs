@@ -19,6 +19,7 @@ mod fileops;
 mod hotkey;
 mod lang;
 mod mem;
+mod ocr;
 mod popup;
 mod tools;
 mod transfer;
@@ -428,7 +429,7 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
 }
 
 /// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
-/// `hotkey_ocr` 仍只存值不注册（功能在 S5）；`hotkey_download` 已在 S3a 注册。
+/// `hotkey_ocr` 自 S5 起真注册（工具启用时）；`hotkey_download` 已在 S3a 注册。
 fn is_hotkey_key(k: &str) -> bool {
     matches!(k, "hotkey" | "hotkey_ocr" | "hotkey_download" | "hotkey_input")
 }
@@ -480,7 +481,67 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
             }),
         ));
     }
+    // S5 OCR：截图翻译热键，工具启用时才注册（停用后按了不该有反应）。
+    if cfg.enable_ocr {
+        list.push((
+            "OCR 热键",
+            cfg.hotkey_ocr.clone(),
+            Box::new(|a: &AppHandle| crate::popup::open_ocr_overlay(a)),
+        ));
+    }
     hotkey::register_all(app, list)
+}
+
+// ---------- 命令：S5 OCR（截图翻译） ----------
+
+/// 前端框选完成。流程：overlay 藏暗幕（前端已做）→ 等 350ms 让遮罩从屏幕
+/// 上消失 → 截屏选区（物理像素）→ WinRT 识别 → 翻译 → `ocr:result` 事件回
+/// overlay 显示卡片。任何一步失败都以 `ok:false` 回，overlay 显示中文原因。
+#[tauri::command]
+fn ocr_submit_region(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    dpr: Option<f64>,
+    app: AppHandle,
+) {
+    let win = match app.get_webview_window(crate::popup::OCR_LABEL) {
+        Some(w) => w,
+        None => return,
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        // 遮罩是前端画的：收到命令时它可能还没从屏幕上消失，等一拍再截
+        std::thread::sleep(std::time::Duration::from_millis(350));
+
+        let dpr = dpr.filter(|d| d.is_finite() && *d > 0.0).unwrap_or(1.0);
+        let (vsx, vsy, vsw, vsh) = crate::ocr::virtual_screen();
+        // CSS → 物理 → 加虚拟屏幕原点偏移
+        let px = vsx + (x * dpr).round() as i32;
+        let py = vsy + (y * dpr).round() as i32;
+        let pw = ((w * dpr).round() as i32).min(vsw);
+        let ph = ((h * dpr).round() as i32).min(vsh);
+
+        let result = crate::ocr::ocr_translate_region(px, py, pw, ph);
+        let payload = match result {
+            Ok((original, translated, from)) => serde_json::json!({
+                "ok": true,
+                "original": original,
+                "translated": translated,
+                "from": from,
+            }),
+            Err(e) => serde_json::json!({ "ok": false, "error": e }),
+        };
+        let _ = win.emit("ocr:result", payload);
+    });
+}
+
+/// 关掉 OCR overlay（Esc / 结果卡上的关闭）。窗口 destroy，下次热键重建。
+#[tauri::command]
+fn ocr_cancel(app: AppHandle) {
+    if let Some(w) = app.get_webview_window(crate::popup::OCR_LABEL) {
+        let _ = w.destroy();
+    }
 }
 
 // ---------- 命令：设置页 ----------
@@ -1886,6 +1947,8 @@ fn main() {
             focus_for_typing,
             open_settings_from_popup,
             open_settings_cmd,
+            ocr_submit_region,
+            ocr_cancel,
             // 下载主窗口（S3b 后端）
             download_snapshot,
             download_pause,
