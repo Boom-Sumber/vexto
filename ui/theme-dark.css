@@ -102,7 +102,8 @@
 
   /* ── 阴影与焦点环 ─────────────────────────────────────────────────── */
   --shadow-float: 0 2px 10px rgba(0, 0, 0, .4);
-  --shadow-popup: 0 8px 30px rgba(0, 0, 0, .5);
+  /* 与 popup.css #card 的 12/8/16 透明边距匹配；blur 超过 12 会被窗口边缘裁成方框 */
+  --shadow-popup: 0 4px 12px rgba(0, 0, 0, .5);
   --shadow-window: 0 12px 44px rgba(0, 0, 0, .55);
   --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(124, 92, 255, .22);
 

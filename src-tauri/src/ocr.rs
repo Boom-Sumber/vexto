@@ -57,73 +57,88 @@ pub fn primary_screen() -> (i32, i32) {
     unsafe { (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)) }
 }
 
-/// GDI 截屏：把屏幕上的一个矩形（虚拟屏幕物理坐标）读进 BGRA 缓冲。
+/// 从任意 HDC 的 (x,y) 处截 w×h 的 BGRA 图。
 ///
-/// 用自上而下的 DIB（`biHeight` 为负）免得逐行翻转；`GetDIBits` 拿像素时
-/// 顺便让 GDI 把行宽对齐填好（stride = w*4，BGRA 无 24 位那种 padding 问题）。
-pub fn capture_region(x: i32, y: i32, w: i32, h: i32) -> Result<CapturedImage, String> {
+/// 用自上而下的 DIB（`biHeight` 为负）免得逐行翻转；`CreateDIBSection`
+/// 直接把像素映射进段内存，拷贝时不需要再按行翻转。
+/// 单独拆出来是为了让单测能用内存 DC 当源，验证 BitBlt 真的把像素写进
+/// 目标 DIB；`capture_region` 只是给它一个屏幕 DC。
+fn capture_from_hdc(
+    hdc: windows::Win32::Graphics::Gdi::HDC,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+) -> Result<CapturedImage, String> {
     if w <= 0 || h <= 0 {
         return Err("选区尺寸不合法".into());
     }
     unsafe {
-        let hdc_screen = GetDC(None);
-        let capture = |hdc: windows::Win32::Graphics::Gdi::HDC| -> Result<CapturedImage, String> {
-            let hdc_mem = CreateCompatibleDC(Some(hdc));
-            let mut bmi = BITMAPINFO::default();
-            bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-            bmi.bmiHeader.biWidth = w;
-            // 负高 = 自上而下（第一行是屏幕最上面那行）
-            bmi.bmiHeader.biHeight = -h;
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 32;
-            bmi.bmiHeader.biCompression = 0; // BI_RGB
+        let hdc_mem = CreateCompatibleDC(Some(hdc));
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = w;
+        // 负高 = 自上而下（第一行是屏幕最上面那行）
+        bmi.bmiHeader.biHeight = -h;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = 0; // BI_RGB
 
-            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-            let hbmp = CreateDIBSection(
-                Some(hdc),
-                &bmi,
-                DIB_RGB_COLORS,
-                &mut bits,
-                None,
-                0,
-            )
-            .map_err(|e| format!("创建截屏位图失败：{e}"))?;
-            if bits.is_null() {
-                let _ = DeleteObject(hbmp.into());
-                let _ = DeleteDC(hdc_mem);
-                return Err("创建截屏位图失败".into());
-            }
-            let old: HGDIOBJ = hbmp.into();
-
-            let ok = BitBlt(hdc_mem, 0, 0, w, h, Some(hdc), x, y, SRCCOPY);
-            let mut img = CapturedImage {
-                width: w,
-                height: h,
-                pixels: Vec::new(),
-            };
-            if ok.is_ok() {
-                // CreateDIBSection 已把像素映射进段内存，直接拷贝
-                let len = (w as usize) * (h as usize) * 4;
-                let slice = std::slice::from_raw_parts(bits as *const u8, len);
-                img.pixels = slice.to_vec();
-                // GDI 不写 alpha 字节（BitBlt 留 0）：全 0 = 全透明的 Premultiplied
-                // 位图，WinRT OCR 会当成一张空图。截屏不透明，统一拉满。
-                for a in img.pixels[3..].iter_mut().step_by(4) {
-                    *a = 255;
-                }
-            } else {
-                img.pixels = Vec::new();
-            }
-
-            SelectObject(hdc_mem, old);
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hbmp = CreateDIBSection(
+            Some(hdc),
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits,
+            None,
+            0,
+        )
+        .map_err(|e| format!("创建截屏位图失败：{e}"))?;
+        if bits.is_null() {
             let _ = DeleteObject(hbmp.into());
             let _ = DeleteDC(hdc_mem);
-            if img.pixels.is_empty() {
-                return Err("截屏失败（BitBlt）".into());
-            }
-            Ok(img)
+            return Err("创建截屏位图失败".into());
+        }
+        // 必须先把 DIB 选进内存 DC，BitBlt 才会把像素写进这张位图；
+        // 不选的话 BitBlt 写的是 DC 默认的 1×1 单色位图，DIB 段内存
+        // 始终全 0（黑图），OCR 自然识别不到任何文字。
+        let old: HGDIOBJ = SelectObject(hdc_mem, hbmp.into());
+
+        let ok = BitBlt(hdc_mem, 0, 0, w, h, Some(hdc), x, y, SRCCOPY);
+        let mut img = CapturedImage {
+            width: w,
+            height: h,
+            pixels: Vec::new(),
         };
-        let res = capture(hdc_screen);
+        if ok.is_ok() {
+            // CreateDIBSection 已把像素映射进段内存，直接拷贝
+            let len = (w as usize) * (h as usize) * 4;
+            let slice = std::slice::from_raw_parts(bits as *const u8, len);
+            img.pixels = slice.to_vec();
+            // GDI 不写 alpha 字节（BitBlt 留 0）：全 0 = 全透明的 Premultiplied
+            // 位图，WinRT OCR 会当成一张空图。截屏不透明，统一拉满。
+            for a in img.pixels[3..].iter_mut().step_by(4) {
+                *a = 255;
+            }
+        } else {
+            img.pixels = Vec::new();
+        }
+
+        SelectObject(hdc_mem, old);
+        let _ = DeleteObject(hbmp.into());
+        let _ = DeleteDC(hdc_mem);
+        if img.pixels.is_empty() {
+            return Err("截屏失败（BitBlt）".into());
+        }
+        Ok(img)
+    }
+}
+
+/// GDI 截屏：把屏幕上的一个矩形（虚拟屏幕物理坐标）读进 BGRA 缓冲。
+pub fn capture_region(x: i32, y: i32, w: i32, h: i32) -> Result<CapturedImage, String> {
+    unsafe {
+        let hdc_screen = GetDC(None);
+        let res = capture_from_hdc(hdc_screen, x, y, w, h);
         ReleaseDC(None, hdc_screen);
         res
     }
@@ -316,6 +331,54 @@ mod tests {
     fn capture_rejects_bad_region() {
         let e = capture_region(0, 0, 0, 100).unwrap_err();
         assert!(e.contains("不合法"), "实际：{e}");
+    }
+
+    /// 回归：BitBlt 的目标 DIB 必须先 SelectObject 进内存 DC。
+    /// 之前漏了这一步，DIB 段内存全 0，截屏永远是黑图（avg_luma=0），
+    /// OCR 对真屏永远返回空——但 GDI 画字的单测自己选了位图，抓不到。
+    #[test]
+    fn capture_reads_pixels_from_source_dc() {
+        let (w, h) = (64, 64);
+        unsafe {
+            let hdc_screen = GetDC(None);
+            let hdc_src = CreateCompatibleDC(Some(hdc_screen));
+            let mut bmi = BITMAPINFO::default();
+            bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+            bmi.bmiHeader.biWidth = w;
+            bmi.bmiHeader.biHeight = -h;
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = 0;
+            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hbmp = CreateDIBSection(
+                Some(hdc_screen),
+                &bmi,
+                DIB_RGB_COLORS,
+                &mut bits,
+                None,
+                0,
+            )
+            .expect("CreateDIBSection");
+            let old: HGDIOBJ = SelectObject(hdc_src, hbmp.into());
+            let len = (w as usize) * (h as usize) * 4;
+            std::slice::from_raw_parts_mut(bits as *mut u8, len).fill(0xFF);
+
+            let img = capture_from_hdc(hdc_src, 0, 0, w, h).expect("capture_from_hdc");
+            assert_eq!(img.width, w);
+            assert_eq!(img.height, h);
+            assert!(
+                img.pixels
+                    .chunks_exact(4)
+                    .all(|p| p[0] == 255 && p[1] == 255 && p[2] == 255),
+                "截屏应读到源 DC 的白像素，实际不是白（全黑=0）：{}",
+                img.pixels.iter().step_by(4).map(|v| *v as u32).sum::<u32>() / (w * h) as u32
+            );
+
+            SelectObject(hdc_src, old);
+            let _ = DeleteObject(hbmp.into());
+            let _ = DeleteDC(hdc_src);
+            ReleaseDC(None, hdc_screen);
+        }
     }
 
     /// 真屏截一小块（左上角 40×40，多半是纯色）→ 流程走通即算过。

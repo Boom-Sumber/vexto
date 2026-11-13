@@ -112,6 +112,8 @@
 const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
 let translated = "";
+// 结果卡复用加载卡的锚点：框选落点附近，避免识别完成后跳到屏幕中上。
+let anchorX = 0, anchorY = 0;
 
 // Esc 取消：框选中、识别中、出结果后都生效（06 #4：不产生结果、不耗配额）
 window.addEventListener("keydown", (ev) => {
@@ -177,13 +179,16 @@ function placeCard(px, py) {
   card.style.top = Math.max(12, y) + "px";
 }
 function showLoading(px, py) {
+  // 框选落点作为结果卡锚点；+14/+18 与划词弹窗的鼠标偏移一致。
+  anchorX = px + 14;
+  anchorY = py + 18;
   el("card-tag").textContent = "截图翻译";
   el("card-original").textContent = "";
   el("card-original").style.display = "none";
   el("card-text").className = "loading-dots";
   el("card-text").textContent = "识别中…";
   el("card-acts").style.display = "none";
-  placeCard(px, py);
+  placeCard(anchorX, anchorY);
 }
 function showResult(p) {
   el("card-original").style.display = "";
@@ -194,13 +199,13 @@ function showResult(p) {
     el("card-original").textContent = p.original || "";
     el("card-text").className = "translated";
     el("card-text").textContent = p.translated || "";
-    placeCard(window.innerWidth / 2 - 210, 80);
+    placeCard(anchorX, anchorY);
   } else {
     translated = "";
     el("card-original").textContent = "";
     el("card-text").className = "translated card-error";
     el("card-text").textContent = p.error || "识别失败";
-    placeCard(window.innerWidth / 2 - 210, 80);
+    placeCard(anchorX, anchorY);
   }
 }
 window.__TAURI__.event.listen("ocr:result", (e) => showResult(e.payload || {}));

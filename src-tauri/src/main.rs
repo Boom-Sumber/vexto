@@ -430,8 +430,10 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
 
 /// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
 /// `hotkey_ocr` 自 S5 起真注册（工具启用时）；`hotkey_download` 已在 S3a 注册。
+const HOTKEY_KEYS: [&str; 4] = ["hotkey", "hotkey_input", "hotkey_download", "hotkey_ocr"];
+
 fn is_hotkey_key(k: &str) -> bool {
-    matches!(k, "hotkey" | "hotkey_ocr" | "hotkey_download" | "hotkey_input")
+    HOTKEY_KEYS.contains(&k)
 }
 
 /// 一次性注册所有全局热键（划词 / 输入翻译 / 下载）。
@@ -731,12 +733,12 @@ fn save_tool_config(
     }
 
     // 4) 副作用：热键重新注册。
-    //    任一热键变了都要**整体重注册**：register_all 开头会 unregister_all，
-    //    只重注册单个的话，另一个会被静默注销掉（S1 起就埋着的雷）。
-    let hotkey_changed = ["hotkey", "hotkey_input", "hotkey_download"]
-        .iter()
-        .any(|k| patch.contains_key(*k));
-    if hotkey_changed {
+    //    任一热键（或 OCR 启用开关）变了都要**整体重注册**：register_all
+    //    开头会 unregister_all，只重注册单个的话，另一个会被静默注销掉
+    //    （S1 起就埋着的雷）。`enable_ocr` 决定 OCR 热键要不要注册。
+    let hotkey_reregister = patch.contains_key("enable_ocr")
+        || HOTKEY_KEYS.iter().any(|k| patch.contains_key(*k));
+    if hotkey_reregister {
         let errs = register_hotkeys(&app, &cfg);
         // 注册失败不回滚保存：用户填的组合确实是他想要的，只是撞了别的软件。
         // 回滚会让他以为"保存失败"，下次还得重填一遍。
