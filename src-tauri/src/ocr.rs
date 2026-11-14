@@ -148,7 +148,20 @@ pub fn capture_region(x: i32, y: i32, w: i32, h: i32) -> Result<CapturedImage, S
 /// 识别是后台异步执行，轮询线程在这里只做等待；整条 OCR 全同步，
 /// 才能整体放进 `spawn_blocking`（COM 包装类型不是 Send，不能跨 await）。
 /// 语言包缺失 / 没有可用 OCR 引擎时给中文提示。
+/// OCR 入口：实验分支按配置选择 Windows 自带或 PaddleOCR。
 pub fn ocr_bitmap(img: &CapturedImage) -> Result<String, String> {
+    if crate::config::load()
+        .ocr_engine
+        .trim()
+        .eq_ignore_ascii_case("paddle")
+    {
+        return crate::ocr_paddle::ocr_bitmap(img);
+    }
+    windows_ocr_bitmap(img)
+}
+
+/// Windows.Media.Ocr 识别（S5 原路径）。
+pub fn windows_ocr_bitmap(img: &CapturedImage) -> Result<String, String> {
     let engine = match OcrEngine::TryCreateFromUserProfileLanguages() {
         Ok(e) => e,
         Err(_) => OcrEngine::TryCreateFromLanguage(

@@ -188,6 +188,9 @@ pub struct Config {
     pub enable_transfer: bool,
     #[serde(default)]
     pub enable_ocr: bool,
+    /// OCR 引擎：`windows`（系统自带，默认）/ `paddle`（实验分支）
+    #[serde(default = "d_ocr_engine")]
+    pub ocr_engine: String,
 
     // ---- 截图（S7）----
     /// 区域截图热键（S7 才真正注册）
@@ -458,6 +461,9 @@ fn d_shot_border() -> u16 {
 fn d_shot_magnifier() -> u16 {
     8
 }
+fn d_ocr_engine() -> String {
+    "windows".to_string()
+}
 fn d_true() -> bool {
     true
 }
@@ -553,6 +559,7 @@ impl Default for Config {
             enable_download: false,
             enable_transfer: false,
             enable_ocr: false,
+            ocr_engine: d_ocr_engine(),
             enable_screenshot: false,
             screenshot_dir: String::new(),
             screenshot_after_action: d_shot_after(),

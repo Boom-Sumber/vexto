@@ -66,6 +66,10 @@ windows-future = "0.3"
 # 长图用 `Writer::stream_writer()` 逐行写，不用 image 的整图编码 API。
 png = "0.18"
 
+# ── 实验分支 exp/ocr-paddle：PaddleOCR ONNX（只在本分支，不合并 main）──
+pure-onnx-ocr = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

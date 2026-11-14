@@ -168,6 +168,15 @@ impl Tool for Translate {
                     Field::switch("enable_ocr", "启用截图翻译")
                         .help("按热键框选屏幕区域 → 系统自带 OCR 识别 → 走当前翻译引擎出译文。中文识别需要系统装有中文 OCR 语言包（设置 → 时间和语言 → 语言）。"),
                     Field::hotkey("hotkey_ocr", "截图热键"),
+                    Field::select(
+                        "ocr_engine",
+                        "识别引擎",
+                        &[
+                            ("windows", "Windows 自带（默认）"),
+                            ("paddle", "PaddleOCR（实验）"),
+                        ],
+                    )
+                    .help("PaddleOCR 需要模型文件；只存在于实验分支。"),
                 ],
             ),
         ]

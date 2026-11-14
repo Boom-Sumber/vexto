@@ -20,6 +20,7 @@ mod hotkey;
 mod lang;
 mod mem;
 mod ocr;
+mod ocr_paddle;
 mod popup;
 mod region_select;
 mod screenshot;
@@ -567,6 +568,39 @@ fn ocr_submit_region(
 fn ocr_cancel(app: AppHandle) {
     if let Some(w) = app.get_webview_window(crate::popup::OCR_LABEL) {
         let _ = w.destroy();
+    }
+}
+
+/// 实验分支专用：同一张 PNG 上对比 Windows OCR 与 PaddleOCR 的文本与耗时。
+#[tauri::command]
+async fn ocr_compare(path: String) -> Value {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let img = crate::ocr_paddle::load_png_as_captured(&path)?;
+        let t0 = Instant::now();
+        let win = crate::ocr::windows_ocr_bitmap(&img);
+        let win_ms = t0.elapsed().as_millis();
+        let t1 = Instant::now();
+        let pad = crate::ocr_paddle::ocr_bitmap(&img);
+        let pad_ms = t1.elapsed().as_millis();
+        Ok::<_, String>(json!({
+            "windows_ms": win_ms,
+            "windows": match win {
+                Ok(t) => json!({ "ok": true, "text": t }),
+                Err(e) => json!({ "ok": false, "error": e }),
+            },
+            "paddle_ms": pad_ms,
+            "paddle_init_ms": crate::ocr_paddle::init_ms(),
+            "paddle": match pad {
+                Ok(t) => json!({ "ok": true, "text": t }),
+                Err(e) => json!({ "ok": false, "error": e }),
+            },
+        }))
+    })
+    .await;
+    match result {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => json!({ "ok": false, "error": e }),
+        Err(e) => json!({ "ok": false, "error": format!("OCR 对比失败：{e}") }),
     }
 }
 
@@ -2355,6 +2389,7 @@ fn main() {
             open_settings_cmd,
             ocr_submit_region,
             ocr_cancel,
+            ocr_compare,
             // 截图（S7）
             shot_overlay_state,
             shot_action,
