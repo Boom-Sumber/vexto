@@ -54,6 +54,10 @@ impl Tool for Screenshot {
                     .help("留空 = 系统「图片」文件夹下的 Vexto 子目录。"),
                 Field::number_unit("screenshot_border_width", "选框边框宽度", 3, 5, "px")
                     .help("框选时选框边框的粗细，3–5 px。"),
+                Field::number_unit("screenshot_magnifier_zoom", "放大镜倍数", 2, 10, "×")
+                    .help("鼠标旁放大取色镜的放大倍数。"),
+                Field::switch("screenshot_include_cursor", "截图包含鼠标指针")
+                    .help("区域 / 全屏 / 活动窗口截图会把当前指针画进图里；滚动长图不包含。"),
                 Field::select(
                     "screenshot_after_action",
                     "截图后",

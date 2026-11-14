@@ -36,7 +36,8 @@
   let busy = false;
   let sel = null;
   let magHex = "";
-  let meta = { border: 3, originX: 0, originY: 0 };
+  let meta = { border: 3, originX: 0, originY: 0, zoom: 8 };
+  let accent = "#22c55e";
   let toastTimer = 0;
   let copiedTimer = 0;
   const colorCanvas = document.createElement("canvas");
@@ -59,6 +60,8 @@
   }
 
   function startShot() {
+    accent =
+      getComputedStyle(document.body).getPropertyValue("--accent").trim() || accent;
     invoke("shot_overlay_state")
       .then((s) => {
         if (!s || !s.url) {
@@ -67,6 +70,7 @@
           return;
         }
         meta.border = Math.min(5, Math.max(3, Number(s.border) || 3));
+        meta.zoom = Math.min(10, Math.max(2, Number(s.zoom) || 8));
         meta.originX = Number(s.originX) || 0;
         meta.originY = Number(s.originY) || 0;
         el("box").style.borderWidth = meta.border + "px";
@@ -198,7 +202,7 @@
     const cx = Math.max(0, Math.min(nw - 1, px));
     const cy = Math.max(0, Math.min(nh - 1, py));
 
-    const sample = 16;
+    const sample = Math.max(2, Math.round(128 / (meta.zoom || 8)));
     const sw = Math.min(sample, nw);
     const sh = Math.min(sample, nh);
     const sxs = Math.max(0, Math.min(nw - sw, Math.round(cx - sw / 2)));
@@ -207,8 +211,8 @@
     magCtx.imageSmoothingEnabled = false;
     magCtx.clearRect(0, 0, 128, 128);
     magCtx.drawImage(img, sxs, sys, sw, sh, 0, 0, 128, 128);
-    // 中心十字：黑底白线，深浅背景都看得见
-    magCtx.strokeStyle = "rgba(0,0,0,.65)";
+    // 中心十字：白色描边 + 主色调，深浅背景都看得见
+    magCtx.strokeStyle = "rgba(255,255,255,.9)";
     magCtx.lineWidth = 3;
     magCtx.beginPath();
     magCtx.moveTo(64, 0);
@@ -216,7 +220,7 @@
     magCtx.moveTo(0, 64);
     magCtx.lineTo(128, 64);
     magCtx.stroke();
-    magCtx.strokeStyle = "rgba(255,255,255,.95)";
+    magCtx.strokeStyle = accent;
     magCtx.lineWidth = 1;
     magCtx.beginPath();
     magCtx.moveTo(64, 0);
@@ -244,19 +248,19 @@
     el("mag-hex").textContent = hex;
     el("mag-swatch").style.background = hex === "—" ? "transparent" : hex;
     el("mag-pos").textContent =
-      "X " + (meta.originX + px) + "  Y " + (meta.originY + py);
+      meta.originX + px + ", " + (meta.originY + py);
 
     const mag = el("magnifier");
     mag.classList.add("on");
-    const pad = 18;
     const mw = mag.offsetWidth || 140;
-    const mh = mag.offsetHeight || 160;
-    let left = ev.clientX + pad;
-    let top = ev.clientY + pad;
-    if (left + mw + 8 > window.innerWidth) left = ev.clientX - mw - pad;
-    if (top + mh + 8 > window.innerHeight) top = ev.clientY - mh - pad;
-    mag.style.left = Math.max(8, left) + "px";
-    mag.style.top = Math.max(8, top) + "px";
+    const mh = mag.offsetHeight || 190;
+    // 紧贴指针：面板左上角就是鼠标位置；靠近边缘时翻到另一侧。
+    let left = ev.clientX;
+    let top = ev.clientY;
+    if (left + mw + 4 > window.innerWidth) left = ev.clientX - mw;
+    if (top + mh + 4 > window.innerHeight) top = ev.clientY - mh;
+    mag.style.left = Math.max(0, left) + "px";
+    mag.style.top = Math.max(0, top) + "px";
   }
 
   // ── 选区完成后的动作栏 ────────────────────────────────────────────────
@@ -321,7 +325,7 @@
     if (!sel || busy) return;
     busy = true;
     setBarBusy(true);
-    showToast(act === "ocr" ? "识别中…" : "处理中…", false, 0);
+    showToast("处理中…", false, 0);
     try {
       const r = await invoke("shot_action", {
         action: act,
@@ -335,11 +339,7 @@
         showToast((r && r.message) || "操作失败", true);
         return;
       }
-      if (act === "ocr") {
-        showOcr(r.text || "");
-      } else {
-        showToast(r.message || "完成", false);
-      }
+      showToast(r.message || "完成", false);
       if (act === "pin" || act === "preview" || act === "default") {
         setTimeout(cancel, 80);
       }
@@ -355,32 +355,6 @@
     const bar = el("toolbar");
     if (!bar) return;
     for (const btn of bar.querySelectorAll("button")) btn.disabled = b;
-  }
-
-  function showOcr(text) {
-    translated = text || "";
-    el("card-tag").textContent = "识别结果";
-    el("card-original").style.display = "none";
-    el("card-acts").style.display = "";
-    el("copyBtn").style.display = "";
-    el("copyBtn").textContent = "复制文字";
-    el("closeBtn").style.display = "";
-    el("pinBtn").style.display = "none";
-    el("previewBtn").style.display = "none";
-    el("card-text").className = "translated";
-    el("card-text").textContent = text || "没有识别到文字";
-    const card = el("card");
-    card.classList.add("on");
-    const bar = el("toolbar").getBoundingClientRect();
-    const cr = card.getBoundingClientRect();
-    let left = bar.left + bar.width / 2 - cr.width / 2;
-    let top = bar.bottom + 8;
-    if (top + cr.height > window.innerHeight - 12) {
-      top = Math.max(12, bar.top - cr.height - 8);
-    }
-    card.style.left =
-      Math.max(12, Math.min(window.innerWidth - cr.width - 12, left)) + "px";
-    card.style.top = Math.max(12, top) + "px";
   }
 
   function hideCard() {
@@ -435,11 +409,15 @@
       ev.preventDefault();
       invoke("copy_text", { text: magHex })
         .then(() => {
-          const c = el("mag-copied");
-          if (c) {
-            c.classList.add("on");
+          const hint = el("mag-hint");
+          if (hint) {
+            hint.textContent = "已复制 " + magHex;
+            hint.classList.add("copied");
             if (copiedTimer) clearTimeout(copiedTimer);
-            copiedTimer = setTimeout(() => c.classList.remove("on"), 900);
+            copiedTimer = setTimeout(() => {
+              hint.textContent = "按 Ctrl+C 复制色值";
+              hint.classList.remove("copied");
+            }, 1100);
           }
         })
         .catch(() => {});

@@ -5,7 +5,8 @@
 <title>钉屏</title>
 <style>
 /* 极简页面（S7 §S7.6 会话 63 步 3）：不加载 tokens / icons / base，只保留
-   拖动区、图片与一排小按钮，尽量压低单窗内存。 */
+   拖动区、图片与一排小按钮，尽量压低单窗内存。
+   会话 66：图片加 2px 边框；悬停时窗口上方出现操作条；滚轮缩放。 */
 html, body {
   margin: 0;
   padding: 0;
@@ -20,7 +21,7 @@ html, body {
   align-items: center;
   justify-content: center;
   background: transparent;
-  cursor: move;
+  cursor: default;
 }
 #img {
   max-width: 100%;
@@ -28,44 +29,69 @@ html, body {
   width: auto;
   height: auto;
   display: block;
-  border-radius: 4px;
+  box-sizing: border-box;
+  border: 2px solid rgba(126, 140, 160, .95);
   box-shadow: 0 10px 34px rgba(0, 0, 0, .38);
   pointer-events: none;
 }
 #bar {
   position: fixed;
+  top: 6px;
   left: 50%;
-  bottom: 10px;
   transform: translateX(-50%);
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(22, 22, 26, .8);
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  background: rgba(22, 22, 26, .92);
   color: #eee;
-  font: 12px "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .42);
   opacity: 0;
-  transition: opacity .15s ease;
+  transition: opacity .12s ease;
+  white-space: nowrap;
+  font: 12px "Segoe UI", "Microsoft YaHei UI", sans-serif;
 }
 body:hover #bar { opacity: 1; }
+#bar .sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, .18);
+}
 button {
   all: unset;
   box-sizing: border-box;
-  width: 22px;
-  height: 22px;
-  line-height: 22px;
-  text-align: center;
-  border-radius: 50%;
-  color: #eee;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: #e8e8ef;
   cursor: pointer;
 }
-button:hover { background: rgba(255, 255, 255, .18); }
+button:hover { background: rgba(255, 255, 255, .16); }
+button:active { background: rgba(255, 255, 255, .24); }
+button.copied { background: rgba(34, 197, 94, .38); }
+button svg { width: 15px; height: 15px; }
+#nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+#nav.hidden { display: none; }
 #idx {
-  min-width: 44px;
+  min-width: 40px;
   text-align: center;
   font-variant-numeric: tabular-nums;
   color: #cfcfd6;
+}
+#zoom {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: #dfe0e8;
 }
 </style>
 </head>
@@ -73,11 +99,28 @@ button:hover { background: rgba(255, 255, 255, .18); }
   <div id="stage" data-tauri-drag-region>
     <img id="img" alt="" draggable="false" />
   </div>
-  <div id="bar" data-tauri-drag-region>
-    <button id="prev" title="上一张（←）">‹</button>
-    <span id="idx">1/1</span>
-    <button id="next" title="下一张（→）">›</button>
-    <button id="close" title="关闭（Esc）">×</button>
+
+  <div id="bar">
+    <div id="nav">
+      <button id="prev" title="上一张（←）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <span id="idx">1/1</span>
+      <button id="next" title="下一张（→）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+      <span class="sep"></span>
+    </div>
+    <button id="copy" title="复制图片">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 011-1h10"/></svg>
+    </button>
+    <span id="zoom">100%</span>
+    <button id="reset" title="重置缩放（100%）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <button id="close" title="关闭（Esc）">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
   </div>
 <script src="pin.js"></script>
 </body>

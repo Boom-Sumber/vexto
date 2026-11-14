@@ -22,10 +22,10 @@
   <div id="magnifier">
     <canvas id="mag-canvas" width="128" height="128"></canvas>
     <div class="mag-info">
-      <span id="mag-pos">X 0  Y 0</span>
-      <span class="mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span>
+      <div class="mag-row"><span class="mag-label">坐标</span><span class="mag-value" id="mag-pos">0, 0</span></div>
+      <div class="mag-row"><span class="mag-label">色值</span><span class="mag-value mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span></div>
+      <div class="mag-hint" id="mag-hint">按 Ctrl+C 复制色值</div>
     </div>
-    <div id="mag-copied" class="mag-copied">已复制</div>
   </div>
 
   <!-- 滚动模式选完就开滚，不会显示动作栏；保留 DOM 与截图模式共用同一套 JS。 -->

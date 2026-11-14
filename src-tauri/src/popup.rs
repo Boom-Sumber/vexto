@@ -974,16 +974,20 @@ pub fn open_preview_window(app: &AppHandle) {
         crate::screenshot::preview::emit_state(&w);
         return;
     }
+    // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md，项目内所有窗口统一）。
     let r = WebviewWindowBuilder::new(
         app,
         PREVIEW_LABEL,
         WebviewUrl::App("preview.html".into()),
     )
     .title("截图预览")
+    .decorations(false)
+    .shadow(true)
     .inner_size(980.0, 780.0)
     .min_inner_size(640.0, 480.0)
     .visible(false)
     .center()
+    .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
     .additional_browser_args(WEBVIEW_ARGS)
     .build();
     match r {

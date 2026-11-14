@@ -12,8 +12,7 @@
   let tail = 0;
   let busy = false;
 
-  // visible(false) 防白屏：页面就绪后再显示窗口。
-  invoke("window_ready").catch(() => {});
+  // 首屏状态拿到后再显示窗口（titlebar.js 的 reveal）；1.5s 兜底。
 
   function labels() {
     el("pv-head-v").textContent = head + " px";
@@ -95,7 +94,10 @@
     }
   }
 
-  invoke("preview_state").then(applyState).catch(() => {});
+  invoke("preview_state")
+    .then(applyState)
+    .catch(() => {})
+    .finally(() => window.TitleBar?.reveal?.());
   window.__TAURI__.event.listen("preview:state", (e) => applyState(e.payload || {}));
 
   headEl.addEventListener("input", clamp);
@@ -113,7 +115,6 @@
   });
 
   const close = () => invoke("preview_close").catch(() => {});
-  el("pv-close-top").addEventListener("click", close);
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") close();
   });

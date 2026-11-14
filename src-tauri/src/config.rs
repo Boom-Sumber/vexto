@@ -211,6 +211,12 @@ pub struct Config {
     /// 框选边框宽度（3–5 px，会话 65 选框改版）
     #[serde(default = "d_shot_border")]
     pub screenshot_border_width: u16,
+    /// 放大镜倍数（2–10×，会话 66）
+    #[serde(default = "d_shot_magnifier")]
+    pub screenshot_magnifier_zoom: u16,
+    /// 截图是否包含鼠标指针（滚动长图不包含）
+    #[serde(default)]
+    pub screenshot_include_cursor: bool,
     /// 钉屏单窗多图（false = 每图一窗，内存占用更高）
     #[serde(default = "d_true")]
     pub pinscreen_single_window: bool,
@@ -449,6 +455,9 @@ fn d_scroll_action() -> String {
 fn d_shot_border() -> u16 {
     3
 }
+fn d_shot_magnifier() -> u16 {
+    8
+}
 fn d_true() -> bool {
     true
 }
@@ -550,6 +559,8 @@ impl Default for Config {
             scroll_mode: d_scroll_mode(),
             scroll_action: d_scroll_action(),
             screenshot_border_width: d_shot_border(),
+            screenshot_magnifier_zoom: d_shot_magnifier(),
+            screenshot_include_cursor: false,
             pinscreen_single_window: true,
             popup_timeout_ms: d_popup_timeout(),
             auto_copy: false,
@@ -1064,6 +1075,8 @@ mod tests {
         assert_eq!(c.scroll_mode, "auto");
         assert_eq!(c.scroll_action, "message");
         assert_eq!(c.screenshot_border_width, 3);
+        assert_eq!(c.screenshot_magnifier_zoom, 8);
+        assert!(!c.screenshot_include_cursor);
         assert!(c.pinscreen_single_window);
         assert!(c.enable_translate);
         assert!(!c.enable_download);

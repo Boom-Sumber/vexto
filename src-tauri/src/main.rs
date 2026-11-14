@@ -804,6 +804,39 @@ fn pin_step(delta: i32, app: AppHandle) -> SimpleOut {
     }
 }
 
+/// 钉屏滚轮缩放：`delta > 0` 放大、`< 0` 缩小；`reset = true` 回到 100%。
+#[tauri::command]
+fn pin_zoom(delta: i32, reset: Option<bool>, app: AppHandle) -> SimpleOut {
+    let Some(win) = app.get_webview_window(crate::popup::PIN_LABEL) else {
+        return SimpleOut {
+            ok: false,
+            message: "钉屏窗口不在".into(),
+        };
+    };
+    match crate::screenshot::pin::zoom_window(&win, delta, reset.unwrap_or(false)) {
+        Some(percent) => SimpleOut {
+            ok: true,
+            message: format!("{percent}%"),
+        },
+        None => SimpleOut {
+            ok: false,
+            message: "钉屏里还没有图片".into(),
+        },
+    }
+}
+
+/// 钉屏操作条：复制当前图片到剪贴板。
+#[tauri::command]
+fn pin_copy() -> SimpleOut {
+    match crate::screenshot::pin::copy_current() {
+        Ok(message) => SimpleOut { ok: true, message },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
 #[tauri::command]
 fn pin_state() -> Value {
     crate::screenshot::pin::state_value()
@@ -2336,6 +2369,8 @@ fn main() {
             // 钉屏 + 预览（S7 会话 63）
             pin_add,
             pin_step,
+            pin_zoom,
+            pin_copy,
             pin_state,
             pin_close,
             preview_open,

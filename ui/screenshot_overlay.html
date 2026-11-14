@@ -22,10 +22,10 @@
   <div id="magnifier">
     <canvas id="mag-canvas" width="128" height="128"></canvas>
     <div class="mag-info">
-      <span id="mag-pos">X 0  Y 0</span>
-      <span class="mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span>
+      <div class="mag-row"><span class="mag-label">坐标</span><span class="mag-value" id="mag-pos">0, 0</span></div>
+      <div class="mag-row"><span class="mag-label">色值</span><span class="mag-value mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span></div>
+      <div class="mag-hint" id="mag-hint">按 Ctrl+C 复制色值</div>
     </div>
-    <div id="mag-copied" class="mag-copied">已复制</div>
   </div>
 
   <div id="toolbar">
@@ -43,9 +43,6 @@
     </button>
     <button class="tb-btn" type="button" data-act="preview" title="预览">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
-    </button>
-    <button class="tb-btn" type="button" data-act="ocr" title="识别文字">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5h16v3"/><path d="M12 5v14"/><path d="M8 19h8"/></svg>
     </button>
     <span class="tb-sep"></span>
     <button class="tb-btn tb-ok" type="button" data-act="default" title="完成">

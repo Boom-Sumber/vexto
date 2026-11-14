@@ -56,7 +56,9 @@ pub fn capture() -> Result<(), String> {
 
 /// 给浮层页面的状态：快照 URL、物理尺寸、虚拟屏原点、边框宽度。
 pub fn state_value() -> serde_json::Value {
-    let border = crate::config::load().screenshot_border_width.clamp(3, 5);
+    let cfg = crate::config::load();
+    let border = cfg.screenshot_border_width.clamp(3, 5);
+    let zoom = cfg.screenshot_magnifier_zoom.clamp(2, 10);
     let (vx, vy, _, _) = crate::ocr::virtual_screen();
     let g = lock();
     match g.as_ref() {
@@ -67,8 +69,15 @@ pub fn state_value() -> serde_json::Value {
             "originX": vx,
             "originY": vy,
             "border": border,
+            "zoom": zoom,
         }),
-        None => serde_json::json!({ "url": null, "border": border, "originX": vx, "originY": vy }),
+        None => serde_json::json!({
+            "url": null,
+            "border": border,
+            "zoom": zoom,
+            "originX": vx,
+            "originY": vy,
+        }),
     }
 }
 
@@ -190,20 +199,7 @@ pub fn apply(
                 text: None,
             })
         }
-        "ocr" => {
-            let img = preview::crop_region_to_image(&src, sx, sy, sw, sh)?;
-            let text = crate::ocr::ocr_bitmap(&img)?;
-            let empty = text.trim().is_empty();
-            Ok(preview::ActionOutcome {
-                message: if empty {
-                    "没有识别到文字".into()
-                } else {
-                    "识别完成".into()
-                },
-                path: None,
-                text: Some(text),
-            })
-        }
+        "ocr" => Err("截图选框的动作栏不再提供识别文字，请在「预览」里识别".into()),
         other => Err(format!("未知的选区动作：{other}")),
     }
 }

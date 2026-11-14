@@ -17,14 +17,84 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetClassNameW, GetForegroundWindow, GetTopWindow, GetWindow, GetWindowRect,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, GW_HWNDNEXT, PW_RENDERFULLCONTENT,
+    DrawIconEx, GetClassNameW, GetCursorInfo, GetForegroundWindow, GetTopWindow, GetWindow,
+    GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, CURSOR_SHOWING, CURSORINFO,
+    DI_NORMAL, GW_HWNDNEXT, HICON, PW_RENDERFULLCONTENT,
 };
 
 /// 全屏：整个虚拟屏幕（多显示器时是一整张，不是只主屏）。
 pub fn capture_full_screen() -> Result<CapturedImage, String> {
     let (x, y, w, h) = virtual_screen();
-    capture_region(x, y, w, h)
+    let mut img = capture_region(x, y, w, h)?;
+    if crate::config::load().screenshot_include_cursor {
+        draw_cursor(&mut img, x, y);
+    }
+    Ok(img)
+}
+
+/// 把当前鼠标指针画进截图。GDI 的 BitBlt / PrintWindow 都不含指针，
+/// 需要自己用 `DrawIconEx` 画到同一张 DIB 上（设置 `screenshot_include_cursor`）。
+///
+/// `origin_x/origin_y` 是截图区域左上角的屏幕物理坐标。
+pub fn draw_cursor(img: &mut CapturedImage, origin_x: i32, origin_y: i32) {
+    if img.width <= 0 || img.height <= 0 || img.pixels.is_empty() {
+        return;
+    }
+    unsafe {
+        let mut ci = CURSORINFO {
+            cbSize: std::mem::size_of::<CURSORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetCursorInfo(&mut ci).is_err()
+            || ci.flags.0 & CURSOR_SHOWING.0 == 0
+            || ci.hCursor.0.is_null()
+        {
+            return;
+        }
+        let x = ci.ptScreenPos.x - origin_x;
+        let y = ci.ptScreenPos.y - origin_y;
+        if x < 0 || y < 0 || x >= img.width || y >= img.height {
+            return;
+        }
+
+        let hdc = CreateCompatibleDC(None);
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = img.width;
+        bmi.bmiHeader.biHeight = -img.height;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = 0;
+
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hbmp = match CreateDIBSection(Some(hdc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0) {
+            Ok(b) if !bits.is_null() => b,
+            _ => {
+                let _ = DeleteDC(hdc);
+                return;
+            }
+        };
+        let len = img.pixels.len();
+        std::ptr::copy_nonoverlapping(img.pixels.as_ptr(), bits as *mut u8, len);
+        let old: HGDIOBJ = SelectObject(hdc, hbmp.into());
+        let _ = DrawIconEx(
+            hdc,
+            x,
+            y,
+            HICON(ci.hCursor.0),
+            0,
+            0,
+            0,
+            None,
+            DI_NORMAL,
+        );
+        let slice = std::slice::from_raw_parts(bits as *const u8, len);
+        img.pixels.copy_from_slice(slice);
+
+        SelectObject(hdc, old);
+        let _ = DeleteObject(hbmp.into());
+        let _ = DeleteDC(hdc);
+    }
 }
 
 /// 活动窗口的最小边长。Z 序里有一堆 1×1 / 几十像素的辅助窗口（输入法、
@@ -51,12 +121,14 @@ pub fn capture_active_window() -> Result<CapturedImage, String> {
 
         // 先试 PrintWindow：被遮挡的窗口也能取到内容。
         // 有些窗口（部分游戏 / 硬件加速表面）会返回 true 但全黑，此时回退 BitBlt。
-        if let Ok(img) = capture_via_print_window(hwnd, w, h) {
-            if !looks_blank(&img) {
-                return Ok(img);
-            }
+        let mut img = match capture_via_print_window(hwnd, w, h) {
+            Ok(img) if !looks_blank(&img) => img,
+            _ => capture_region(rect.left, rect.top, w, h)?,
+        };
+        if crate::config::load().screenshot_include_cursor {
+            draw_cursor(&mut img, rect.left, rect.top);
         }
-        capture_region(rect.left, rect.top, w, h)
+        Ok(img)
     }
 }
 

@@ -10,13 +10,21 @@
 <link rel="stylesheet" href="preview.css" />
 </head>
 <body data-theme="dark">
-  <header class="pv-head">
-    <div>
-      <div class="pv-title">截图预览</div>
-      <div id="pv-info" class="pv-info">正在读取…</div>
+<div class="win">
+  <!-- 自绘标题栏：与设置 / 主窗口同一套组件（docs/13-UI-DESIGN-SYSTEM.md） -->
+  <header class="tb" data-tauri-drag-region>
+    <span class="tb-title" data-tauri-drag-region>截图预览</span>
+    <div class="tb-actions">
+      <button class="tb-btn" type="button" data-win="min"></button>
+      <button class="tb-btn" type="button" data-win="max"></button>
+      <button class="tb-btn close" type="button" data-win="close"></button>
     </div>
-    <button id="pv-close-top" class="btn btn-ghost" type="button">关闭</button>
   </header>
+
+  <div class="pv-head">
+    <span id="pv-info" class="pv-info">正在读取…</span>
+    <span class="pv-hint">拖动滑块裁掉头尾，右侧按钮只作用于裁切后的区域</span>
+  </div>
 
   <main class="pv-main">
     <div class="pv-viewport">
@@ -56,8 +64,12 @@
       </div>
     </aside>
   </main>
+</div>
 
 <script src="theme.js"></script>
+<script src="icons.js"></script>
+<script src="titlebar.js"></script>
 <script src="preview.js"></script>
+<script>TitleBar.mount();</script>
 </body>
 </html>
