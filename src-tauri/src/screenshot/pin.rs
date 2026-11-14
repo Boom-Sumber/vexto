@@ -122,6 +122,7 @@ pub fn state_value(label: &str) -> serde_json::Value {
         .unwrap_or((0.0, 0.0));
     match e.images.get(e.index) {
         Some(path) => serde_json::json!({
+            "label": label,
             "url": preview::display_url(path),
             "index": e.index,
             "count": e.images.len(),
@@ -130,7 +131,8 @@ pub fn state_value(label: &str) -> serde_json::Value {
             "baseH": base_h,
         }),
         None => serde_json::json!({
-            "url": null, "index": 0, "count": 0, "zoom": percent, "baseW": base_w, "baseH": base_h
+            "label": label, "url": null, "index": 0, "count": 0,
+            "zoom": percent, "baseW": base_w, "baseH": base_h
         }),
     }
 }
@@ -206,9 +208,12 @@ pub fn zoom_window(win: &tauri::WebviewWindow, delta: i32, reset: bool) -> Optio
         let _ = win.set_size(tauri::PhysicalSize::new(tw as u32, th as u32));
     }
     let percent = (zoom * 100.0).round() as i64;
-    let _ = win.emit(
+    // 只发给当前窗口：`WebviewWindow::emit` 是广播，多窗口时会串台。
+    let _ = win.emit_to(
+        win.label(),
         "pin:zoom",
         serde_json::json!({
+            "label": win.label(),
             "percent": percent,
             "zoom": percent,
             "baseW": base_w,
@@ -228,7 +233,8 @@ pub fn copy_current(label: &str) -> Result<String, String> {
 }
 
 pub fn emit_state(win: &tauri::WebviewWindow) {
-    let _ = win.emit("pin:show", state_value(win.label()));
+    // 定向发送：多窗口模式下不能让 A 窗口收到 B 的状态。
+    let _ = win.emit_to(win.label(), "pin:show", state_value(win.label()));
 }
 
 /// 某个钉屏窗口销毁：删条目；暂存文件若没被其它窗口 / 预览使用就删除。
