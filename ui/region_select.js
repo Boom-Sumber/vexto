@@ -47,7 +47,8 @@
   const magCanvas = el("mag-canvas");
   const magCtx = magCanvas ? magCanvas.getContext("2d") : null;
 
-  if (window.Theme) Theme.apply();
+  // theme.js 用 `const Theme` 定义，不会挂到 window 上；直接判断标识符是否存在。
+  if (typeof Theme !== "undefined") Theme.apply();
 
   if (enhanced) startShot();
   else startOcr();
@@ -254,11 +255,12 @@
     mag.classList.add("on");
     const mw = mag.offsetWidth || 140;
     const mh = mag.offsetHeight || 190;
-    // 紧贴指针：面板左上角就是鼠标位置；靠近边缘时翻到另一侧。
-    let left = ev.clientX;
-    let top = ev.clientY;
-    if (left + mw + 4 > window.innerWidth) left = ev.clientX - mw;
-    if (top + mh + 4 > window.innerHeight) top = ev.clientY - mh;
+    // 和鼠标指针留一点间距（约 16px）；靠近边缘时翻到另一侧。
+    const pad = 16;
+    let left = ev.clientX + pad;
+    let top = ev.clientY + pad;
+    if (left + mw + 4 > window.innerWidth) left = ev.clientX - mw - pad;
+    if (top + mh + 4 > window.innerHeight) top = ev.clientY - mh - pad;
     mag.style.left = Math.max(0, left) + "px";
     mag.style.top = Math.max(0, top) + "px";
   }

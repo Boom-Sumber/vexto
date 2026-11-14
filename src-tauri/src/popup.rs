@@ -919,17 +919,20 @@ pub fn close_scroll_control(app: &AppHandle) {
     }
 }
 
-/// 打开 / 聚焦钉屏窗口。单窗多图：已有窗口时只切换图片并调整大小。
+/// 按 label 打开钉屏窗口：`pin` 走单窗多图（复用），其余 label 每图一窗。
 /// **必须在主线程调用**（会话 62 坑 11：IPC 回调里同步建第二个 WebView 会 about:blank）。
-pub fn open_pin_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(PIN_LABEL) {
-        let _ = w.show();
-        let _ = w.set_focus();
-        crate::screenshot::pin::fit_window(&w);
-        crate::screenshot::pin::emit_state(&w);
-        return;
+pub fn open_pin_window_for(app: &AppHandle, label: &str) {
+    if label == PIN_LABEL {
+        if let Some(w) = app.get_webview_window(PIN_LABEL) {
+            let _ = w.show();
+            let _ = w.set_focus();
+            crate::screenshot::pin::fit_window(&w);
+            crate::screenshot::pin::emit_state(&w);
+            return;
+        }
     }
-    let r = WebviewWindowBuilder::new(app, PIN_LABEL, WebviewUrl::App("pin.html".into()))
+    let label_owned = label.to_string();
+    let r = WebviewWindowBuilder::new(app, label, WebviewUrl::App("pin.html".into()))
         .title("钉屏")
         .decorations(false)
         .shadow(false)
@@ -946,22 +949,16 @@ pub fn open_pin_window(app: &AppHandle) {
         .build();
     match r {
         Ok(win) => {
-            win.on_window_event(|ev| {
+            let l = label_owned.clone();
+            win.on_window_event(move |ev| {
                 if matches!(ev, tauri::WindowEvent::Destroyed) {
-                    crate::screenshot::pin::on_window_destroyed();
+                    crate::screenshot::pin::on_window_destroyed(&l);
                 }
             });
             crate::screenshot::pin::fit_window(&win);
             let _ = win.center();
         }
         Err(e) => crate::dlog::dlog(&format!("create pin window failed: {e}")),
-    }
-}
-
-/// 关掉钉屏窗口（关闭按钮 / Esc）。销毁事件里统一清状态。
-pub fn close_pin_window(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(PIN_LABEL) {
-        let _ = w.destroy();
     }
 }
 

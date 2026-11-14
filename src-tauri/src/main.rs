@@ -634,8 +634,8 @@ async fn shot_action(
     .await;
     match result {
         Ok(Ok(out)) => {
-            if action == "pin" {
-                schedule_window(&app, crate::popup::open_pin_window);
+            if let Some(label) = out.pin_label.clone() {
+                schedule_pin_window(&app, label);
             } else if action == "preview" {
                 schedule_window(&app, crate::popup::open_preview_window);
             }
@@ -794,18 +794,26 @@ where
     });
 }
 
-/// 钉屏：把一张截图加进单窗多图钉屏窗口（已有窗口就切换过去）。
+/// 打开某个 label 的钉屏窗口（多窗口模式每个新图一个 label）。
+fn schedule_pin_window(app: &AppHandle, label: String) {
+    schedule_window(app, move |a| {
+        crate::popup::open_pin_window_for(a, &label);
+    });
+}
+
+/// 钉屏：单窗多图时加入并切换；关掉「单窗口多图」时每张图开一个新窗口。
 #[tauri::command]
 fn pin_add(path: String, app: AppHandle) -> SimpleOut {
-    match crate::screenshot::pin::add(std::path::Path::new(&path)) {
-        Ok(_) => {
-            if let Some(win) = app.get_webview_window(crate::popup::PIN_LABEL) {
+    let single = config::load().pinscreen_single_window;
+    match crate::screenshot::pin::add(std::path::Path::new(&path), single) {
+        Ok((label, _, _)) => {
+            if let Some(win) = app.get_webview_window(&label) {
                 let _ = win.show();
                 let _ = win.set_focus();
                 crate::screenshot::pin::fit_window(&win);
                 crate::screenshot::pin::emit_state(&win);
             } else {
-                schedule_window(&app, crate::popup::open_pin_window);
+                schedule_pin_window(&app, label);
             }
             SimpleOut {
                 ok: true,
@@ -819,19 +827,17 @@ fn pin_add(path: String, app: AppHandle) -> SimpleOut {
     }
 }
 
-/// 钉屏窗口内切换上一张 / 下一张。
+/// 钉屏窗口内切换上一张 / 下一张（多窗口模式每窗只有一张，等于无操作）。
 #[tauri::command]
-fn pin_step(delta: i32, app: AppHandle) -> SimpleOut {
-    if crate::screenshot::pin::step(delta).is_none() {
+fn pin_step(window: tauri::WebviewWindow, delta: i32) -> SimpleOut {
+    if crate::screenshot::pin::step(window.label(), delta).is_none() {
         return SimpleOut {
             ok: false,
             message: "钉屏里还没有图片".into(),
         };
     }
-    if let Some(win) = app.get_webview_window(crate::popup::PIN_LABEL) {
-        crate::screenshot::pin::fit_window(&win);
-        crate::screenshot::pin::emit_state(&win);
-    }
+    crate::screenshot::pin::fit_window(&window);
+    crate::screenshot::pin::emit_state(&window);
     SimpleOut {
         ok: true,
         message: String::new(),
@@ -840,14 +846,8 @@ fn pin_step(delta: i32, app: AppHandle) -> SimpleOut {
 
 /// 钉屏滚轮缩放：`delta > 0` 放大、`< 0` 缩小；`reset = true` 回到 100%。
 #[tauri::command]
-fn pin_zoom(delta: i32, reset: Option<bool>, app: AppHandle) -> SimpleOut {
-    let Some(win) = app.get_webview_window(crate::popup::PIN_LABEL) else {
-        return SimpleOut {
-            ok: false,
-            message: "钉屏窗口不在".into(),
-        };
-    };
-    match crate::screenshot::pin::zoom_window(&win, delta, reset.unwrap_or(false)) {
+fn pin_zoom(window: tauri::WebviewWindow, delta: i32, reset: Option<bool>) -> SimpleOut {
+    match crate::screenshot::pin::zoom_window(&window, delta, reset.unwrap_or(false)) {
         Some(percent) => SimpleOut {
             ok: true,
             message: format!("{percent}%"),
@@ -859,10 +859,10 @@ fn pin_zoom(delta: i32, reset: Option<bool>, app: AppHandle) -> SimpleOut {
     }
 }
 
-/// 钉屏操作条：复制当前图片到剪贴板。
+/// 钉屏操作条：复制当前窗口的图片到剪贴板。
 #[tauri::command]
-fn pin_copy() -> SimpleOut {
-    match crate::screenshot::pin::copy_current() {
+fn pin_copy(window: tauri::WebviewWindow) -> SimpleOut {
+    match crate::screenshot::pin::copy_current(window.label()) {
         Ok(message) => SimpleOut { ok: true, message },
         Err(e) => SimpleOut {
             ok: false,
@@ -872,13 +872,13 @@ fn pin_copy() -> SimpleOut {
 }
 
 #[tauri::command]
-fn pin_state() -> Value {
-    crate::screenshot::pin::state_value()
+fn pin_state(window: tauri::WebviewWindow) -> Value {
+    crate::screenshot::pin::state_value(window.label())
 }
 
 #[tauri::command]
-fn pin_close(app: AppHandle) {
-    crate::popup::close_pin_window(&app);
+fn pin_close(window: tauri::WebviewWindow) {
+    let _ = window.destroy();
 }
 
 /// 打开截图预览（暂存 + asset protocol 放行，不发图片字节）。
@@ -914,22 +914,23 @@ fn preview_state() -> Value {
 /// 对预览图执行存盘 / 复制 / 钉屏 / OCR。裁切与解码都放到阻塞线程。
 #[tauri::command]
 async fn preview_action(head: u32, tail: u32, action: String, app: AppHandle) -> Value {
-    let wants_pin = action == "pin";
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::screenshot::preview::apply(&action, head, tail)
     })
     .await;
-    if wants_pin && matches!(&result, Ok(Ok(_))) {
-        // 预览里点「钉屏」只把图加进了状态；窗口仍要按坑 11 排到主线程建。
-        schedule_window(&app, crate::popup::open_pin_window);
-    }
     match result {
-        Ok(Ok(out)) => json!({
-            "ok": true,
-            "message": out.message,
-            "path": out.path.as_ref().map(|p| p.to_string_lossy().to_string()),
-            "text": out.text,
-        }),
+        Ok(Ok(out)) => {
+            // 钉屏动作带回窗口 label；窗口仍要按坑 11 排到主线程建。
+            if let Some(label) = out.pin_label.clone() {
+                schedule_pin_window(&app, label);
+            }
+            json!({
+                "ok": true,
+                "message": out.message,
+                "path": out.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                "text": out.text,
+            })
+        }
         Ok(Err(e)) => json!({ "ok": false, "message": e }),
         Err(e) => json!({ "ok": false, "message": format!("预览动作失败：{e}") }),
     }

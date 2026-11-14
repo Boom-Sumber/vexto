@@ -22,10 +22,12 @@ html, body {
   justify-content: center;
   background: transparent;
   cursor: default;
+  overflow: hidden;
 }
 #img {
-  max-width: 100%;
-  max-height: 100%;
+  /* 尺寸由 pin.js 按「适配尺寸 × 缩放」显式设置；放大超过窗口时裁切 */
+  max-width: none;
+  max-height: none;
   width: auto;
   height: auto;
   display: block;

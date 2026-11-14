@@ -5,29 +5,49 @@
   const invoke = window.__TAURI__.core.invoke;
   const el = (id) => document.getElementById(id);
   let zoomBusy = false;
+  let baseW = 0;
+  let baseH = 0;
+  let zoomPct = 100;
+  // 每个钉屏窗口的 label；事件里带 label 时只处理自己的，避免多窗口串台。
+  let myLabel = "";
+  try {
+    myLabel = window.__TAURI__.window.getCurrentWindow().label;
+  } catch (_) {}
+
+  function mine(p) {
+    return !p || !p.label || !myLabel || p.label === myLabel;
+  }
 
   // visible(false) 防白屏：页面就绪后再显示窗口。
   invoke("window_ready").catch(() => {});
 
-  function setZoom(p) {
-    if (p && typeof p.zoom === "number") {
-      el("zoom").textContent = Math.round(p.zoom) + "%";
-    } else if (p && typeof p.percent === "number") {
-      el("zoom").textContent = Math.round(p.percent) + "%";
-    }
+  // 窗口在屏幕内按缩放变大；超过屏幕后窗口不再变大，靠这里把 <img> 缩放到
+  // 目标尺寸（超出部分裁切），保证百分比与画面一致。
+  function applyZoom(p) {
+    if (!mine(p)) return;
+    if (typeof p.zoom === "number") zoomPct = p.zoom;
+    else if (typeof p.percent === "number") zoomPct = p.percent;
+    if (typeof p.baseW === "number" && p.baseW > 0) baseW = p.baseW;
+    if (typeof p.baseH === "number" && p.baseH > 0) baseH = p.baseH;
+    el("zoom").textContent = Math.round(zoomPct) + "%";
+    if (!baseW || !baseH) return;
+    const dpr = window.devicePixelRatio || 1;
+    const im = el("img");
+    im.style.width = (baseW * (zoomPct / 100)) / dpr + "px";
+    im.style.height = (baseH * (zoomPct / 100)) / dpr + "px";
   }
 
   function show(p) {
-    if (!p || !p.url) return;
+    if (!p || !p.url || !mine(p)) return;
     el("img").src = p.url;
     el("idx").textContent = (p.index + 1) + "/" + p.count;
     el("nav").classList.toggle("hidden", p.count <= 1);
-    setZoom(p);
+    applyZoom(p);
   }
 
   invoke("pin_state").then(show).catch(() => {});
   window.__TAURI__.event.listen("pin:show", (e) => show(e.payload || {}));
-  window.__TAURI__.event.listen("pin:zoom", (e) => setZoom(e.payload || {}));
+  window.__TAURI__.event.listen("pin:zoom", (e) => applyZoom(e.payload || {}));
 
   const step = (delta) => invoke("pin_step", { delta }).catch(() => {});
   el("prev").addEventListener("click", () => step(-1));
