@@ -208,6 +208,9 @@ pub struct Config {
     /// 滚动方式：`message` / `wheel` / `key` / `pagedown` / `manual`
     #[serde(default = "d_scroll_action")]
     pub scroll_action: String,
+    /// 框选边框宽度（3–5 px，会话 65 选框改版）
+    #[serde(default = "d_shot_border")]
+    pub screenshot_border_width: u16,
     /// 钉屏单窗多图（false = 每图一窗，内存占用更高）
     #[serde(default = "d_true")]
     pub pinscreen_single_window: bool,
@@ -443,6 +446,9 @@ fn d_scroll_mode() -> String {
 fn d_scroll_action() -> String {
     "message".to_string()
 }
+fn d_shot_border() -> u16 {
+    3
+}
 fn d_true() -> bool {
     true
 }
@@ -543,6 +549,7 @@ impl Default for Config {
             screenshot_after_action: d_shot_after(),
             scroll_mode: d_scroll_mode(),
             scroll_action: d_scroll_action(),
+            screenshot_border_width: d_shot_border(),
             pinscreen_single_window: true,
             popup_timeout_ms: d_popup_timeout(),
             auto_copy: false,
@@ -1056,6 +1063,7 @@ mod tests {
         assert_eq!(c.screenshot_after_action, "both");
         assert_eq!(c.scroll_mode, "auto");
         assert_eq!(c.scroll_action, "message");
+        assert_eq!(c.screenshot_border_width, 3);
         assert!(c.pinscreen_single_window);
         assert!(c.enable_translate);
         assert!(!c.enable_download);

@@ -10,8 +10,27 @@
 <link rel="stylesheet" href="region_select.css" />
 </head>
 <body data-theme="dark" data-purpose="scroll">
+  <img id="snap" class="snap" alt="" draggable="false" />
+  <div id="hit"></div>
   <div id="dim"></div>
-  <div id="box"></div>
+  <div id="box">
+    <span class="h h-tl"></span><span class="h h-tc"></span><span class="h h-tr"></span>
+    <span class="h h-ml"></span><span class="h h-mr"></span>
+    <span class="h h-bl"></span><span class="h h-bc"></span><span class="h h-br"></span>
+  </div>
+
+  <div id="magnifier">
+    <canvas id="mag-canvas" width="128" height="128"></canvas>
+    <div class="mag-info">
+      <span id="mag-pos">X 0  Y 0</span>
+      <span class="mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span>
+    </div>
+    <div id="mag-copied" class="mag-copied">已复制</div>
+  </div>
+
+  <!-- 滚动模式选完就开滚，不会显示动作栏；保留 DOM 与截图模式共用同一套 JS。 -->
+  <div id="toolbar"></div>
+  <div id="toast"></div>
 
   <!-- 与 OCR / 截图共用 region_select.js 的 DOM 契约；滚动模式不会用到卡片。 -->
   <div id="card">

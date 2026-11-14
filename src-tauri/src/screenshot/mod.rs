@@ -11,6 +11,7 @@
 pub mod capture;
 pub mod input;
 pub mod output;
+pub mod overlay;
 pub mod pin;
 pub mod preview;
 pub mod scroll;
@@ -21,15 +22,9 @@ use crate::ocr::CapturedImage;
 
 pub use output::Delivered;
 
-/// 一次抓图的模式。区域模式带的是**物理像素**坐标。
+/// 一次抓图的模式（区域截图已改走框选快照，不再经过这里）。
 #[derive(Debug, Clone, Copy)]
 pub enum Mode {
-    Region {
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-    },
     FullScreen,
     ActiveWindow,
 }
@@ -49,7 +44,6 @@ pub fn run_with(mode: Mode, cfg: &Config) -> Result<Delivered, String> {
 /// 只抓图不交付（会话 63 的预览 / 钉屏会直接用）。
 pub fn grab(mode: Mode) -> Result<CapturedImage, String> {
     match mode {
-        Mode::Region { x, y, w, h } => capture::capture_region_checked(x, y, w, h),
         Mode::FullScreen => capture::capture_full_screen(),
         Mode::ActiveWindow => capture::capture_active_window(),
     }

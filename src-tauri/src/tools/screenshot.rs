@@ -52,6 +52,8 @@ impl Tool for Screenshot {
                 Field::hotkey("hotkey_screenshot", "区域截图热键"),
                 Field::dir("screenshot_dir", "保存目录")
                     .help("留空 = 系统「图片」文件夹下的 Vexto 子目录。"),
+                Field::number_unit("screenshot_border_width", "选框边框宽度", 3, 5, "px")
+                    .help("框选时选框边框的粗细，3–5 px。"),
                 Field::select(
                     "screenshot_after_action",
                     "截图后",

@@ -56,6 +56,18 @@ pub fn open(app: &AppHandle, purpose: Purpose) {
         let _ = w.set_focus();
         return;
     }
+
+    // 截图 / 滚动：先抓一张全屏快照再做浮层。必须赶在窗口创建之前，
+    // 否则快照里会有浮层自己；放大镜与最终裁剪都用这张图。
+    // OCR（S5）保持原路径：透明浮层 + 实时屏幕，不受影响。
+    if purpose != Purpose::Ocr {
+        if let Err(e) = crate::screenshot::overlay::capture() {
+            crate::dlog::dlog(&format!("region overlay snapshot failed: {e}"));
+            crate::screenshot::show_error(&format!("截图初始化失败\n\n{e}"));
+            return;
+        }
+    }
+
     let (vx, vy, vw, vh) = crate::ocr::virtual_screen();
     let r = WebviewWindowBuilder::new(app, label, WebviewUrl::App(purpose.page().into()))
         .title(purpose.title())
@@ -74,6 +86,13 @@ pub fn open(app: &AppHandle, purpose: Purpose) {
 
     match r {
         Ok(win) => {
+            if purpose != Purpose::Ocr {
+                win.on_window_event(|ev| {
+                    if matches!(ev, tauri::WindowEvent::Destroyed) {
+                        crate::screenshot::overlay::on_window_destroyed();
+                    }
+                });
+            }
             let _ = win.set_position(tauri::PhysicalPosition::new(vx, vy));
             let _ = win.set_size(tauri::PhysicalSize::new(vw.max(1) as u32, vh.max(1) as u32));
             let _ = win.show();

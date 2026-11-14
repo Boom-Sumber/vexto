@@ -15,8 +15,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct Delivered {
     pub path: Option<PathBuf>,
-    pub copied_image: bool,
-    pub copied_path: bool,
     pub message: String,
 }
 
@@ -161,8 +159,6 @@ pub fn deliver(img: &CapturedImage, cfg: &Config) -> Result<Delivered, String> {
             copy_image(img)?;
             Ok(Delivered {
                 path: None,
-                copied_image: true,
-                copied_path: false,
                 message: "已复制到剪贴板".into(),
             })
         }
@@ -174,8 +170,6 @@ pub fn deliver(img: &CapturedImage, cfg: &Config) -> Result<Delivered, String> {
             Ok(Delivered {
                 message: format!("已保存并复制路径：{}", path.display()),
                 path: Some(path),
-                copied_image: false,
-                copied_path: true,
             })
         }
         "save" => {
@@ -183,8 +177,6 @@ pub fn deliver(img: &CapturedImage, cfg: &Config) -> Result<Delivered, String> {
             Ok(Delivered {
                 message: format!("已保存：{}", path.display()),
                 path: Some(path),
-                copied_image: false,
-                copied_path: false,
             })
         }
         // 默认 both（也兜住用户手改坏的配置）
@@ -194,8 +186,6 @@ pub fn deliver(img: &CapturedImage, cfg: &Config) -> Result<Delivered, String> {
                 Ok(path) => Ok(Delivered {
                     message: format!("已复制并保存：{}", path.display()),
                     path: Some(path),
-                    copied_image: true,
-                    copied_path: false,
                 }),
                 Err(e) => Err(format!("图片已复制到剪贴板，但保存失败：{e}")),
             }

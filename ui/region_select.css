@@ -1,5 +1,9 @@
 /* 通用框选浮层（S7）：OCR 与截图共用。
- * 只画：暗幕 / 选框 / 处理中提示 / 结果卡。Esc 取消是硬性口径。 */
+ * 只画：暗幕 / 选框 / 处理中提示 / 结果卡。Esc 取消是硬性口径。
+ *
+ * 会话 65 起，截图 / 滚动模式改成「选区外暗、选区内透明」+ 放大取色镜 +
+ * 选区下方动作栏；OCR（S5）保持原来的实时屏幕 + 暗幕 + 卡片，不受影响。 */
+
 html, body {
   margin: 0;
   padding: 0;
@@ -8,8 +12,7 @@ html, body {
   user-select: none;
 }
 
-/* 暗幕：开始拖框前盖住全屏；松开鼠标后立刻藏起来，
-   否则截屏会把遮罩一起截进去（后端另有 350ms 兜底等待）。 */
+/* 暗幕（OCR）：开始拖框前盖住全屏；松开鼠标后立刻藏起来。 */
 #dim {
   position: absolute;
   inset: 0;
@@ -29,10 +32,192 @@ html, body {
 }
 #box.on { display: block; }
 
+/* ── 会话 65：截图 / 滚动选框改版 ───────────────────────────────────── */
+
+/* 冻结屏幕的快照：放大镜与最终裁剪都基于它 */
+.snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  display: none;
+}
+
+/* 透明事件层：截图模式用它接管鼠标（OCR 仍用 #dim） */
+#hit {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  cursor: crosshair;
+  display: none;
+}
+
+body[data-purpose="shot"] .snap,
+body[data-purpose="scroll"] .snap { display: block; }
+
+body[data-purpose="shot"] #hit,
+body[data-purpose="scroll"] #hit { display: block; }
+
+/* 截图模式下暗幕只负责「未开始时」的整屏变暗，事件交给 #hit */
+body[data-purpose="shot"] #dim,
+body[data-purpose="scroll"] #dim {
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(0, 0, 0, .45);
+}
+
+/* 选区：内部完全透明，只有绿色边框；box-shadow 把选区外压暗 */
+body[data-purpose="shot"] #box,
+body[data-purpose="scroll"] #box {
+  box-sizing: border-box;
+  border: 3px solid #22c55e;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45);
+  z-index: 2;
+}
+
+/* 八个控制点（视觉对齐参考图；本期只读，不做拖拽缩放） */
+#box .h {
+  display: none;
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  background: #22c55e;
+  border: 1px solid rgba(255, 255, 255, .92);
+  border-radius: 1px;
+  pointer-events: none;
+}
+#box.done .h { display: block; }
+.h-tl { left: -5px; top: -5px; }
+.h-tc { left: 50%; top: -5px; margin-left: -4px; }
+.h-tr { right: -5px; top: -5px; }
+.h-ml { left: -5px; top: 50%; margin-top: -4px; }
+.h-mr { right: -5px; top: 50%; margin-top: -4px; }
+.h-bl { left: -5px; bottom: -5px; }
+.h-bc { left: 50%; bottom: -5px; margin-left: -4px; }
+.h-br { right: -5px; bottom: -5px; }
+
+/* 放大取色镜 */
+#magnifier {
+  position: fixed;
+  z-index: 4;
+  display: none;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(18, 18, 22, .94);
+  border: 1px solid rgba(255, 255, 255, .16);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .4);
+  pointer-events: none;
+}
+#magnifier.on { display: block; }
+
+#mag-canvas {
+  display: block;
+  width: 128px;
+  height: 128px;
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+
+.mag-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  font: 11px/1.2 var(--font-mono);
+  color: #e9e9f0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mag-color { display: inline-flex; align-items: center; gap: 5px; }
+#mag-swatch {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, .55);
+  background: #000;
+}
+
+.mag-copied {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, .92);
+  color: #fff;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.mag-copied.on { opacity: 1; }
+
+/* 选区下方的动作栏 */
+#toolbar {
+  position: fixed;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-float);
+}
+#toolbar.on { display: flex; }
+
+.tb-btn {
+  all: unset;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.tb-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tb-btn:active { background: var(--bg-active); }
+.tb-btn svg { width: 18px; height: 18px; }
+.tb-btn:disabled { opacity: .45; cursor: default; }
+.tb-ok { color: var(--success); }
+.tb-close { color: var(--danger); }
+.tb-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border-subtle);
+}
+
+#toast {
+  position: fixed;
+  z-index: 6;
+  display: none;
+  max-width: 460px;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: rgba(18, 18, 22, .94);
+  color: #eee;
+  font-size: var(--fs-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+}
+#toast.on { display: block; }
+#toast.err { color: #ffb8c1; }
+
 /* 卡片（处理中 / 结果 / 错误共用一张）：小、浮在选区附近或屏幕中上 */
 #card {
   position: absolute;
-  z-index: 3;
+  z-index: 6;
   max-width: 420px;
   display: none;
   padding: var(--sp-4) var(--sp-5);

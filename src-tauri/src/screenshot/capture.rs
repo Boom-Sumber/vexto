@@ -21,15 +21,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, GW_HWNDNEXT, PW_RENDERFULLCONTENT,
 };
 
-/// 区域：调用方给的是物理像素（已乘 dpr、已加虚拟屏原点）。
-/// 这里只做尺寸校验，真正的 GDI 抓图复用 S5 的 `capture_region`。
-pub fn capture_region_checked(x: i32, y: i32, w: i32, h: i32) -> Result<CapturedImage, String> {
-    if w <= 0 || h <= 0 {
-        return Err("选区尺寸不合法".into());
-    }
-    capture_region(x, y, w, h)
-}
-
 /// 全屏：整个虚拟屏幕（多显示器时是一整张，不是只主屏）。
 pub fn capture_full_screen() -> Result<CapturedImage, String> {
     let (x, y, w, h) = virtual_screen();

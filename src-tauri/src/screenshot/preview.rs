@@ -131,6 +131,9 @@ pub fn serve_staged(path: &str) -> tauri::http::Response<Vec<u8>> {
         Ok(bytes) => tauri::http::Response::builder()
             .header("Content-Type", "image/png")
             .header("Cache-Control", "no-store")
+            // 前端 canvas 要取像素（放大镜取色），必须允许跨源读取。
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Cross-Origin-Resource-Policy", "cross-origin")
             .body(bytes)
             .unwrap_or_else(|_| not_found()),
         Err(_) => not_found(),
@@ -288,6 +291,140 @@ pub fn crop_to_image(src: &Path, head: u32, tail: u32) -> Result<CapturedImage, 
     })
 }
 
+fn validate_region(
+    img_w: u32,
+    img_h: u32,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> Result<(u32, u32), String> {
+    if w == 0
+        || h == 0
+        || x.checked_add(w).is_none_or(|v| v > img_w)
+        || y.checked_add(h).is_none_or(|v| v > img_h)
+    {
+        return Err("裁切区域超出图片范围".into());
+    }
+    Ok((w, h))
+}
+
+/// 矩形裁切（选框用）：流式逐行读、只写中间列，内存只有一行缓冲。
+pub fn crop_region_png(
+    src: &Path,
+    dst: &Path,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> Result<(u32, u32), String> {
+    let mut d = open_decoder(src)?;
+    let (out_w, out_h) = validate_region(d.width, d.height, x, y, w, h)?;
+    let bpp = if d.color == png::ColorType::Rgba { 4 } else { 3 };
+
+    let out_file = std::fs::File::create(dst)
+        .map_err(|e| format!("创建裁切文件失败（{}）：{e}", dst.display()))?;
+    let mut out_buf = BufWriter::new(out_file);
+    let result = (|| -> Result<(), String> {
+        let mut enc = png::Encoder::new(&mut out_buf, out_w, out_h);
+        enc.set_color(d.color);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().map_err(|e| format!("写 PNG 头失败：{e}"))?;
+        let mut stream = writer
+            .stream_writer()
+            .map_err(|e| format!("写裁切结果失败：{e}"))?;
+        let mut row = 0u32;
+        while let Some(data) = d
+            .reader
+            .next_row()
+            .map_err(|e| format!("解码 PNG 失败：{e}"))?
+        {
+            if row >= y && row < y + out_h {
+                let bytes = data.data();
+                let start = (x * bpp) as usize;
+                let end = ((x + out_w) * bpp) as usize;
+                stream
+                    .write_all(&bytes[start..end])
+                    .map_err(|e| format!("写裁切结果失败：{e}"))?;
+            }
+            row += 1;
+            if row >= y + out_h {
+                break;
+            }
+        }
+        if row < y + out_h {
+            return Err("PNG 行数不足，文件可能不完整".into());
+        }
+        stream.finish().map_err(|e| format!("写裁切结果失败：{e}"))?;
+        Ok(())
+    })();
+    if let Err(e) = result {
+        let _ = std::fs::remove_file(dst);
+        return Err(e);
+    }
+    out_buf
+        .flush()
+        .map_err(|e| format!("保存裁切结果失败：{e}"))?;
+    Ok((out_w, out_h))
+}
+
+/// 矩形裁切并解码为 BGRA（复制 / OCR 用）。受 `MAX_DECODE_PIXELS` 限制。
+pub fn crop_region_to_image(
+    src: &Path,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> Result<CapturedImage, String> {
+    let mut d = open_decoder(src)?;
+    let (out_w, out_h) = validate_region(d.width, d.height, x, y, w, h)?;
+    let pixels = out_w as u64 * out_h as u64;
+    if pixels > MAX_DECODE_PIXELS {
+        return Err(format!(
+            "选区太大（{out_w}×{out_h}，{pixels} 像素），请改用「保存」"
+        ));
+    }
+    let mut out = Vec::with_capacity((pixels * 4) as usize);
+    let mut row = 0u32;
+    while let Some(data) = d
+        .reader
+        .next_row()
+        .map_err(|e| format!("解码 PNG 失败：{e}"))?
+    {
+        if row >= y && row < y + out_h {
+            let bytes = data.data();
+            match d.color {
+                png::ColorType::Rgba => {
+                    let start = (x * 4) as usize;
+                    let end = ((x + out_w) * 4) as usize;
+                    for px in bytes[start..end].as_chunks::<4>().0 {
+                        out.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
+                    }
+                }
+                _ => {
+                    let start = (x * 3) as usize;
+                    let end = ((x + out_w) * 3) as usize;
+                    for px in bytes[start..end].as_chunks::<3>().0 {
+                        out.extend_from_slice(&[px[2], px[1], px[0], 255]);
+                    }
+                }
+            }
+        }
+        row += 1;
+        if row >= y + out_h {
+            break;
+        }
+    }
+    if row < y + out_h {
+        return Err("PNG 行数不足，文件可能不完整".into());
+    }
+    Ok(CapturedImage {
+        width: out_w as i32,
+        height: out_h as i32,
+        pixels: out,
+    })
+}
+
 /// 预览面板上的四个动作。
 #[derive(Debug, Clone)]
 pub struct ActionOutcome {
@@ -432,6 +569,38 @@ mod tests {
         let img = crop_to_image(&src, 1, 1).unwrap();
         assert_eq!((img.width, img.height), (3, 2));
         assert_eq!(&img.pixels[0..4], &[2, 2, 2, 255]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 矩形裁切：只保留 x..x+w 列与 y..y+h 行。
+    #[test]
+    fn region_crop_keeps_columns_and_rows() {
+        let dir = temp_dir("region");
+        let src = dir.join("src.png");
+        // 4 行、每行灰度就是行号；两列像素值相同
+        write_png(&src, 4, &[10, 20, 30, 40]);
+        let dst = dir.join("out.png");
+        let (w, h) = crop_region_png(&src, &dst, 1, 1, 2, 2).unwrap();
+        assert_eq!((w, h), (2, 2));
+        let file = std::fs::File::open(&dst).unwrap();
+        let mut reader = png::Decoder::new(BufReader::new(file)).read_info().unwrap();
+        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+        reader.next_frame(&mut buf).unwrap();
+        // 第一行应来自源图第 1 行（值 20），且只有 2 列
+        assert_eq!(&buf[0..3], &[20, 20, 20]);
+        assert_eq!(&buf[6..9], &[30, 30, 30]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn region_out_of_bounds_is_rejected() {
+        let dir = temp_dir("region-bad");
+        let src = dir.join("src.png");
+        write_png(&src, 4, &[1, 2, 3]);
+        let dst = dir.join("out.png");
+        assert!(crop_region_png(&src, &dst, 3, 0, 2, 1).is_err());
+        assert!(crop_region_png(&src, &dst, 0, 2, 1, 2).is_err());
+        assert!(crop_region_to_image(&src, 0, 0, 0, 1).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

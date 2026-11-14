@@ -572,45 +572,49 @@ fn ocr_cancel(app: AppHandle) {
 
 // ---------- 命令：S7 截图 ----------
 
-/// 截图框选完成。与 OCR 共用藏窗时序与坐标换算，但交付的是图片而不是 OCR：
-/// 抓图 → 按 `screenshot_after_action` 存盘 / 剪贴板 / 复制路径 →
-/// `shot:result` 事件回浮层。成功时前端 1.2 秒后自动关窗；失败时卡片留在
-/// 屏幕上显示原因（不静默吞错）。
+/// 框选浮层初始化：快照 URL / 物理尺寸 / 虚拟屏原点 / 边框宽度。
+/// 快照由 `region_select::open` 在创建窗口前抓取（见 overlay.rs）。
 #[tauri::command]
-fn shot_submit_region(
+fn shot_overlay_state() -> Value {
+    crate::screenshot::overlay::state_value()
+}
+
+/// 选区动作：save / path / clipboard / default / pin / preview / ocr。
+///
+/// 坐标是浮层内的 CSS 像素；后端按快照物理像素裁切，用户看到什么就裁什么。
+/// 钉屏 / 预览成功后由这里排主线程建窗（会话 62 坑 11）。
+#[tauri::command]
+async fn shot_action(
+    action: String,
     x: f64,
     y: f64,
     w: f64,
     h: f64,
     dpr: Option<f64>,
     app: AppHandle,
-) {
-    let win = match app.get_webview_window(crate::popup::SHOT_LABEL) {
-        Some(w) => w,
-        None => return,
-    };
-    tauri::async_runtime::spawn_blocking(move || {
-        // 遮罩是前端画的：收到命令时它可能还没从屏幕上消失，等一拍再截。
-        std::thread::sleep(std::time::Duration::from_millis(350));
-
-        let (px, py, pw, ph) = crate::region_select::physical_rect(x, y, w, h, dpr);
-        let payload = match crate::screenshot::run(crate::screenshot::Mode::Region {
-            x: px,
-            y: py,
-            w: pw,
-            h: ph,
-        }) {
-            Ok(d) => serde_json::json!({
+) -> Value {
+    let act = action.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::overlay::apply(&act, x, y, w, h, dpr)
+    })
+    .await;
+    match result {
+        Ok(Ok(out)) => {
+            if action == "pin" {
+                schedule_window(&app, crate::popup::open_pin_window);
+            } else if action == "preview" {
+                schedule_window(&app, crate::popup::open_preview_window);
+            }
+            json!({
                 "ok": true,
-                "message": d.message,
-                "path": d.path.as_ref().map(|p| p.to_string_lossy().to_string()),
-                "copied_image": d.copied_image,
-                "copied_path": d.copied_path,
-            }),
-            Err(e) => serde_json::json!({ "ok": false, "error": e }),
-        };
-        let _ = win.emit("shot:result", payload);
-    });
+                "message": out.message,
+                "path": out.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                "text": out.text,
+            })
+        }
+        Ok(Err(e)) => json!({ "ok": false, "message": e }),
+        Err(e) => json!({ "ok": false, "message": format!("选区动作失败：{e}") }),
+    }
 }
 
 /// 关掉截图 overlay（Esc / 成功后的自动关闭）。
@@ -2319,7 +2323,8 @@ fn main() {
             ocr_submit_region,
             ocr_cancel,
             // 截图（S7）
-            shot_submit_region,
+            shot_overlay_state,
+            shot_action,
             shot_cancel,
             shot_full,
             shot_window,

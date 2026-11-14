@@ -10,8 +10,52 @@
 <link rel="stylesheet" href="region_select.css" />
 </head>
 <body data-theme="dark" data-purpose="shot">
+  <img id="snap" class="snap" alt="" draggable="false" />
+  <div id="hit"></div>
   <div id="dim"></div>
-  <div id="box"></div>
+  <div id="box">
+    <span class="h h-tl"></span><span class="h h-tc"></span><span class="h h-tr"></span>
+    <span class="h h-ml"></span><span class="h h-mr"></span>
+    <span class="h h-bl"></span><span class="h h-bc"></span><span class="h h-br"></span>
+  </div>
+
+  <div id="magnifier">
+    <canvas id="mag-canvas" width="128" height="128"></canvas>
+    <div class="mag-info">
+      <span id="mag-pos">X 0  Y 0</span>
+      <span class="mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span>
+    </div>
+    <div id="mag-copied" class="mag-copied">已复制</div>
+  </div>
+
+  <div id="toolbar">
+    <button class="tb-btn" type="button" data-act="save" title="保存">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+    </button>
+    <button class="tb-btn" type="button" data-act="clipboard" title="复制图片">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 011-1h10"/></svg>
+    </button>
+    <button class="tb-btn" type="button" data-act="path" title="保存并复制路径">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1"/></svg>
+    </button>
+    <button class="tb-btn" type="button" data-act="pin" title="钉屏">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6z"/></svg>
+    </button>
+    <button class="tb-btn" type="button" data-act="preview" title="预览">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
+    </button>
+    <button class="tb-btn" type="button" data-act="ocr" title="识别文字">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5h16v3"/><path d="M12 5v14"/><path d="M8 19h8"/></svg>
+    </button>
+    <span class="tb-sep"></span>
+    <button class="tb-btn tb-ok" type="button" data-act="default" title="完成">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
+    </button>
+    <button class="tb-btn tb-close" type="button" data-act="close" title="关闭">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div id="toast"></div>
 
   <div id="card">
     <div id="card-tag" class="card-tag"></div>
