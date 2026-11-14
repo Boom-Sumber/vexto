@@ -22,6 +22,13 @@ static STOP: AtomicBool = AtomicBool::new(false);
 /// 是否有滚动截图在跑（热键据此决定「开浮层」还是「停止」）。
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// 默认滚动消息一步少于这么多像素就改用滚轮。
+///
+/// Chromium 的渲染子窗口对 `WM_VSCROLL` 只滚约 5px/条（会话 63 真机实测：
+/// 100 帧只拼出 539px），远小于一行的 16–24px。这不是「没反应」，所以
+/// 帧全等检测抓不到；按单步幅度识别后切滚轮（约 100px/格）。
+const MIN_USEFUL_STEP: usize = 12;
+
 pub fn is_running() -> bool {
     RUNNING.load(Ordering::SeqCst)
 }
@@ -166,6 +173,8 @@ fn run_inner(
     let mut fallback_seam = false;
     let mut skipped = false;
     let mut trimmed = false;
+    let mut message_stepping: usize = 0;
+    let mut message_added: usize = 0;
     let mut reason: Option<StopReason> = None;
 
     while reason.is_none() {
@@ -179,7 +188,8 @@ fn run_inner(
         }
 
         if manual {
-            std::thread::sleep(Duration::from_millis(180));
+            // 用户自己滚时也要避开平滑滚动的中间帧（与 input 的 settle 同口径）。
+            std::thread::sleep(Duration::from_millis(250));
         } else {
             let Some(t) = target else {
                 reason = Some(StopReason::NoTarget);
@@ -222,6 +232,7 @@ fn run_inner(
                 break;
             }
             // 默认滚动消息没反应：回退滚轮再试一次（坑 4）。
+            crate::dlog::dlog("scroll: 滚动消息未生效，回退滚轮");
             action = Action::Wheel;
             if let Some(t) = target {
                 input::scroll(t, action, cx, cy);
@@ -253,6 +264,22 @@ fn run_inner(
 
         match stitch::advance(view(&prev), view(&cur), width, total, MAX_TOTAL_HEIGHT) {
             Ok(adv) => {
+                if action == Action::Message && !manual {
+                    // Chromium 这类窗口对滚动消息只给几像素：连续几步都太小就换滚轮。
+                    // 只看第一帧不够——首步可能因为页面刚获得焦点而偏大（自测实测）。
+                    message_stepping += 1;
+                    message_added += adv.new_rows;
+                    if message_stepping >= 4
+                        && message_added < message_stepping * MIN_USEFUL_STEP
+                    {
+                        crate::dlog::dlog(&format!(
+                            "scroll: {} 步平均只有 {} px，改用滚轮",
+                            message_stepping,
+                            message_added / message_stepping
+                        ));
+                        action = Action::Wheel;
+                    }
+                }
                 // 第二帧才认得出底部固定栏：之前写进临时文件的底部行要截掉，
                 // 否则固定栏会留在长图的中间（坑：聊天输入框 / 任务栏）。
                 if adv.ignored_bottom > 0 && total == height && !trimmed {

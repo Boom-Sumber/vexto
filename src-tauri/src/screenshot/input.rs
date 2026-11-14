@@ -41,11 +41,15 @@ impl Action {
     }
 
     /// 发完动作后给目标程序留多少时间渲染。
+    ///
+    /// Chromium 的滚动是**平滑动画**（约 250–350ms）：等太短会抓到中间帧，
+    /// 相邻帧只差几像素，拼出来的图会错位（会话 63 真机实测：160ms 时
+    /// 100 帧只拼出 400 多像素且接缝错乱）。这里按动画走完来等。
     pub fn settle_ms(self) -> u64 {
         match self {
-            Action::Wheel => 220,
-            Action::Message => 160,
-            Action::Key | Action::PageDown => 180,
+            Action::Wheel => 450,
+            Action::Message => 400,
+            Action::Key | Action::PageDown => 400,
             Action::Manual => 0,
         }
     }
