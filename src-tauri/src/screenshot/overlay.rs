@@ -144,6 +144,7 @@ pub fn apply(
             let dst = output::next_png_path(&dir);
             let (ow, oh) = preview::crop_region_png(&src, &dst, sx, sy, sw, sh)?;
             Ok(preview::ActionOutcome {
+                pin_label: None,
                 message: format!("已保存（{ow}×{oh}）：{}", dst.display()),
                 path: Some(dst),
                 text: None,
@@ -158,6 +159,7 @@ pub fn apply(
                 return Err(format!("已保存（{ow}×{oh}）到 {}，但复制路径失败：{e}", dst.display()));
             }
             Ok(preview::ActionOutcome {
+                pin_label: None,
                 message: format!("已保存并复制路径（{ow}×{oh}）：{}", dst.display()),
                 path: Some(dst),
                 text: None,
@@ -167,6 +169,7 @@ pub fn apply(
             let img = preview::crop_region_to_image(&src, sx, sy, sw, sh)?;
             output::copy_image(&img)?;
             Ok(preview::ActionOutcome {
+                pin_label: None,
                 message: format!("已复制到剪贴板（{}×{}）", img.width, img.height),
                 path: None,
                 text: None,
@@ -176,6 +179,7 @@ pub fn apply(
             let img = preview::crop_region_to_image(&src, sx, sy, sw, sh)?;
             let d = output::deliver(&img, &cfg)?;
             Ok(preview::ActionOutcome {
+                pin_label: None,
                 message: d.message,
                 path: d.path,
                 text: None,
@@ -183,8 +187,9 @@ pub fn apply(
         }
         "pin" => {
             let dst = staged_crop(&src, sx, sy, sw, sh)?;
-            crate::screenshot::pin::add_staged(dst)?;
+            let (label, _, _) = crate::screenshot::pin::add_staged(dst, cfg.pinscreen_single_window)?;
             Ok(preview::ActionOutcome {
+                pin_label: Some(label),
                 message: format!("已钉屏（{sw}×{sh}）"),
                 path: None,
                 text: None,
@@ -194,6 +199,7 @@ pub fn apply(
             let dst = staged_crop(&src, sx, sy, sw, sh)?;
             preview::set_source(dst);
             Ok(preview::ActionOutcome {
+                pin_label: None,
                 message: format!("已打开预览（{sw}×{sh}）"),
                 path: None,
                 text: None,

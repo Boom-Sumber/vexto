@@ -7,6 +7,9 @@
   const headEl = el("pv-head");
   const tailEl = el("pv-tail");
 
+  // theme.js 用 `const Theme` 定义，不挂 window；预览窗之前漏了这一步，始终暗色。
+  if (typeof Theme !== "undefined") Theme.apply();
+
   let state = { path: "", width: 0, height: 0 };
   let head = 0;
   let tail = 0;

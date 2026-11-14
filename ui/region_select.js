@@ -47,7 +47,8 @@
   const magCanvas = el("mag-canvas");
   const magCtx = magCanvas ? magCanvas.getContext("2d") : null;
 
-  if (window.Theme) Theme.apply();
+  // theme.js 用 `const Theme` 定义，不会挂到 window 上；直接判断标识符是否存在。
+  if (typeof Theme !== "undefined") Theme.apply();
 
   if (enhanced) startShot();
   else startOcr();

@@ -431,6 +431,8 @@ pub struct ActionOutcome {
     pub message: String,
     pub path: Option<PathBuf>,
     pub text: Option<String>,
+    /// 钉屏动作创建/复用的窗口 label（供主线程打开对应窗口）。
+    pub pin_label: Option<String>,
 }
 
 /// 对当前预览图执行一个动作。`head` / `tail` 是像素行数。
@@ -444,6 +446,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let dst = output::next_png_path(&dir);
             let (w, h) = crop_png(&src, &dst, head, tail)?;
             Ok(ActionOutcome {
+                pin_label: None,
                 message: format!("已保存（{w}×{h}）：{}", dst.display()),
                 path: Some(dst),
                 text: None,
@@ -453,6 +456,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let img = crop_to_image(&src, head, tail)?;
             output::copy_image(&img)?;
             Ok(ActionOutcome {
+                pin_label: None,
                 message: format!("已复制到剪贴板（{}×{}）", img.width, img.height),
                 path: None,
                 text: None,
@@ -466,8 +470,10 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
                 file_key(&src)?
             ));
             let (w, h) = crop_png(&src, &dst, head, tail)?;
-            crate::screenshot::pin::add_staged(dst)?;
+            let single = crate::config::load().pinscreen_single_window;
+            let (label, _, _) = crate::screenshot::pin::add_staged(dst, single)?;
             Ok(ActionOutcome {
+                pin_label: Some(label),
                 message: format!("已钉屏（{w}×{h}）"),
                 path: None,
                 text: None,
@@ -478,6 +484,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let text = crate::ocr::ocr_bitmap(&img)?;
             let empty = text.trim().is_empty();
             Ok(ActionOutcome {
+                pin_label: None,
                 message: if empty {
                     "没有识别到文字".into()
                 } else {
