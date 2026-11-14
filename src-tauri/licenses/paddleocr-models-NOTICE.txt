@@ -1,0 +1,15 @@
+PaddleOCR PP-OCRv4 模型（随包分发）
+====================================
+
+文件（模型不入 git 历史之外，随安装包放在 models/ocr/）：
+  ch_PP-OCRv4_det_infer.onnx   4,745,517 B
+  ch_PP-OCRv4_rec_infer.onnx  10,857,958 B
+  ppocr_keys_v1.txt                26,250 B
+
+来源：
+  https://hf-mirror.com/SWHL/RapidOCR/tree/main/PP-OCRv4
+  https://github.com/PaddlePaddle/PaddleOCR （ppocr_keys_v1.txt）
+
+许可：Apache License 2.0（PaddleOCR / RapidOCR 的模型权重）。
+推理库：pure-onnx-ocr 0.3.2（Apache-2.0）、tract（Apache-2.0）。
+完整许可全文：pure-onnx-ocr-Apache-2.0.txt

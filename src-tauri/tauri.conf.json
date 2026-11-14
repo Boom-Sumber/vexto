@@ -23,6 +23,6 @@
       "icons/icon.ico"
     ],
     "externalBin": ["binaries/aria2c"],
-    "resources": ["licenses/*"]
+    "resources": ["licenses/*", "models/ocr/*"]
   }
 }

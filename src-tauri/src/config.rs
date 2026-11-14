@@ -188,7 +188,7 @@ pub struct Config {
     pub enable_transfer: bool,
     #[serde(default)]
     pub enable_ocr: bool,
-    /// OCR 引擎：`windows`（系统自带，默认）/ `paddle`（实验分支）
+    /// OCR 引擎：`paddle`（PaddleOCR，默认）/ `windows`（系统自带）
     #[serde(default = "d_ocr_engine")]
     pub ocr_engine: String,
 
@@ -462,7 +462,7 @@ fn d_shot_magnifier() -> u16 {
     8
 }
 fn d_ocr_engine() -> String {
-    "windows".to_string()
+    "paddle".to_string()
 }
 fn d_true() -> bool {
     true
@@ -1084,6 +1084,7 @@ mod tests {
         assert_eq!(c.screenshot_border_width, 3);
         assert_eq!(c.screenshot_magnifier_zoom, 8);
         assert!(!c.screenshot_include_cursor);
+        assert_eq!(c.ocr_engine, "paddle");
         assert!(c.pinscreen_single_window);
         assert!(c.enable_translate);
         assert!(!c.enable_download);

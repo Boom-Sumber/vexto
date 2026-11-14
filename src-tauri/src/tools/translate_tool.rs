@@ -166,17 +166,17 @@ impl Tool for Translate {
                 vec![
                     Field::group("截图翻译"),
                     Field::switch("enable_ocr", "启用截图翻译")
-                        .help("按热键框选屏幕区域 → 系统自带 OCR 识别 → 走当前翻译引擎出译文。中文识别需要系统装有中文 OCR 语言包（设置 → 时间和语言 → 语言）。"),
+                        .help("按热键框选屏幕区域 → OCR 识别文字 → 走当前翻译引擎出译文。默认 PaddleOCR 模型随包，不需要系统语言包。"),
                     Field::hotkey("hotkey_ocr", "截图热键"),
                     Field::select(
                         "ocr_engine",
                         "识别引擎",
                         &[
-                            ("windows", "Windows 自带（默认）"),
-                            ("paddle", "PaddleOCR（实验）"),
+                            ("paddle", "PaddleOCR（默认，中文更准）"),
+                            ("windows", "Windows 自带（零体积）"),
                         ],
                     )
-                    .help("PaddleOCR 需要模型文件；只存在于实验分支。"),
+                    .help("PaddleOCR 模型随包（约 15.6 MB），单次识别约 0.5 秒；Windows 自带更快但小字号中文容易错。"),
                 ],
             ),
         ]

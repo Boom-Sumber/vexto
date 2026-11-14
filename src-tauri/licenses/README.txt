@@ -19,5 +19,12 @@ aria2 是独立可执行文件，Vexto 只通过 127.0.0.1 的 JSON-RPC 与它�
 如需书面要约或在三年内索取该版本源码，请从上述仓库按 tag 下载；
 本程序不分发 aria2 的修改版，也不把它的代码合并进 Vexto 主程序。
 
+PaddleOCR PP-OCRv4 模型（截图 / 预览 OCR）
+------------------------------------------
+许可：Apache License 2.0（模型权重）
+来源、文件与校验说明：paddleocr-models-NOTICE.txt
+许可全文：pure-onnx-ocr-Apache-2.0.txt
+推理库 pure-onnx-ocr / tract 同为 Apache-2.0。
+
 Vexto 主程序的依赖均为 MIT / Apache-2.0 等宽松许可，
 未引入任何 GPL/AGPL 的 Rust crate（见 docs/07-LICENSING.md §7.5）。
