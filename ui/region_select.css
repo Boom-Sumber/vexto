@@ -32,6 +32,22 @@ html, body {
 }
 #box.on { display: block; }
 
+/* 结果缩略图（滚动 / 全屏）：填充选框内部；长图按 contain 显示，细节用预览看 */
+#box .result-img {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: rgba(0, 0, 0, .88);
+  pointer-events: none;
+}
+#box.result .result-img { display: block; }
+#box.result {
+  background: rgba(0, 0, 0, .88);
+  overflow: hidden;
+}
+#box.moving { cursor: move; }
+
 /* ── 会话 65：截图 / 滚动选框改版 ───────────────────────────────────── */
 
 /* 冻结屏幕的快照：放大镜与最终裁剪都基于它 */

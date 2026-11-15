@@ -7,7 +7,10 @@
 //! **OCR 的行为与事件名不变**（ADR-041 / 风险 109）：本模块只是把 S5 的建窗
 //! 代码搬过来，参数、藏窗时序、坐标换算逐字保留。
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use windows::Win32::UI::WindowsAndMessaging::{
+    SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+};
 
 use crate::popup::{OCR_LABEL, SCROLL_LABEL, SHOT_LABEL, WEBVIEW_ARGS};
 
@@ -50,6 +53,23 @@ impl Purpose {
 /// 多显示器：用物理坐标摆位（虚拟屏幕原点可能是负数，逻辑坐标会摆错）。
 /// 混合 DPI 的多屏是 MVP 之外的边界，先按单值 dpr 处理（前端上报）。
 pub fn open(app: &AppHandle, purpose: Purpose) {
+    open_with(app, purpose, true);
+}
+
+/// 打开「结果框」：不抓新快照，直接显示 `overlay::set_result` 里已经准备好的
+/// 全屏结果图。前端从 `shot_overlay_state` 的 `mode:"full"` 进入结果态。
+pub fn open_result(app: &AppHandle, purpose: Purpose) {
+    if let Some(w) = app.get_webview_window(purpose.label()) {
+        // 已有浮层：直接把结果推过去，不要 destroy——销毁会清掉刚设好的结果文件。
+        let _ = w.show();
+        let _ = w.set_focus();
+        let _ = w.emit("shot:result", crate::screenshot::overlay::result_state());
+        return;
+    }
+    open_with(app, purpose, false);
+}
+
+fn open_with(app: &AppHandle, purpose: Purpose, snapshot: bool) {
     let label = purpose.label();
     if let Some(w) = app.get_webview_window(label) {
         let _ = w.show();
@@ -60,7 +80,8 @@ pub fn open(app: &AppHandle, purpose: Purpose) {
     // 截图 / 滚动：先抓一张全屏快照再做浮层。必须赶在窗口创建之前，
     // 否则快照里会有浮层自己；放大镜与最终裁剪都用这张图。
     // OCR（S5）保持原路径：透明浮层 + 实时屏幕，不受影响。
-    if purpose != Purpose::Ocr {
+    // 全屏结果框（open_result）已经拿到结果图，不再抓快照。
+    if snapshot && purpose != Purpose::Ocr {
         if let Err(e) = crate::screenshot::overlay::capture() {
             crate::dlog::dlog(&format!("region overlay snapshot failed: {e}"));
             crate::screenshot::show_error(&format!("截图初始化失败\n\n{e}"));
@@ -102,8 +123,33 @@ pub fn open(app: &AppHandle, purpose: Purpose) {
     }
 }
 
+/// 进入 / 退出滚动捕获态：
+/// - 窗口点击穿透，目标窗口才能收到滚动消息；
+/// - `WDA_EXCLUDEFROMCAPTURE` 让边框只给人看，不进入 GDI 截屏。
+///
+/// 退出时必须还原，否则结果框无法点击、也会被系统截图排除。
+pub fn set_capture_mode(app: &AppHandle, purpose: Purpose, on: bool) {
+    if purpose == Purpose::Ocr {
+        return;
+    }
+    if let Some(win) = app.get_webview_window(purpose.label()) {
+        let _ = win.set_ignore_cursor_events(on);
+        if let Ok(hwnd) = win.hwnd() {
+            let affinity = if on {
+                WDA_EXCLUDEFROMCAPTURE
+            } else {
+                WDA_NONE
+            };
+            unsafe {
+                let _ = SetWindowDisplayAffinity(hwnd, affinity);
+            }
+        }
+    }
+}
+
 /// 销毁浮层。OCR 与截图共用同一套「关窗即销毁」语义。
 pub fn close(app: &AppHandle, purpose: Purpose) {
+    set_capture_mode(app, purpose, false);
     if let Some(w) = app.get_webview_window(purpose.label()) {
         let _ = w.destroy();
     }

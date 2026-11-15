@@ -10,7 +10,6 @@
 use crate::config::Config;
 use crate::ocr::{capture_region, CapturedImage};
 use crate::screenshot::input::{self, Action};
-use crate::screenshot::output;
 use crate::screenshot::stitch::{self, Frame, Quality, MAX_FRAMES, MAX_TOTAL_HEIGHT};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -403,9 +402,10 @@ fn classify(reason: StopReason, progressed: bool, fallback_seam: bool) -> (Statu
     (status, message)
 }
 
-/// 结束处理：够进度就编码落盘；失败且一帧都没拼出去时不产出「单帧假图」。
+/// 结束处理：够进度就编码到暂存目录；失败且一帧都没拼出去时不产出「单帧假图」。
+/// 结果**不自动存盘**：由浮层结果框的动作栏确认后再复制到输出目录。
 fn deliver(
-    cfg: &Config,
+    _cfg: &Config,
     mut raw: RawRows,
     frames: usize,
     progressed: bool,
@@ -435,7 +435,7 @@ fn deliver(
         added: 0,
     });
 
-    let dir = output::resolve_dir(cfg);
+    let dir = crate::screenshot::preview::stage_dir();
     if let Err(e) = std::fs::create_dir_all(&dir) {
         return ScrollDone {
             status: Status::Failed,
@@ -443,10 +443,14 @@ fn deliver(
             height,
             frames,
             path: None,
-            message: format!("{message}；创建截图目录失败（{}）：{e}", dir.display()),
+            message: format!("{message}；创建截图暂存目录失败（{}）：{e}", dir.display()),
         };
     }
-    let path = output::next_png_path(&dir);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = dir.join(format!("scroll-{}-{stamp}.png", std::process::id()));
     if let Err(e) = raw.encode_png(&path) {
         return ScrollDone {
             status: Status::Failed,
@@ -458,23 +462,13 @@ fn deliver(
         };
     }
 
-    let action = cfg.screenshot_after_action.trim();
-    let mut message = format!("{message}（{width}×{height}）");
-    if matches!(action, "both" | "path") {
-        match output::copy_path(&path) {
-            Ok(()) => message.push_str("；文件路径已复制"),
-            Err(e) => message.push_str(&format!("；复制路径失败：{e}")),
-        }
-    }
-    message.push_str(&format!("：{}", path.display()));
-
     ScrollDone {
         status,
         width,
         height,
         frames,
         path: Some(path),
-        message,
+        message: format!("{message}（{width}×{height}），等待确认"),
     }
 }
 

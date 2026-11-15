@@ -17,10 +17,7 @@ pub mod preview;
 pub mod scroll;
 pub mod stitch;
 
-use crate::config::Config;
 use crate::ocr::CapturedImage;
-
-pub use output::Delivered;
 
 /// 一次抓图的模式（区域截图已改走框选快照，不再经过这里）。
 #[derive(Debug, Clone, Copy)]
@@ -29,19 +26,7 @@ pub enum Mode {
     ActiveWindow,
 }
 
-/// 按模式抓一张图并交付。
-pub fn run(mode: Mode) -> Result<Delivered, String> {
-    let cfg = crate::config::load();
-    run_with(mode, &cfg)
-}
-
-/// 给测试 / 调用方一个显式的配置入口（避免测试读用户真实配置）。
-pub fn run_with(mode: Mode, cfg: &Config) -> Result<Delivered, String> {
-    let img = grab(mode)?;
-    output::deliver(&img, cfg)
-}
-
-/// 只抓图不交付（会话 63 的预览 / 钉屏会直接用）。
+/// 只抓图不交付（结果框 / 预览 / 钉屏会直接用）。
 pub fn grab(mode: Mode) -> Result<CapturedImage, String> {
     match mode {
         Mode::FullScreen => capture::capture_full_screen(),
@@ -51,29 +36,34 @@ pub fn grab(mode: Mode) -> Result<CapturedImage, String> {
 
 /// 托盘 / 设置页触发的全屏 / 活动窗口截图。
 ///
-/// 跑在工作线程（GDI + PNG + 剪贴板都不该占事件循环）；成功不弹窗，
-/// 剪贴板 / 文件就是反馈；失败用原生消息框说明原因——没有浮层可显示，
-/// 不能只写日志让用户以为按了没反应。
+/// 跑在工作线程（GDI + PNG 都不该占事件循环）；抓完不直接交付，先暂存并打开
+/// 居中结果框，由用户确认保存 / 复制 / 钉屏 / 预览。建结果窗必须等 300ms
+/// 跨过当前事件循环 tick（IPC / 托盘回调里同步建第二个 WebView 会卡 0x0）。
 pub fn tray_capture(app: &tauri::AppHandle, mode: Mode) {
     if !crate::config::load().enable_screenshot {
         crate::open_settings_at(app, "screenshot");
         return;
     }
     let app = app.clone();
-    std::thread::spawn(move || match run(mode) {
-        Ok(d) => {
-            crate::dlog::dlog(&format!("screenshot: {}", d.message));
-            // 托盘 / 设置页没有浮层可显示结果，用系统通知确认一下。
-            // 通知被系统策略挡掉不影响交付（剪贴板 / 文件已经好了）。
-            use tauri_plugin_notification::NotificationExt;
-            if let Err(e) = app
-                .notification()
-                .builder()
-                .title("Vexto 截图")
-                .body(&d.message)
-                .show()
-            {
-                crate::dlog::dlog(&format!("screenshot: 通知失败：{e}"));
+    std::thread::spawn(move || match grab(mode) {
+        Ok(img) => {
+            let (w, h) = (img.width as u32, img.height as u32);
+            match preview::stage_image(&img) {
+                Ok(path) => {
+                    overlay::set_result(path, w, h, overlay::ResultKind::Full);
+                    let a = app.clone();
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    let _ = app.run_on_main_thread(move || {
+                        crate::region_select::open_result(
+                            &a,
+                            crate::region_select::Purpose::Shot,
+                        );
+                    });
+                }
+                Err(e) => {
+                    crate::dlog::dlog(&format!("screenshot: 暂存失败：{e}"));
+                    show_error(&e);
+                }
             }
         }
         Err(e) => {

@@ -24,28 +24,11 @@
     el("scr-fill").style.width = pct + "%";
   });
 
-  window.__TAURI__.event.listen("scroll:done", (e) => {
+  window.__TAURI__.event.listen("scroll:done", () => {
     if (finished) return;
     finished = true;
-    const p = e.payload || {};
-    const status = p.status || "failed";
-    const badge = el("scr-badge");
-    badge.textContent =
-      status === "success" ? "完成" : status === "partial" ? "部分成功" : "失败";
-    badge.className = "scr-badge " + status;
-    el("scr-line").textContent = p.message || "已完成";
-    el("scr-fill").style.width = status === "failed" ? "0%" : "100%";
-    el("scr-stop").hidden = true;
-    const close = el("scr-close");
-    close.hidden = false;
-    lastPath = p.path || "";
-    el("scr-preview").hidden = !lastPath;
-    el("scr-pin").hidden = !lastPath;
-    // 成功才自动关；部分成功 / 失败留着让用户看清原因。
-    // 鼠标移到小窗上就取消自动关闭，给「预览 / 钉屏」留时间。
-    if (status === "success") {
-      closeTimer = setTimeout(() => invoke("scroll_close").catch(() => {}), 6000);
-    }
+    // 结果与动作栏已改到选框浮层里显示；进度窗完成即关，避免两个 UI 打架。
+    invoke("scroll_close").catch(() => {});
   });
 
   document.body.addEventListener("mouseenter", () => {

@@ -97,6 +97,24 @@ pub fn stage_file(src: &Path) -> Result<PathBuf, String> {
     Ok(dst)
 }
 
+/// 把整张抓图编码进暂存目录（全屏 / 活动窗口结果），返回可被 `vextoimg`
+/// 显示的安全文件名。图片在本进程内存里，调用方负责只传一次。
+pub fn stage_image(img: &CapturedImage) -> Result<PathBuf, String> {
+    let dir = stage_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建暂存目录失败：{e}"))?;
+    let tmp = output::save_png(img, &dir)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dst = dir.join(format!("full-{stamp}.png"));
+    if let Err(e) = std::fs::rename(&tmp, &dst) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(format!("暂存全屏截图失败：{e}"));
+    }
+    Ok(dst)
+}
+
 /// 前端可用的显示 URL。只暴露暂存文件名，不暴露本机路径。
 pub fn display_url(staged: &Path) -> Option<String> {
     let name = staged.file_name()?.to_str()?;

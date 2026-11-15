@@ -618,32 +618,76 @@ async fn shot_action(
     }
 }
 
+/// 结果框动作（滚动长图 / 全屏结果）：保存 / 复制 / 路径 / 钉屏 / 预览 / 完成。
+#[tauri::command]
+async fn result_action(action: String, app: AppHandle) -> Value {
+    let act = action.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::overlay::apply_result(&act, &config::load())
+    })
+    .await;
+    match result {
+        Ok(Ok(out)) => {
+            if let Some(label) = out.pin_label.clone() {
+                schedule_pin_window(&app, label);
+            } else if action == "preview" {
+                schedule_window(&app, crate::popup::open_preview_window);
+            }
+            json!({
+                "ok": true,
+                "message": out.message,
+                "path": out.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                "text": out.text,
+            })
+        }
+        Ok(Err(e)) => json!({ "ok": false, "message": e }),
+        Err(e) => json!({ "ok": false, "message": format!("结果动作失败：{e}") }),
+    }
+}
+
 /// 关掉截图 overlay（Esc / 成功后的自动关闭）。
 #[tauri::command]
 fn shot_cancel(app: AppHandle) {
     crate::popup::close_shot_overlay(&app);
 }
 
-/// 全屏截图（托盘 / 设置页按钮）。不建浮层，抓完直接交付。
+/// 全屏截图（托盘 / 设置页按钮）：抓完整张图，打开居中结果框，等用户确认。
 #[tauri::command]
-async fn shot_full() -> SaveOut {
-    shot_capture(crate::screenshot::Mode::FullScreen).await
+async fn shot_full(app: AppHandle) -> SaveOut {
+    shot_capture_preview(crate::screenshot::Mode::FullScreen, app).await
 }
 
-/// 活动窗口截图（托盘 / 设置页按钮）。
+/// 活动窗口截图（托盘 / 设置页按钮）：同上，结果框里确认后再保存。
 #[tauri::command]
-async fn shot_window() -> SaveOut {
-    shot_capture(crate::screenshot::Mode::ActiveWindow).await
+async fn shot_window(app: AppHandle) -> SaveOut {
+    shot_capture_preview(crate::screenshot::Mode::ActiveWindow, app).await
 }
 
-async fn shot_capture(mode: crate::screenshot::Mode) -> SaveOut {
-    let r = tauri::async_runtime::spawn_blocking(move || crate::screenshot::run(mode)).await;
+async fn shot_capture_preview(mode: crate::screenshot::Mode, app: AppHandle) -> SaveOut {
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let img = crate::screenshot::grab(mode)?;
+        let (w, h) = (img.width as u32, img.height as u32);
+        let path = crate::screenshot::preview::stage_image(&img)?;
+        Ok::<_, String>((path, w, h))
+    })
+    .await;
     match r {
-        Ok(Ok(d)) => SaveOut {
-            ok: true,
-            message: d.message,
-            warnings: vec![],
-        },
+        Ok(Ok((path, w, h))) => {
+            crate::screenshot::overlay::set_result(
+                path,
+                w,
+                h,
+                crate::screenshot::overlay::ResultKind::Full,
+            );
+            schedule_window(&app, |a| {
+                crate::region_select::open_result(a, crate::region_select::Purpose::Shot)
+            });
+            SaveOut {
+                ok: true,
+                message: "已打开截图预览".into(),
+                warnings: vec![],
+            }
+        }
         Ok(Err(e)) => SaveOut {
             ok: false,
             message: e,
@@ -659,12 +703,26 @@ async fn shot_capture(mode: crate::screenshot::Mode) -> SaveOut {
 
 /// 滚动截图：浮层选完区域后调用。
 ///
-/// 先销毁框选浮层——它盖在目标窗口上，既会挡滚轮又会被截进图；随后建一个
-/// 选区之外的小进度窗，主循环跑在工作线程（抓屏 / 拼行 / 编码都不该占事件循环）。
+/// 浮层**不再销毁**：保留边框作为捕获范围提示，窗口进入点击穿透 +
+/// `WDA_EXCLUDEFROMCAPTURE`，边框不会进入长图。结束后同一浮层显示结果缩略图
+/// 与动作栏，用户确认后才复制到输出目录。
 #[tauri::command]
-fn scroll_start(x: f64, y: f64, w: f64, h: f64, dpr: Option<f64>, app: AppHandle) {
+fn scroll_start(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    dpr: Option<f64>,
+    overlay: Option<String>,
+    app: AppHandle,
+) {
     let (px, py, pw, ph) = crate::region_select::physical_rect(x, y, w, h, dpr);
-    crate::popup::close_scroll_overlay(&app);
+    let purpose = if overlay.as_deref() == Some("shot") {
+        crate::region_select::Purpose::Shot
+    } else {
+        crate::region_select::Purpose::Scroll
+    };
+    crate::region_select::set_capture_mode(&app, purpose, true);
     let dpr = dpr.filter(|d| d.is_finite() && *d > 0.0).unwrap_or(1.0);
 
     // 与 `open_settings_cmd` 同一个坑：在 IPC 回调里**同步**建第二个 WebView，
@@ -712,18 +770,35 @@ fn scroll_start(x: f64, y: f64, w: f64, h: f64, dpr: Option<f64>, app: AppHandle
             &mut on_progress,
         );
         crate::dlog::dlog(&format!("scroll: {}", done.message));
-        let _ = app2.emit_to(
-            crate::popup::SCROLL_CONTROL_LABEL,
-            "scroll:done",
-            json!({
-                "status": done.status.as_str(),
-                "message": done.message,
-                "path": done.path.as_ref().map(|p| p.to_string_lossy().to_string()),
-                "width": done.width,
-                "height": done.height,
-                "frames": done.frames,
-            }),
-        );
+        if let Some(path) = done.path.clone() {
+            crate::screenshot::overlay::set_result(
+                path,
+                done.width.max(1) as u32,
+                done.height.max(1) as u32,
+                crate::screenshot::overlay::ResultKind::Scroll,
+            );
+        }
+        let url = done
+            .path
+            .as_ref()
+            .and_then(|p| crate::screenshot::preview::display_url(p));
+        let payload = json!({
+            "ok": done.path.is_some(),
+            "status": done.status.as_str(),
+            "message": done.message,
+            "url": url,
+            "width": done.width,
+            "height": done.height,
+            "frames": done.frames,
+        });
+        // 先恢复浮层交互，再把结果发给浮层；否则结果框还会点击穿透。
+        crate::region_select::set_capture_mode(&app2, purpose, false);
+        let label = purpose.label();
+        let _ = app2.emit_to(label, "scroll:done", payload.clone());
+        let _ = app2.emit_to(crate::popup::SCROLL_CONTROL_LABEL, "scroll:done", payload);
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let a = app2.clone();
+        let _ = app2.run_on_main_thread(move || crate::popup::close_scroll_control(&a));
     });
 }
 
@@ -736,6 +811,7 @@ fn scroll_stop() {
 /// 关掉滚动截图框选浮层（Esc / 太小的误触框）。
 #[tauri::command]
 fn scroll_cancel(app: AppHandle) {
+    crate::region_select::set_capture_mode(&app, crate::region_select::Purpose::Scroll, false);
     crate::popup::close_scroll_overlay(&app);
 }
 
@@ -2361,6 +2437,7 @@ fn main() {
             shot_overlay_state,
             shot_action,
             shot_cancel,
+            result_action,
             shot_full,
             shot_window,
             // 滚动截图（S7 会话 62）

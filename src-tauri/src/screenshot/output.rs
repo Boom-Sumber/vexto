@@ -125,6 +125,15 @@ pub(crate) fn next_png_path(dir: &Path) -> PathBuf {
     unique_path(dir, &file_stem())
 }
 
+/// 把一张已经编码好的 PNG（滚动长图 / 全屏结果）复制到输出目录。
+/// 长图不走解码，避免整图进内存。
+pub(crate) fn copy_file_to_dir(src: &Path, dir: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("创建截图目录失败：{e}"))?;
+    let dst = next_png_path(dir);
+    std::fs::copy(src, &dst).map_err(|e| format!("保存截图失败（{}）：{e}", dst.display()))?;
+    Ok(dst)
+}
+
 #[cfg(windows)]
 fn local_time() -> windows::Win32::Foundation::SYSTEMTIME {
     unsafe { windows::Win32::System::SystemInformation::GetLocalTime() }

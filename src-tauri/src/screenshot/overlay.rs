@@ -7,6 +7,7 @@
 //!
 //! 快照只在浮层存活期间有效，窗口销毁时删除。
 
+use crate::config::Config;
 use crate::screenshot::{output, preview};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -30,10 +31,168 @@ fn stamp() -> u128 {
         .unwrap_or(0)
 }
 
+/// 滚动 / 全屏截图的待确认结果。
+///
+/// 与「选框快照」分开：快照是裁剪源，结果文件已经是一张完整 PNG。
+/// 结果先落在 `preview::stage_dir()`，用户点保存才复制到输出目录；
+/// 长图不经过内存，动作全部按文件路径处理（ADR-040 / ADR-043）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResultKind {
+    Full,
+    Scroll,
+}
+
+struct ResultSource {
+    path: PathBuf,
+    width: u32,
+    height: u32,
+    kind: ResultKind,
+}
+
+static RESULT: Mutex<Option<ResultSource>> = Mutex::new(None);
+
+pub fn set_result(path: PathBuf, width: u32, height: u32, kind: ResultKind) {
+    let mut g = RESULT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(old) = g.take() {
+        let _ = std::fs::remove_file(old.path);
+    }
+    *g = Some(ResultSource {
+        path,
+        width,
+        height,
+        kind,
+    });
+}
+
+pub fn result_state() -> serde_json::Value {
+    let g = RESULT.lock().unwrap_or_else(|e| e.into_inner());
+    match g.as_ref() {
+        Some(r) => serde_json::json!({
+            "kind": match r.kind { ResultKind::Full => "full", ResultKind::Scroll => "scroll" },
+            "url": preview::display_url(&r.path),
+            "width": r.width,
+            "height": r.height,
+        }),
+        None => serde_json::Value::Null,
+    }
+}
+
+pub fn clear_result() {
+    let taken = RESULT.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if let Some(r) = taken {
+        let _ = std::fs::remove_file(r.path);
+    }
+}
+
+/// 对滚动 / 全屏结果执行动作栏操作。结果文件已经在暂存目录，按路径复制 /
+/// 钉屏 / 预览；只有全屏图允许复制图片，长图按 ADR-043 只保存或复制路径。
+pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome, String> {
+    let (src, w, h, kind) = {
+        let g = RESULT.lock().unwrap_or_else(|e| e.into_inner());
+        let r = g.as_ref().ok_or_else(|| "没有可交付的截图结果".to_string())?;
+        (r.path.clone(), r.width, r.height, r.kind)
+    };
+    match action {
+        "save" => {
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message: format!("已保存（{w}×{h}）：{}", dst.display()),
+                path: Some(dst),
+                text: None,
+            })
+        }
+        "path" => {
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
+            if let Err(e) = output::copy_path(&dst) {
+                return Err(format!(
+                    "已保存（{w}×{h}）到 {}，但复制路径失败：{e}",
+                    dst.display()
+                ));
+            }
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message: format!("已保存并复制路径（{w}×{h}）：{}", dst.display()),
+                path: Some(dst),
+                text: None,
+            })
+        }
+        "clipboard" => {
+            if kind == ResultKind::Scroll {
+                return Err("长图太大，不能复制到剪贴板；请保存或用预览裁切".into());
+            }
+            let img = preview::crop_region_to_image(&src, 0, 0, w, h)?;
+            output::copy_image(&img)?;
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message: format!("已复制到剪贴板（{}×{}）", img.width, img.height),
+                path: None,
+                text: None,
+            })
+        }
+        "default" => {
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
+            let after = cfg.screenshot_after_action.trim();
+            let mut message = format!("已保存（{w}×{h}）：{}", dst.display());
+            if matches!(after, "both" | "path") {
+                match output::copy_path(&dst) {
+                    Ok(()) => message.push_str("；文件路径已复制"),
+                    Err(e) => message.push_str(&format!("；复制路径失败：{e}")),
+                }
+            }
+            let copy_image = after == "clipboard" || after == "both" || after.is_empty();
+            if copy_image {
+                if kind == ResultKind::Scroll {
+                    message.push_str("；长图不支持复制图片，已仅保存");
+                } else if let Ok(img) = preview::crop_region_to_image(&src, 0, 0, w, h) {
+                    match output::copy_image(&img) {
+                        Ok(()) => message.push_str("；已复制到剪贴板"),
+                        Err(e) => message.push_str(&format!("；复制到剪贴板失败：{e}")),
+                    }
+                }
+            }
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message,
+                path: Some(dst),
+                text: None,
+            })
+        }
+        "pin" => {
+            let (label, _, _) =
+                crate::screenshot::pin::add_staged(src, cfg.pinscreen_single_window)?;
+            Ok(preview::ActionOutcome {
+                pin_label: Some(label),
+                message: format!("已钉屏（{w}×{h}）"),
+                path: None,
+                text: None,
+            })
+        }
+        "preview" => {
+            let staged = preview::stage_file(&src)?;
+            preview::set_source(staged);
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message: format!("已打开预览（{w}×{h}）"),
+                path: None,
+                text: None,
+            })
+        }
+        "close" => Ok(preview::ActionOutcome {
+            pin_label: None,
+            message: String::new(),
+            path: None,
+            text: None,
+        }),
+        other => Err(format!("未知的截图结果动作：{other}")),
+    }
+}
+
 /// 抓取整个虚拟屏幕作为框选底图。**必须在创建浮层窗口之前调用**，
 /// 否则会把浮层自己截进快照。
 pub fn capture() -> Result<(), String> {
     clear();
+    clear_result();
     // 托盘菜单 / 上一次浮层退场，给合成器留一拍。
     std::thread::sleep(std::time::Duration::from_millis(150));
     let img = crate::screenshot::capture::capture_full_screen()?;
@@ -60,6 +219,11 @@ pub fn state_value() -> serde_json::Value {
     let border = cfg.screenshot_border_width.clamp(3, 5);
     let zoom = cfg.screenshot_magnifier_zoom.clamp(2, 10);
     let (vx, vy, _, _) = crate::ocr::virtual_screen();
+    let result = result_state();
+    let mode = result
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("shot");
     let g = lock();
     match g.as_ref() {
         Some(s) => serde_json::json!({
@@ -70,6 +234,8 @@ pub fn state_value() -> serde_json::Value {
             "originY": vy,
             "border": border,
             "zoom": zoom,
+            "mode": mode,
+            "result": result,
         }),
         None => serde_json::json!({
             "url": null,
@@ -77,6 +243,8 @@ pub fn state_value() -> serde_json::Value {
             "zoom": zoom,
             "originX": vx,
             "originY": vy,
+            "mode": mode,
+            "result": result,
         }),
     }
 }
@@ -88,9 +256,10 @@ pub fn clear() {
     }
 }
 
-/// 浮层窗口销毁：快照只在它活着时有意义。
+/// 浮层窗口销毁：快照与待确认结果都只在它活着时有意义。
 pub fn on_window_destroyed() {
     clear();
+    clear_result();
 }
 
 fn crop_rect(

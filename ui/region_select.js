@@ -25,6 +25,10 @@
   // 结果卡复用的锚点（OCR）。
   let anchorX = 0, anchorY = 0;
   let closeTimer = 0;
+  // 截图结果态（"" = 选区；full / scroll = 结果框）
+  let resultKind = "";
+  let moving = false;
+  let moveDX = 0, moveDY = 0;
 
   // ── 框选状态 ──────────────────────────────────────────────────────────
   let dragging = false;
@@ -65,6 +69,26 @@
       getComputedStyle(document.body).getPropertyValue("--accent").trim() || accent;
     invoke("shot_overlay_state")
       .then((s) => {
+        if (s && s.mode === "full" && s.result && s.result.url) {
+          meta.border = Math.min(5, Math.max(3, Number(s.border) || 3));
+          meta.zoom = Math.min(10, Math.max(2, Number(s.zoom) || 8));
+          meta.originX = Number(s.originX) || 0;
+          meta.originY = Number(s.originY) || 0;
+          el("box").style.borderWidth = meta.border + "px";
+          snapReady = true;
+          const bw = Math.round(window.innerWidth * 0.7);
+          const bh = Math.round(window.innerHeight * 0.7);
+          sel = {
+            x: Math.round((window.innerWidth - bw) / 2),
+            y: Math.round((window.innerHeight - bh) / 2),
+            w: bw,
+            h: bh,
+          };
+          setBox(sel.x, sel.y, sel.w, sel.h);
+          showResultFrame("full", s.result.url);
+          invoke("window_ready").catch(() => {});
+          return;
+        }
         if (!s || !s.url) {
           invoke("window_ready").catch(() => {});
           showToast("截图初始化失败，请按 Esc 重试", true, 0);
@@ -95,17 +119,31 @@
     bindToolbar();
   }
 
-  // ── 框选 ──────────────────────────────────────────────────────────────
+  // ── 框选 / 移动 ──────────────────────────────────────────────────────
+  function pointInSel(x, y) {
+    return !!sel && x >= sel.x && x <= sel.x + sel.w && y >= sel.y && y <= sel.y + sel.h;
+  }
+
   function onDown(ev) {
-    if (ev.button !== 0 || busy) return;
+    if (ev.button !== 0 || busy || resultKind) return;
     if (enhanced) {
       if (!snapReady) return;
+      // 完成态：框内按下是「移动选框」，框外按下才是重新拉框。
+      if (done && sel && pointInSel(ev.clientX, ev.clientY)) {
+        moving = true;
+        moveDX = ev.clientX - sel.x;
+        moveDY = ev.clientY - sel.y;
+        el("toolbar").classList.remove("on");
+        el("magnifier").classList.remove("on");
+        el("box").classList.add("moving");
+        return;
+      }
       if (done) resetSelection();
       el("dim").classList.add("hidden");
       hideToast();
       hideCard();
       el("toolbar").classList.remove("on");
-      el("box").classList.remove("done");
+      el("box").classList.remove("done", "result", "moving");
       el("magnifier").classList.add("on");
       done = false;
       sel = null;
@@ -118,6 +156,15 @@
   }
 
   window.addEventListener("mousemove", (ev) => {
+    if (moving) {
+      const nx = Math.max(0, Math.min(window.innerWidth - sel.w, ev.clientX - moveDX));
+      const ny = Math.max(0, Math.min(window.innerHeight - sel.h, ev.clientY - moveDY));
+      sel.x = nx;
+      sel.y = ny;
+      setBox(nx, ny, sel.w, sel.h);
+      positionToolbar(sel);
+      return;
+    }
     if (enhanced) updateMagnifier(ev);
     if (!dragging) return;
     const x = Math.min(sx, ev.clientX);
@@ -126,6 +173,13 @@
   });
 
   window.addEventListener("mouseup", (ev) => {
+    if (moving) {
+      moving = false;
+      el("box").classList.remove("moving");
+      el("toolbar").classList.add("on");
+      positionToolbar(sel);
+      return;
+    }
     if (!dragging) return;
     dragging = false;
     const w = Math.abs(ev.clientX - sx);
@@ -180,8 +234,19 @@
     done = false;
     sel = null;
     magHex = "";
+    resultKind = "";
+    moving = false;
     const box = el("box");
-    box.classList.remove("on", "done");
+    box.classList.remove("on", "done", "result", "moving");
+    const img = el("result");
+    if (img) {
+      img.style.display = "none";
+      img.src = "";
+    }
+    const snap = el("snap");
+    if (snap) snap.style.display = "";
+    const hit = el("hit");
+    if (hit) hit.style.display = "";
     el("toolbar").classList.remove("on");
     el("magnifier").classList.remove("on");
     el("dim").classList.remove("hidden");
@@ -268,7 +333,9 @@
   // ── 选区完成后的动作栏 ────────────────────────────────────────────────
   function enterDone(rect) {
     done = true;
+    resultKind = "";
     sel = rect;
+    el("box").classList.remove("result");
     el("box").classList.add("done");
     el("magnifier").classList.remove("on");
     el("toolbar").classList.add("on");
@@ -289,22 +356,108 @@
   }
 
   function finishScroll(rect) {
-    el("hit").style.display = "none";
-    el("dim").classList.add("hidden");
-    el("box").classList.remove("on");
-    el("magnifier").classList.remove("on");
-    selectedInvoke(rect);
-  }
-
-  function selectedInvoke(rect) {
-    invoke(api.submit, {
+    sel = rect;
+    busy = true;
+    setBox(rect.x, rect.y, rect.w, rect.h);
+    enterCapture("滚动中… 用进度窗停止");
+    invoke("scroll_start", {
       x: rect.x,
       y: rect.y,
       w: rect.w,
       h: rect.h,
       dpr: window.devicePixelRatio || 1,
-    }).catch(() => cancel());
+      overlay: "scroll",
+    }).catch((e) => {
+      showToast(String(e), true);
+      busy = false;
+      resetSelection();
+    });
   }
+
+  function startScrollFromShot() {
+    if (!sel || busy || resultKind) return;
+    busy = true;
+    enterCapture("滚动中… 用进度窗停止");
+    invoke("scroll_start", {
+      x: sel.x,
+      y: sel.y,
+      w: sel.w,
+      h: sel.h,
+      dpr: window.devicePixelRatio || 1,
+      overlay: "shot",
+    }).catch((e) => {
+      showToast(String(e), true);
+      busy = false;
+      resetSelection();
+    });
+  }
+
+  // 进入捕获态：只留边框；窗口点击穿透 + WDA_EXCLUDEFROMCAPTURE 由后端设置。
+  function enterCapture(msg) {
+    const snap = el("snap");
+    if (snap) snap.style.display = "none";
+    el("dim").classList.add("hidden");
+    el("hit").style.display = "none";
+    el("magnifier").classList.remove("on");
+    el("toolbar").classList.remove("on");
+    el("box").classList.add("on");
+    el("box").classList.remove("done", "result", "moving");
+    showToast(msg, false, 0);
+  }
+
+  // 结果框：把长图 / 全屏图缩略图放进选框，动作栏走 result_action。
+  function showResultFrame(kind, url) {
+    resultKind = kind;
+    done = true;
+    busy = false;
+    const snap = el("snap");
+    if (snap) snap.style.display = "none";
+    el("dim").classList.add("hidden");
+    el("hit").style.display = "none";
+    el("magnifier").classList.remove("on");
+    const box = el("box");
+    box.classList.add("on", "result");
+    box.classList.remove("done", "moving");
+    if (sel) setBox(sel.x, sel.y, sel.w, sel.h);
+    const img = el("result");
+    if (img) {
+      img.src = url || "";
+      img.style.display = url ? "block" : "none";
+    }
+    el("toolbar").classList.add("on");
+    positionToolbar(sel || { x: 0, y: 0, w: 0, h: 0 });
+    showToast(
+      kind === "full" ? "全屏截图 · 保存或关闭" : "滚动截图完成 · 保存或关闭",
+      false,
+      0
+    );
+  }
+
+  window.__TAURI__.event.listen("scroll:done", (e) => {
+    const p = e.payload || {};
+    busy = false;
+    if (!p.url) {
+      showToast(p.message || "滚动截图失败", true, 0);
+      return;
+    }
+    showResultFrame("scroll", p.url);
+    if (p.message) showToast(p.message, false, 0);
+  });
+
+  window.__TAURI__.event.listen("shot:result", (e) => {
+    const p = e.payload || {};
+    if (!p || !p.url) return;
+    const bw = Math.round(window.innerWidth * 0.7);
+    const bh = Math.round(window.innerHeight * 0.7);
+    sel = {
+      x: Math.round((window.innerWidth - bw) / 2),
+      y: Math.round((window.innerHeight - bh) / 2),
+      w: bw,
+      h: bh,
+    };
+    setBox(sel.x, sel.y, sel.w, sel.h);
+    showResultFrame(p.kind === "full" ? "full" : "scroll", p.url);
+  });
 
   function bindToolbar() {
     const bar = el("toolbar");
@@ -329,14 +482,19 @@
     setBarBusy(true);
     showToast("处理中…", false, 0);
     try {
-      const r = await invoke("shot_action", {
-        action: act,
-        x: sel.x,
-        y: sel.y,
-        w: sel.w,
-        h: sel.h,
-        dpr: window.devicePixelRatio || 1,
-      });
+      const isResult = resultKind === "scroll" || resultKind === "full";
+      const cmd = isResult ? "result_action" : "shot_action";
+      const args = isResult
+        ? { action: act }
+        : {
+            action: act,
+            x: sel.x,
+            y: sel.y,
+            w: sel.w,
+            h: sel.h,
+            dpr: window.devicePixelRatio || 1,
+          };
+      const r = await invoke(cmd, args);
       if (!r || !r.ok) {
         showToast((r && r.message) || "操作失败", true);
         return;
@@ -399,6 +557,18 @@
   window.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
       cancel();
+      return;
+    }
+    // 普通截图完成态按 L：用当前选区直接进入滚动截图。
+    if (
+      purpose === "shot" &&
+      done &&
+      sel &&
+      !resultKind &&
+      ev.key.toLowerCase() === "l"
+    ) {
+      ev.preventDefault();
+      startScrollFromShot();
       return;
     }
     if (
