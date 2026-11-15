@@ -111,6 +111,22 @@ pub fn reveal(path: &str) -> Result<(), String> {
 mod tests {
     use super::delete;
 
+    /// 另存为的移动语义：目标已存在要覆盖，源文件消失。
+    #[test]
+    fn move_file_overwrites_and_removes_source() {
+        let dir = std::env::temp_dir().join(format!("vexto-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("a.png");
+        let dst = dir.join("b.png");
+        std::fs::write(&src, b"new").unwrap();
+        std::fs::write(&dst, b"old").unwrap();
+        super::move_file(&src, &dst).unwrap();
+        assert!(!src.exists(), "源文件应被移走");
+        assert_eq!(std::fs::read(&dst).unwrap(), b"new");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn empty_path_is_rejected() {
         assert!(delete("", true).is_err());
@@ -183,4 +199,62 @@ pub fn pick_files() -> Result<Vec<String>, String> {
                 .collect())
         }
     }
+}
+
+/// 系统原生「保存文件」对话框。返回 `None` 表示用户取消。
+///
+/// 走 `GetSaveFileNameW`（与 `pick_files` 同一个 commdlg 模块，不新增依赖）。
+/// `default_path` 同时给出初始目录与文件名；扩展名固定 `.png`。
+pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, String> {
+    use windows::core::{PCWSTR, PWSTR};
+    use windows::Win32::UI::Controls::Dialogs::{
+        CommDlgExtendedError, GetSaveFileNameW, OPENFILENAMEW, OFN_EXPLORER, OFN_NOCHANGEDIR,
+        OFN_OVERWRITEPROMPT, OFN_PATHMUSTEXIST,
+    };
+
+    let mut buffer = vec![0u16; 32 * 1024];
+    let init: Vec<u16> = default_path.to_string_lossy().encode_utf16().collect();
+    if init.len() >= buffer.len() {
+        return Err("保存路径太长".into());
+    }
+    buffer[..init.len()].copy_from_slice(&init);
+
+    let filter: Vec<u16> = "PNG 图片\0*.png\0所有文件\0*.*\0\0".encode_utf16().collect();
+    let ext: Vec<u16> = "png\0".encode_utf16().collect();
+    let mut ofn = OPENFILENAMEW {
+        lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
+        lpstrFile: PWSTR(buffer.as_mut_ptr()),
+        nMaxFile: buffer.len() as u32,
+        lpstrFilter: PCWSTR(filter.as_ptr()),
+        lpstrDefExt: PCWSTR(ext.as_ptr()),
+        Flags: OFN_OVERWRITEPROMPT
+            | OFN_PATHMUSTEXIST
+            | OFN_EXPLORER
+            | OFN_NOCHANGEDIR,
+        ..Default::default()
+    };
+
+    let ok = unsafe { GetSaveFileNameW(&mut ofn) };
+    if !ok.as_bool() {
+        let err = unsafe { CommDlgExtendedError() };
+        if err.0 != 0 {
+            return Err(format!("打开保存对话框失败（错误码 {}）", err.0));
+        }
+        return Ok(None);
+    }
+    let n = buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len());
+    Ok(Some(std::path::PathBuf::from(String::from_utf16_lossy(
+        &buffer[..n],
+    ))))
+}
+
+/// 把 `src` 移到 `dst`（跨盘时复制后删源）。目标已存在会被覆盖
+/// —— 保存对话框的 `OFN_OVERWRITEPROMPT` 已经问过用户。
+pub fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(dir) = dst.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("创建保存目录失败：{e}"))?;
+    }
+    std::fs::copy(src, dst).map_err(|e| format!("保存文件失败（{}）：{e}", dst.display()))?;
+    let _ = std::fs::remove_file(src);
+    Ok(())
 }

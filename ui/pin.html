@@ -33,7 +33,6 @@ html, body {
   display: block;
   box-sizing: border-box;
   border: 2px solid rgba(126, 140, 160, .95);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, .38);
   pointer-events: none;
 }
 #bar {
@@ -95,6 +94,27 @@ button svg { width: 15px; height: 15px; }
   font-variant-numeric: tabular-nums;
   color: #dfe0e8;
 }
+#msg {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translate(-50%, 6px);
+  z-index: 3;
+  max-width: 80vw;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(22, 22, 26, .94);
+  color: #eee;
+  font: 12px "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+}
+#msg.on { opacity: 1; transform: translate(-50%, 0); }
+#msg.bad { color: #fca5a5; }
 </style>
 </head>
 <body>
@@ -113,6 +133,12 @@ button svg { width: 15px; height: 15px; }
       </button>
       <span class="sep"></span>
     </div>
+    <button id="saveas" title="另存为">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+    </button>
+    <button id="preview" title="预览">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
+    </button>
     <button id="copy" title="复制图片">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 011-1h10"/></svg>
     </button>
@@ -124,6 +150,7 @@ button svg { width: 15px; height: 15px; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
   </div>
+  <div id="msg"></div>
 <script src="contextmenu.js"></script>
 <script src="pin.js"></script>
 </body>

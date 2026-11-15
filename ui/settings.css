@@ -299,8 +299,8 @@ h1 {
 /* 控件列：固定宽度、整体靠右。长文本框字段（路径 / UA / 白名单）加 .wide 放宽。
  * 用户要求所有文本框 / 选择框 / 开关靠右对齐且宽度统一，不要铺满整行。 */
 .ctrl {
-  flex: 0 0 240px;
-  width: 240px;
+  flex: 0 0 214px;
+  width: 214px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -377,12 +377,13 @@ h1 {
 }
 #help-tip.on { opacity: 1; }
 
-/* 带单位的数字：输入框 + 后缀 + 自绘步进 */
+/* 带单位的数字：输入框 + 后缀 + 自绘步进。所有数字框统一 150px。 */
 .num-row {
   position: relative;
-  max-width: 150px;
+  width: 150px;
+  max-width: none;
 }
-.num-row.has-unit { max-width: 170px; }
+.num-row.has-unit { width: 150px; }
 .num-unit {
   position: absolute;
   right: calc(var(--w-stepper) + var(--sp-2));
@@ -482,6 +483,7 @@ input.capturing {
 
 .subhead {
   margin: 0 0 var(--sp-2);
+  padding-left: var(--sp-2);
   font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: .02em;
@@ -603,7 +605,7 @@ input.capturing {
 
 .li-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, 1fr) 214px;
   align-items: center;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
@@ -661,7 +663,7 @@ input.capturing {
 
 .fm-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
+  grid-template-columns: minmax(0, 1fr) 214px;
   align-items: center;
   gap: var(--sp-3);
   margin-bottom: var(--sp-3);

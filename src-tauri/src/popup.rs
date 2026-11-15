@@ -844,11 +844,6 @@ pub fn close_shot_overlay(app: &AppHandle) {
     crate::region_select::close(app, crate::region_select::Purpose::Shot);
 }
 
-/// 打开滚动截图框选 overlay。选完区域后由前端调 `scroll_start`。
-pub fn open_scroll_overlay(app: &AppHandle) {
-    crate::region_select::open(app, crate::region_select::Purpose::Scroll);
-}
-
 /// 关掉滚动截图框选 overlay。
 pub fn close_scroll_overlay(app: &AppHandle) {
     crate::region_select::close(app, crate::region_select::Purpose::Scroll);

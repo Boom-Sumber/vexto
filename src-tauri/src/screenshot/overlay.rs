@@ -93,6 +93,28 @@ pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome
         (r.path.clone(), r.width, r.height, r.kind)
     };
     match action {
+        "save_as" => {
+            let dir = output::resolve_dir(cfg);
+            let _ = std::fs::create_dir_all(&dir);
+            let def = output::next_png_path(&dir);
+            match crate::fileops::pick_save_png(&def)? {
+                Some(dst) => {
+                    crate::fileops::move_file(&src, &dst)?;
+                    Ok(preview::ActionOutcome {
+                        pin_label: None,
+                        message: format!("已另存为（{w}×{h}）：{}", dst.display()),
+                        path: Some(dst),
+                        text: None,
+                    })
+                }
+                None => Ok(preview::ActionOutcome {
+                    pin_label: None,
+                    message: "已取消保存".into(),
+                    path: None,
+                    text: None,
+                }),
+            }
+        }
         "save" => {
             let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
             Ok(preview::ActionOutcome {
@@ -307,6 +329,32 @@ pub fn apply(
     let (sx, sy, sw, sh) = crop_rect(img_w, img_h, x, y, w, h, dpr)?;
     let cfg = crate::config::load();
     match action {
+        "save_as" => {
+            let tmp = staged_crop(&src, sx, sy, sw, sh)?;
+            let dir = output::resolve_dir(&cfg);
+            let _ = std::fs::create_dir_all(&dir);
+            let def = output::next_png_path(&dir);
+            match crate::fileops::pick_save_png(&def)? {
+                Some(dst) => {
+                    crate::fileops::move_file(&tmp, &dst)?;
+                    Ok(preview::ActionOutcome {
+                        pin_label: None,
+                        message: format!("已另存为（{sw}×{sh}）：{}", dst.display()),
+                        path: Some(dst),
+                        text: None,
+                    })
+                }
+                None => {
+                    let _ = std::fs::remove_file(&tmp);
+                    Ok(preview::ActionOutcome {
+                        pin_label: None,
+                        message: "已取消保存".into(),
+                        path: None,
+                        text: None,
+                    })
+                }
+            }
+        }
         "save" => {
             let dir = output::resolve_dir(&cfg);
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败：{e}"))?;

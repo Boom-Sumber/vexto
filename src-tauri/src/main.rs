@@ -1058,6 +1058,44 @@ fn pin_copy(window: tauri::WebviewWindow) -> SimpleOut {
     }
 }
 
+/// 钉屏操作条：另存为（当前图片复制到用户选择的位置）。
+#[tauri::command]
+async fn pin_save_as(window: tauri::WebviewWindow) -> SimpleOut {
+    let label = window.label().to_string();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::pin::save_as_current(&label)
+    })
+    .await;
+    match r {
+        Ok(Ok(message)) => SimpleOut { ok: true, message },
+        Ok(Err(e)) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: format!("保存任务失败：{e}"),
+        },
+    }
+}
+
+/// 钉屏操作条：用当前图片打开预览窗。
+#[tauri::command]
+fn pin_preview(window: tauri::WebviewWindow, app: AppHandle) -> SimpleOut {
+    let Some((path, _, _)) = crate::screenshot::pin::current(window.label()) else {
+        return SimpleOut {
+            ok: false,
+            message: "钉屏里还没有图片".into(),
+        };
+    };
+    crate::screenshot::preview::set_source(path);
+    schedule_window(&app, crate::popup::open_preview_window);
+    SimpleOut {
+        ok: true,
+        message: "已打开预览".into(),
+    }
+}
+
 #[tauri::command]
 fn pin_state(window: tauri::WebviewWindow) -> Value {
     crate::screenshot::pin::state_value(window.label())
@@ -1356,12 +1394,6 @@ fn save_tool_config(
         // 注册失败不回滚保存：用户填的组合确实是他想要的，只是撞了别的软件。
         // 回滚会让他以为"保存失败"，下次还得重填一遍。
         warnings.extend(errs);
-        if let Some(h) = normalized.get("hotkey") {
-            tray::update_hotkey_label(&app, h);
-        }
-        if let Some(h) = normalized.get("hotkey_screenshot") {
-            tray::update_shot_hotkey_label(&app, h);
-        }
     }
 
     // 5) 副作用：翻译工具启停要同步托盘项
@@ -2618,6 +2650,8 @@ fn main() {
             pin_step,
             pin_zoom,
             pin_copy,
+            pin_save_as,
+            pin_preview,
             pin_state,
             pin_close,
             preview_open,
@@ -2683,7 +2717,7 @@ fn main() {
             // Windows 只在 toast 还停在屏幕上时上报点击，收进操作中心后就收不到了。
             crate::download::notify::register_click(&handle);
 
-            tray::build(&handle, &cfg.hotkey)?;
+            tray::build(&handle)?;
 
             // 热键注册失败不阻断启动：托盘菜单仍然可用，设置页会显示红字原因。
             // 必须一次注册全部（划词 + 输入翻译）：register_hotkey 开头会

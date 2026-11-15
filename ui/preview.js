@@ -155,7 +155,7 @@
   tailEl.addEventListener("input", clamp);
   window.addEventListener("resize", updateBands);
 
-  el("pv-save").addEventListener("click", () => act("save"));
+  el("pv-save").addEventListener("click", () => act("save_as"));
   el("pv-copy").addEventListener("click", () => act("clipboard"));
   el("pv-pin").addEventListener("click", () => act("pin"));
   el("pv-ocr").addEventListener("click", () => act("ocr"));

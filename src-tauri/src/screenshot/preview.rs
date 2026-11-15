@@ -457,6 +457,27 @@ pub struct ActionOutcome {
 pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String> {
     let src = source().ok_or_else(|| "预览窗口没有图片".to_string())?;
     match action {
+        "save_as" => {
+            let cfg = crate::config::load();
+            let dir = output::resolve_dir(&cfg);
+            let _ = std::fs::create_dir_all(&dir);
+            let def = output::next_png_path(&dir);
+            let Some(dst) = crate::fileops::pick_save_png(&def)? else {
+                return Ok(ActionOutcome {
+                    pin_label: None,
+                    message: "已取消保存".into(),
+                    path: None,
+                    text: None,
+                });
+            };
+            let (w, h) = crop_png(&src, &dst, head, tail)?;
+            Ok(ActionOutcome {
+                pin_label: None,
+                message: format!("已另存为（{w}×{h}）：{}", dst.display()),
+                path: Some(dst),
+                text: None,
+            })
+        }
         "save" => {
             let cfg = crate::config::load();
             let dir = output::resolve_dir(&cfg);

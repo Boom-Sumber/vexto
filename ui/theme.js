@@ -141,3 +141,6 @@ const Theme = (() => {
 
   return { apply, applyValues, toggle, resolved };
 })();
+
+// titlebar.js 通过 window.Theme 访问；顶层 const 不会自动挂到 window 上。
+window.Theme = Theme;

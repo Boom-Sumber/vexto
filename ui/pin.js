@@ -54,6 +54,33 @@
   el("next").addEventListener("click", () => step(1));
   el("close").addEventListener("click", () => invoke("pin_close").catch(() => {}));
 
+  let msgTimer = null;
+  function flash(text, bad) {
+    const box = el("msg");
+    box.textContent = text || "";
+    box.className = text ? "on" + (bad ? " bad" : "") : "";
+    clearTimeout(msgTimer);
+    if (text) msgTimer = setTimeout(() => (box.className = ""), 3000);
+  }
+
+  el("saveas").addEventListener("click", () => {
+    invoke("pin_save_as")
+      .then((r) => {
+        if (r && r.ok) flash(r.message || "已保存");
+        else flash((r && r.message) || "保存失败", true);
+      })
+      .catch((e) => flash(String(e), true));
+  });
+
+  el("preview").addEventListener("click", () => {
+    invoke("pin_preview")
+      .then((r) => {
+        if (r && r.ok) flash(r.message || "已打开预览");
+        else flash((r && r.message) || "打开预览失败", true);
+      })
+      .catch((e) => flash(String(e), true));
+  });
+
   el("copy").addEventListener("click", () => {
     invoke("pin_copy")
       .then((r) => {

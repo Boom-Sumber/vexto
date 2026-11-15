@@ -548,7 +548,14 @@
         return;
       }
       showToast(r.message || "完成", false);
-      if (act === "pin" || act === "preview" || act === "default") {
+      // 另存为取消时没有 path，保持结果框不关。
+      if (act === "save_as" && !r.path) return;
+      if (
+        act === "pin" ||
+        act === "preview" ||
+        act === "default" ||
+        act === "save_as"
+      ) {
         setTimeout(cancel, 80);
       }
     } catch (e) {

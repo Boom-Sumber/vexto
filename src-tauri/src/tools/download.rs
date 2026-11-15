@@ -136,8 +136,7 @@ impl Tool for Download {
                             ("sleep", "睡眠"),
                             ("run", "运行程序"),
                         ],
-                    )
-                    .help("只在「本轮真的下过东西、队列连续空 10 秒」后触发一次；启动后 3 分钟内的空闲不算。"),
+                    ),
                     Field::text_hint("after_all_done_cmd", "要运行的程序", r"D:\tools\done.exe")
                         .show_if("after_all_done", "run")
                         .wide(),

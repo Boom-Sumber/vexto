@@ -232,6 +232,20 @@ pub fn copy_current(label: &str) -> Result<String, String> {
     Ok(format!("已复制图片（{}×{}）", img.width, img.height))
 }
 
+/// 钉屏「另存为」：把当前图片复制到用户选择的位置，钉屏本身继续显示。
+pub fn save_as_current(label: &str) -> Result<String, String> {
+    let (path, _, _) = current(label).ok_or_else(|| "钉屏里还没有图片".to_string())?;
+    let cfg = crate::config::load();
+    let dir = output::resolve_dir(&cfg);
+    let _ = std::fs::create_dir_all(&dir);
+    let def = output::next_png_path(&dir);
+    let Some(dst) = crate::fileops::pick_save_png(&def)? else {
+        return Ok("已取消保存".into());
+    };
+    std::fs::copy(&path, &dst).map_err(|e| format!("保存图片失败（{}）：{e}", dst.display()))?;
+    Ok(format!("已另存为：{}", dst.display()))
+}
+
 pub fn emit_state(win: &tauri::WebviewWindow) {
     // 定向发送：多窗口模式下不能让 A 窗口收到 B 的状态。
     let _ = win.emit_to(win.label(), "pin:show", state_value(win.label()));
