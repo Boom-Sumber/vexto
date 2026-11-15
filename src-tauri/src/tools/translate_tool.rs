@@ -125,7 +125,7 @@ impl Tool for Translate {
                 "config",
                 "配置",
                 vec![
-                    Field::group("翻译引擎"),
+                    Field::group("翻译"),
                     Field::select_dynamic("active_engine", "翻译引擎", "engines")
                         .help("从「服务管理」里选一个已配置的实例。"),
                     Field::group("翻译方向"),
@@ -280,7 +280,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(groups, vec!["翻译引擎", "翻译方向", "交互"]);
+        assert_eq!(groups, vec!["翻译", "翻译方向", "交互"]);
     }
 
     /// 服务管理页顺序：厂商管理 → 大模型管理。
@@ -470,7 +470,7 @@ mod tests {
                 })
                 .collect()
         };
-        assert_eq!(groups_of(0), vec!["翻译引擎", "翻译方向", "交互"]);
+        assert_eq!(groups_of(0), vec!["翻译", "翻译方向", "交互"]);
         assert_eq!(groups_of(1), vec!["厂商管理", "大模型管理"]);
     }
 }
