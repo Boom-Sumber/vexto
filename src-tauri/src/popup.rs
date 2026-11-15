@@ -34,9 +34,10 @@ pub const SCROLL_LABEL: &str = "scroll_overlay";
 /// 滚动截图的进度 / 停止小窗。放在选区之外，捕获期间不会被截进图。
 pub const SCROLL_CONTROL_LABEL: &str = "scroll_control";
 /// 钉屏窗口（单窗多图，会话 63）。
-pub const PIN_LABEL: &str = "pin";
-/// 截图预览窗口：裁头尾 + 送存盘 / 剪贴板 / 钉屏 / OCR（会话 63）。
+pub const PIN_LABEL: &str = "pin";/// 截图预览窗口：裁头尾 + 送存盘 / 剪贴板 / 钉屏 / OCR（会话 63）。
 pub const PREVIEW_LABEL: &str = "preview";
+/// 全屏截图右下角缩略图反馈（S7 会话 72）。
+pub const FEEDBACK_LABEL: &str = "shot_feedback";
 
 /// 新建窗口要预填的一条任务。热键只给 `url`；浏览器扩展还会带文件名、
 /// 大小、Referer、UA 与 Cookie（Cookie **只走数据通道，不进界面**）。
@@ -1002,6 +1003,68 @@ pub fn open_preview_window(app: &AppHandle) {
 /// 关掉预览窗口。
 pub fn close_preview_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PREVIEW_LABEL) {
+        let _ = w.destroy();
+    }
+}
+
+/// 打开 / 更新全屏截图右下角缩略图反馈。
+/// 已存在时只更新状态与显示，不销毁重建——销毁会触发 `feedback::clear`，
+/// 把刚设置的新图删掉。**必须在主线程调用**（坑 11）。
+pub fn open_feedback_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(FEEDBACK_LABEL) {
+        let _ = w.show();
+        let _ = w.emit("feedback:state", crate::screenshot::feedback::state_value());
+        return;
+    }
+    let logical_w = 320.0f64;
+    let logical_h = 240.0f64;
+    let r = WebviewWindowBuilder::new(
+        app,
+        FEEDBACK_LABEL,
+        WebviewUrl::App("feedback.html".into()),
+    )
+    .title("截图")
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .skip_taskbar(true)
+    .focusable(false)
+    .focused(false)
+    .shadow(false)
+    .visible(false)
+    .inner_size(logical_w, logical_h)
+    .additional_browser_args(WEBVIEW_ARGS)
+    .build();
+
+    match r {
+        Ok(win) => {
+            if let Ok(Some(m)) = app.primary_monitor() {
+                let size = m.size();
+                let pos = m.position();
+                let dpr = m.scale_factor();
+                let pw = (logical_w * dpr).round() as i32;
+                let ph = (logical_h * dpr).round() as i32;
+                let margin = (16.0 * dpr).round() as i32;
+                let x = pos.x + size.width as i32 - pw - margin;
+                let y = pos.y + size.height as i32 - ph - margin;
+                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+            }
+            win.on_window_event(|ev| {
+                if matches!(ev, tauri::WindowEvent::Destroyed) {
+                    crate::screenshot::feedback::clear();
+                }
+            });
+        }
+        Err(e) => crate::dlog::dlog(&format!("create feedback window failed: {e}")),
+    }
+}
+
+/// 关掉全屏截图缩略图反馈窗。
+pub fn close_feedback_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(FEEDBACK_LABEL) {
         let _ = w.destroy();
     }
 }

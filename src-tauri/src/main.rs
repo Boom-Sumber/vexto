@@ -447,12 +447,13 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
 
 /// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
 /// `hotkey_ocr` / `hotkey_screenshot` 只在工具启用时注册。
-const HOTKEY_KEYS: [&str; 5] = [
+const HOTKEY_KEYS: [&str; 6] = [
     "hotkey",
     "hotkey_input",
     "hotkey_download",
     "hotkey_ocr",
     "hotkey_screenshot",
+    "hotkey_fullscreen",
 ];
 
 fn is_hotkey_key(k: &str) -> bool {
@@ -527,6 +528,20 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
                 } else {
                     crate::popup::open_shot_overlay(a);
                 }
+            }),
+        ));
+        // S7 会话 72：PrintScreen 全屏热键。与设置页/托盘全屏共用
+        // capture_full_feedback（抓图 → 自动交付 → 右下角缩略图反馈）。
+        list.push((
+            "全屏截图热键",
+            cfg.hotkey_fullscreen.clone(),
+            Box::new(|a: &AppHandle| {
+                let app = a.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = crate::screenshot::capture_full_feedback(&app) {
+                        crate::screenshot::show_error(&e);
+                    }
+                });
             }),
         ));
     }
@@ -659,16 +674,72 @@ async fn result_action(action: String, app: AppHandle) -> Value {
     }
 }
 
+/// 全屏截图右下角缩略图的状态。
+#[tauri::command]
+fn feedback_state() -> Value {
+    crate::screenshot::feedback::state_value()
+}
+
+/// 缩略图反馈窗的复制图片 / 钉住 / 预览。
+#[tauri::command]
+async fn feedback_action(action: String, app: AppHandle) -> Value {
+    let act = action.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::feedback::apply(&act, &config::load())
+    })
+    .await;
+    match result {
+        Ok(Ok(out)) => {
+            if let Some(label) = out.pin_label.clone() {
+                schedule_pin_window(&app, label);
+            } else if action == "preview" {
+                schedule_window(&app, crate::popup::open_preview_window);
+            }
+            json!({ "ok": true, "message": out.message })
+        }
+        Ok(Err(e)) => json!({ "ok": false, "message": e }),
+        Err(e) => json!({ "ok": false, "message": format!("反馈动作失败：{e}") }),
+    }
+}
+
+/// 关闭缩略图反馈窗并清理暂存图。
+#[tauri::command]
+fn feedback_close(app: AppHandle) {
+    crate::popup::close_feedback_window(&app);
+    crate::screenshot::feedback::clear();
+}
+
 /// 关掉截图 overlay（Esc / 成功后的自动关闭）。
 #[tauri::command]
 fn shot_cancel(app: AppHandle) {
     crate::popup::close_shot_overlay(&app);
 }
 
-/// 全屏截图（托盘 / 设置页按钮）：抓完整张图，打开居中结果框，等用户确认。
+/// 全屏截图（设置页按钮）。与 PrintScreen 热键、托盘全屏共用同一套逻辑：
+/// 抓图 → 按「截图后」配置自动交付 → 右下角缩略图反馈。
 #[tauri::command]
 async fn shot_full(app: AppHandle) -> SaveOut {
-    shot_capture_preview(crate::screenshot::Mode::FullScreen, app).await
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::capture_full_feedback(&app)
+    })
+    .await;
+    match r {
+        Ok(Ok(message)) => SaveOut {
+            ok: true,
+            message,
+            warnings: vec![],
+        },
+        Ok(Err(e)) => SaveOut {
+            ok: false,
+            message: e,
+            warnings: vec![],
+        },
+        Err(e) => SaveOut {
+            ok: false,
+            message: format!("全屏截图任务失败：{e}"),
+            warnings: vec![],
+        },
+    }
 }
 
 /// 活动窗口截图（托盘 / 设置页按钮）：同上，结果框里确认后再保存。
@@ -2463,6 +2534,9 @@ fn main() {
             shot_action,
             shot_cancel,
             result_action,
+            feedback_state,
+            feedback_action,
+            feedback_close,
             shot_full,
             shot_window,
             // 滚动截图（S7 会话 62）

@@ -9,6 +9,7 @@
 //! 只有热键或托盘动作真正发生时才跑一次。
 
 pub mod capture;
+pub mod feedback;
 pub mod input;
 pub mod output;
 pub mod overlay;
@@ -34,43 +35,65 @@ pub fn grab(mode: Mode) -> Result<CapturedImage, String> {
     }
 }
 
+/// 全屏截图统一入口：抓图 → 按「截图后」配置自动交付 → 右下角缩略图反馈。
+/// PrintScreen 热键、设置页按钮、托盘全屏都走这里。
+pub fn capture_full_feedback(app: &tauri::AppHandle) -> Result<String, String> {
+    let img = grab(Mode::FullScreen)?;
+    let (w, h) = (img.width as u32, img.height as u32);
+    let staged = preview::stage_image(&img)?;
+    let cfg = crate::config::load();
+    let delivered = output::deliver(&img, &cfg);
+    feedback::set_source(staged, w, h);
+
+    let a = app.clone();
+    std::thread::spawn(move || {
+        // 建第二个 WebView 必须跨过当前事件循环 tick（坑 11）。
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let b = a.clone();
+        let _ = a.run_on_main_thread(move || crate::popup::open_feedback_window(&b));
+    });
+
+    match delivered {
+        Ok(d) => Ok(d.message),
+        Err(e) => Ok(format!(
+            "已截图，但自动交付失败：{e}（右下角缩略图可手动复制）"
+        )),
+    }
+}
+
 /// 托盘 / 设置页触发的全屏 / 活动窗口截图。
 ///
-/// 跑在工作线程（GDI + PNG 都不该占事件循环）；抓完不直接交付，先暂存并打开
-/// 居中结果框，由用户确认保存 / 复制 / 钉屏 / 预览。建结果窗必须等 300ms
-/// 跨过当前事件循环 tick（IPC / 托盘回调里同步建第二个 WebView 会卡 0x0）。
+/// 全屏走 `capture_full_feedback`；活动窗口仍走居中结果框。
 pub fn tray_capture(app: &tauri::AppHandle, mode: Mode) {
     if !crate::config::load().enable_screenshot {
         crate::open_settings_at(app, "screenshot");
         return;
     }
     let app = app.clone();
-    std::thread::spawn(move || match grab(mode) {
-        Ok(img) => {
-            let (w, h) = (img.width as u32, img.height as u32);
-            match preview::stage_image(&img) {
-                Ok(path) => {
-                    overlay::set_result(path, w, h, overlay::ResultKind::Full);
-                    let a = app.clone();
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                    let _ = app.run_on_main_thread(move || {
-                        crate::region_select::open_result(
-                            &a,
-                            crate::region_select::Purpose::Shot,
-                        );
-                    });
-                }
-                Err(e) => {
-                    crate::dlog::dlog(&format!("screenshot: 暂存失败：{e}"));
-                    show_error(&e);
-                }
-            }
-        }
-        Err(e) => {
+    std::thread::spawn(move || {
+        let r = match mode {
+            Mode::FullScreen => capture_full_feedback(&app),
+            Mode::ActiveWindow => capture_active_preview(&app).map(|_| String::new()),
+        };
+        if let Err(e) = r {
             crate::dlog::dlog(&format!("screenshot: 失败：{e}"));
             show_error(&e);
         }
     });
+}
+
+/// 活动窗口截图：暂存后打开居中结果框（与 S7 会话 70/71 一致）。
+fn capture_active_preview(app: &tauri::AppHandle) -> Result<(), String> {
+    let img = grab(Mode::ActiveWindow)?;
+    let (w, h) = (img.width as u32, img.height as u32);
+    let path = preview::stage_image(&img)?;
+    overlay::set_result(path, w, h, overlay::ResultKind::Full);
+    let a = app.clone();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let _ = app.run_on_main_thread(move || {
+        crate::region_select::open_result(&a, crate::region_select::Purpose::Shot);
+    });
+    Ok(())
 }
 
 /// 原生错误框。只在没有浮层可用的路径（托盘 / 设置页按钮）使用。

@@ -252,6 +252,7 @@
     const hit = el("hit");
     if (hit) hit.style.display = "";
     el("toolbar").classList.remove("on");
+    setBarBusy(false);
     el("magnifier").classList.remove("on");
     el("dim").classList.remove("hidden");
     hideToast();
@@ -343,6 +344,7 @@
     el("box").classList.add("done");
     el("magnifier").classList.remove("on");
     el("toolbar").classList.add("on");
+    setBarBusy(false);
     positionToolbar(rect);
     positionHint(rect);
   }
@@ -430,7 +432,11 @@
     el("dim").classList.add("hidden");
     el("hit").style.display = "none";
     el("magnifier").classList.remove("on");
-    el("toolbar").classList.remove("on");
+    // 滚动过程中保留动作栏：用户要求「工具条不要隐藏」；按钮置灰，
+    // 捕获期间窗口是点击穿透的，停止仍走进度窗。
+    el("toolbar").classList.add("on");
+    setBarBusy(true);
+    if (sel) positionToolbar(sel);
     el("box").classList.add("on");
     el("box").classList.remove("done", "result", "moving");
     showToast(msg, false, 0);
@@ -457,6 +463,7 @@
       img.style.display = url ? "block" : "none";
     }
     el("toolbar").classList.add("on");
+    setBarBusy(false);
     positionToolbar(sel || { x: 0, y: 0, w: 0, h: 0 });
     showToast(
       kind === "full" ? "全屏截图 · 保存或关闭" : "滚动截图完成 · 保存或关闭",

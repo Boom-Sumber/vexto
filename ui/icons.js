@@ -126,6 +126,10 @@ window.Icons = (function () {
     camera:
       '<path d="M4 8h3l1.5-2h7L17 8h3v10H4z"/>' +
       '<circle cx="12" cy="13" r="3"/>',
+    // 截图反馈 / 预览：眼睛
+    preview:
+      '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/>' +
+      '<circle cx="12" cy="12" r="2.5"/>',
   };
 
   // 设计稿给的两个「实心/彩色」图标：viewBox 是 1024，颜色写死或跟 currentColor，

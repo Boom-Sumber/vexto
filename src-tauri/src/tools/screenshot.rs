@@ -56,6 +56,8 @@ impl Tool for Screenshot {
                     .help("框选时选框边框的粗细，3–5 px。"),
                 Field::number_unit("screenshot_magnifier_zoom", "放大镜倍数", 2, 10, "×")
                     .help("鼠标旁放大取色镜的放大倍数。"),
+                Field::number_unit("screenshot_feedback_seconds", "缩略图显示时长", 3, 5, "秒")
+                    .help("全屏截图后右下角缩略图的显示时长；鼠标移入会暂停倒计时。"),
                 Field::switch("screenshot_include_cursor", "截图包含鼠标指针")
                     .help("区域 / 全屏 / 活动窗口截图会把当前指针画进图里；滚动长图不包含。"),
                 Field::select(
@@ -69,8 +71,9 @@ impl Tool for Screenshot {
                     ],
                 ),
                 Field::group("全屏 / 活动窗口"),
+                Field::hotkey("hotkey_fullscreen", "全屏截图热键"),
                 Field::button("shot_full", "全屏截图")
-                    .help("截整个虚拟屏幕；多显示器时是一整张。"),
+                    .help("截整个虚拟屏幕；多显示器时是一整张。与全屏热键共用同一套反馈。"),
                 Field::button("shot_window", "活动窗口截图")
                     .help("截当前前台窗口。从设置页点按钮时会截到设置页本身，建议用托盘菜单。"),
                 Field::group("滚动截图"),

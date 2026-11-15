@@ -196,6 +196,9 @@ pub struct Config {
     /// 区域截图热键（S7 才真正注册）
     #[serde(default = "d_hotkey_screenshot")]
     pub hotkey_screenshot: String,
+    /// 全屏截图热键（S7 会话 72；与设置页/托盘全屏共用反馈）
+    #[serde(default = "d_hotkey_fullscreen")]
+    pub hotkey_fullscreen: String,
     /// 截图工具总开关。默认关（ADR-040：未启用时零进程零线程）。
     #[serde(default)]
     pub enable_screenshot: bool,
@@ -217,6 +220,9 @@ pub struct Config {
     /// 放大镜倍数（2–10×，会话 66）
     #[serde(default = "d_shot_magnifier")]
     pub screenshot_magnifier_zoom: u16,
+    /// 全屏截图右下角缩略图显示时长（3–5 秒）
+    #[serde(default = "d_shot_feedback_seconds")]
+    pub screenshot_feedback_seconds: u16,
     /// 截图是否包含鼠标指针（滚动长图不包含）
     #[serde(default)]
     pub screenshot_include_cursor: bool,
@@ -446,6 +452,9 @@ fn d_hotkey_input() -> String {
 fn d_hotkey_screenshot() -> String {
     "Ctrl+Alt+A".to_string()
 }
+fn d_hotkey_fullscreen() -> String {
+    "Ctrl+PrintScreen".to_string()
+}
 fn d_shot_after() -> String {
     "both".to_string()
 }
@@ -460,6 +469,9 @@ fn d_shot_border() -> u16 {
 }
 fn d_shot_magnifier() -> u16 {
     8
+}
+fn d_shot_feedback_seconds() -> u16 {
+    4
 }
 fn d_ocr_engine() -> String {
     "paddle".to_string()
@@ -555,6 +567,7 @@ impl Default for Config {
             hotkey_download: d_hotkey_download(),
             hotkey_input: d_hotkey_input(),
             hotkey_screenshot: d_hotkey_screenshot(),
+            hotkey_fullscreen: d_hotkey_fullscreen(),
             enable_translate: true,
             enable_download: false,
             enable_transfer: false,
@@ -567,6 +580,7 @@ impl Default for Config {
             scroll_action: d_scroll_action(),
             screenshot_border_width: d_shot_border(),
             screenshot_magnifier_zoom: d_shot_magnifier(),
+            screenshot_feedback_seconds: d_shot_feedback_seconds(),
             screenshot_include_cursor: false,
             pinscreen_single_window: true,
             popup_timeout_ms: d_popup_timeout(),
@@ -1077,6 +1091,8 @@ mod tests {
         assert_eq!(c.lang_detect, "local");
         assert_eq!(c.hotkey_input, "Ctrl+Alt+I");
         assert_eq!(c.hotkey_screenshot, "Ctrl+Alt+A");
+        assert_eq!(c.hotkey_fullscreen, "Ctrl+PrintScreen");
+        assert_eq!(c.screenshot_feedback_seconds, 4);
         assert!(!c.enable_screenshot);
         assert_eq!(c.screenshot_after_action, "both");
         assert_eq!(c.scroll_mode, "auto");
