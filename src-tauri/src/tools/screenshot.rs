@@ -68,8 +68,8 @@ impl Tool for Screenshot {
                         "ocr_engine",
                         "识别引擎",
                         &[
-                            ("paddle", "PaddleOCR（默认，中文更准）"),
-                            ("windows", "Windows 自带（零体积）"),
+                            ("paddle", "PaddleOCR"),
+                            ("windows", "Windows 自带"),
                         ],
                     ),
                     Field::group("钉屏"),
