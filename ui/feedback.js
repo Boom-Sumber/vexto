@@ -5,11 +5,13 @@
   const el = (id) => document.getElementById(id);
   let timer = 0;
   let seconds = 4;
+  let fadeMs = 400;
   let closing = false;
+  let started = false;
 
   if (typeof Theme !== "undefined") Theme.apply();
 
-  const iconName = { copy: "copy", pin: "pin", preview: "preview" };
+  const iconName = { copy: "copy", folder: "folder", pin: "pin", preview: "preview" };
   document.querySelectorAll("[data-act]").forEach((btn) => {
     const name = iconName[btn.dataset.act];
     if (window.Icons && Icons.has(name)) btn.innerHTML = Icons.svg(name, 16);
@@ -25,7 +27,7 @@
     if (closing) return;
     closing = true;
     el("card").classList.add("fade");
-    setTimeout(() => invoke("feedback_close").catch(() => {}), 240);
+    setTimeout(() => invoke("feedback_close").catch(() => {}), fadeMs + 30);
   }
 
   function show(p) {
@@ -34,11 +36,27 @@
       return;
     }
     seconds = Math.max(3, Math.min(5, Number(p.seconds) || 4));
+    fadeMs = Math.max(200, Math.min(1500, Number(p.fadeMs) || 400));
     closing = false;
-    el("card").classList.remove("fade");
-    el("shot").src = p.url;
-    schedule();
-    invoke("window_ready").catch(() => {});
+    const card = el("card");
+    card.classList.remove("fade");
+    card.style.transitionDuration = fadeMs + "ms";
+
+    const img = el("shot");
+    img.onload = () => {
+      invoke("window_ready").catch(() => {});
+      if (!started) {
+        // 第一次：窗口还是全屏，加载完后收缩到右下角。
+        started = true;
+        invoke("feedback_start_animation")
+          .catch(() => {})
+          .finally(schedule);
+      } else {
+        schedule();
+      }
+    };
+    img.onerror = () => invoke("feedback_close").catch(() => {});
+    img.src = p.url;
   }
 
   invoke("feedback_state")
@@ -56,7 +74,7 @@
       const act = btn.dataset.act;
       try {
         const r = await invoke("feedback_action", { action: act });
-        if (r && r.ok && (act === "pin" || act === "preview")) {
+        if (r && r.ok && (act === "pin" || act === "preview" || act === "folder")) {
           closing = true;
           clearTimeout(timer);
           invoke("feedback_close").catch(() => {});

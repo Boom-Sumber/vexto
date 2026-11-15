@@ -464,6 +464,9 @@
     }
     el("toolbar").classList.add("on");
     setBarBusy(false);
+    // 滚动完成后长截图按钮置灰；普通选区完成态仍可用（enterDone 会重新启用）。
+    const scrollBtn = document.querySelector('#toolbar [data-act="scroll"]');
+    if (scrollBtn) scrollBtn.disabled = true;
     positionToolbar(sel || { x: 0, y: 0, w: 0, h: 0 });
     showToast(
       kind === "full" ? "全屏截图 · 保存或关闭" : "滚动截图完成 · 保存或关闭",
@@ -476,11 +479,13 @@
     const p = e.payload || {};
     busy = false;
     if (!p.url) {
-      showToast(p.message || "滚动截图失败", true, 0);
+      showToast(p.message || "滚动截图失败", true, 4000);
       return;
     }
     showResultFrame("scroll", p.url);
-    if (p.message) showToast(p.message, false, 0);
+    if (p.message) {
+      showToast(p.message, p.status === "failed", p.status === "failed" ? 4000 : 0);
+    }
   });
 
   window.__TAURI__.event.listen("shot:result", (e) => {

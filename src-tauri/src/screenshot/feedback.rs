@@ -13,6 +13,7 @@ struct Source {
     path: PathBuf,
     width: u32,
     height: u32,
+    open_dir: PathBuf,
 }
 
 static SOURCE: Mutex<Option<Source>> = Mutex::new(None);
@@ -21,7 +22,7 @@ fn lock() -> std::sync::MutexGuard<'static, Option<Source>> {
     SOURCE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub fn set_source(path: PathBuf, width: u32, height: u32) {
+pub fn set_source(path: PathBuf, width: u32, height: u32, open_dir: PathBuf) {
     let mut g = lock();
     if let Some(old) = g.take() {
         let _ = std::fs::remove_file(old.path);
@@ -30,13 +31,21 @@ pub fn set_source(path: PathBuf, width: u32, height: u32) {
         path,
         width,
         height,
+        open_dir,
     });
+}
+
+/// 当前缩略图的像素尺寸（动画按图片比例决定最终窗口大小）。
+pub fn image_size() -> Option<(u32, u32)> {
+    let g = lock();
+    g.as_ref().map(|s| (s.width, s.height))
 }
 
 /// 缩略图页面的状态：显示 URL、尺寸、倒计时秒数。
 pub fn state_value() -> serde_json::Value {
     let cfg = crate::config::load();
     let seconds = cfg.screenshot_feedback_seconds.clamp(3, 5);
+    let fade_ms = cfg.screenshot_feedback_fade_ms.clamp(200, 1500);
     let g = lock();
     match g.as_ref() {
         Some(s) => serde_json::json!({
@@ -44,8 +53,9 @@ pub fn state_value() -> serde_json::Value {
             "width": s.width,
             "height": s.height,
             "seconds": seconds,
+            "fadeMs": fade_ms,
         }),
-        None => serde_json::json!({ "url": null, "width": 0, "height": 0, "seconds": seconds }),
+        None => serde_json::json!({ "url": null, "width": 0, "height": 0, "seconds": seconds, "fadeMs": fade_ms }),
     }
 }
 
@@ -91,6 +101,24 @@ pub fn apply(action: &str, cfg: &Config) -> Result<preview::ActionOutcome, Strin
             Ok(preview::ActionOutcome {
                 pin_label: None,
                 message: format!("已打开预览（{w}×{h}）"),
+                path: None,
+                text: None,
+            })
+        }
+        "folder" => {
+            let dir = {
+                let g = lock();
+                let s = g.as_ref().ok_or_else(|| "没有截图反馈图".to_string())?;
+                s.open_dir.clone()
+            };
+            let _ = std::fs::create_dir_all(&dir);
+            std::process::Command::new("explorer")
+                .arg(&dir)
+                .spawn()
+                .map_err(|e| format!("打开文件夹失败：{e}"))?;
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message: format!("已打开 {}", dir.display()),
                 path: None,
                 text: None,
             })

@@ -43,7 +43,13 @@ pub fn capture_full_feedback(app: &tauri::AppHandle) -> Result<String, String> {
     let staged = preview::stage_image(&img)?;
     let cfg = crate::config::load();
     let delivered = output::deliver(&img, &cfg);
-    feedback::set_source(staged, w, h);
+    let open_dir = delivered
+        .as_ref()
+        .ok()
+        .and_then(|d| d.path.as_ref())
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| output::resolve_dir(&cfg));
+    feedback::set_source(staged, w, h, open_dir);
 
     let a = app.clone();
     std::thread::spawn(move || {

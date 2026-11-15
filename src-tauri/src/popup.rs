@@ -1041,17 +1041,15 @@ pub fn open_feedback_window(app: &AppHandle) {
 
     match r {
         Ok(win) => {
-            if let Ok(Some(m)) = app.primary_monitor() {
-                let size = m.size();
-                let pos = m.position();
-                let dpr = m.scale_factor();
-                let pw = (logical_w * dpr).round() as i32;
-                let ph = (logical_h * dpr).round() as i32;
-                let margin = (16.0 * dpr).round() as i32;
-                let x = pos.x + size.width as i32 - pw - margin;
-                let y = pos.y + size.height as i32 - ph - margin;
-                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-            }
+            // 先铺满虚拟屏幕：页面显示全屏截图后由 `feedback_start_animation`
+            // 把窗口收缩到右下角。动画期间点击穿透，结束再恢复。
+            let (vx, vy, vw, vh) = crate::ocr::virtual_screen();
+            let _ = win.set_position(tauri::PhysicalPosition::new(vx, vy));
+            let _ = win.set_size(tauri::PhysicalSize::new(
+                vw.max(1) as u32,
+                vh.max(1) as u32,
+            ));
+            let _ = win.set_ignore_cursor_events(true);
             win.on_window_event(|ev| {
                 if matches!(ev, tauri::WindowEvent::Destroyed) {
                     crate::screenshot::feedback::clear();

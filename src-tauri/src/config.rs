@@ -223,6 +223,9 @@ pub struct Config {
     /// 全屏截图右下角缩略图显示时长（3–5 秒）
     #[serde(default = "d_shot_feedback_seconds")]
     pub screenshot_feedback_seconds: u16,
+    /// 缩略图淡出动画时长（200–1500 ms）
+    #[serde(default = "d_shot_feedback_fade_ms")]
+    pub screenshot_feedback_fade_ms: u32,
     /// 截图是否包含鼠标指针（滚动长图不包含）
     #[serde(default)]
     pub screenshot_include_cursor: bool,
@@ -473,6 +476,9 @@ fn d_shot_magnifier() -> u16 {
 fn d_shot_feedback_seconds() -> u16 {
     4
 }
+fn d_shot_feedback_fade_ms() -> u32 {
+    400
+}
 fn d_ocr_engine() -> String {
     "paddle".to_string()
 }
@@ -581,6 +587,7 @@ impl Default for Config {
             screenshot_border_width: d_shot_border(),
             screenshot_magnifier_zoom: d_shot_magnifier(),
             screenshot_feedback_seconds: d_shot_feedback_seconds(),
+            screenshot_feedback_fade_ms: d_shot_feedback_fade_ms(),
             screenshot_include_cursor: false,
             pinscreen_single_window: true,
             popup_timeout_ms: d_popup_timeout(),
@@ -1093,6 +1100,7 @@ mod tests {
         assert_eq!(c.hotkey_screenshot, "Ctrl+Alt+A");
         assert_eq!(c.hotkey_fullscreen, "Ctrl+PrintScreen");
         assert_eq!(c.screenshot_feedback_seconds, 4);
+        assert_eq!(c.screenshot_feedback_fade_ms, 400);
         assert!(!c.enable_screenshot);
         assert_eq!(c.screenshot_after_action, "both");
         assert_eq!(c.scroll_mode, "auto");

@@ -702,6 +702,55 @@ async fn feedback_action(action: String, app: AppHandle) -> Value {
     }
 }
 
+/// 缩略图从全屏收缩到右下角。前端在图片加载完后调用一次。
+#[tauri::command]
+fn feedback_start_animation(app: AppHandle) {
+    let Some(win) = app.get_webview_window(crate::popup::FEEDBACK_LABEL) else {
+        return;
+    };
+    let (vx, vy, vw, vh) = crate::ocr::virtual_screen();
+    let dpr = win.scale_factor().unwrap_or(1.0);
+    let (iw, ih) = crate::screenshot::feedback::image_size().unwrap_or((16, 9));
+    // 缩略图窗口按图片比例算，避免 16:9 的图放进 4:3 窗口出现白边。
+    let scale = (360.0 / iw as f64)
+        .min(260.0 / ih as f64)
+        .min(1.0);
+    let final_w = ((iw as f64 * scale).max(120.0) * dpr).round() as i32;
+    let final_h = ((ih as f64 * scale).max(80.0) * dpr).round() as i32;
+    let margin = (16.0 * dpr).round() as i32;
+    // 用工作区（排除任务栏）的右下角，避免缩略图被任务栏挡住。
+    let (wx, wy, ww, wh) = work_area(app.primary_monitor().ok().flatten())
+        .unwrap_or((vx, vy, vw, vh));
+    let fx = wx + ww - final_w - margin;
+    let fy = wy + wh - final_h - margin;
+    let steps = 18i32;
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        // ease-out：先快后慢
+        let e = 1.0 - (1.0 - t) * (1.0 - t);
+        let w = (vw as f64 + (final_w - vw) as f64 * e).round() as i32;
+        let h = (vh as f64 + (final_h - vh) as f64 * e).round() as i32;
+        let x = (vx as f64 + (fx - vx) as f64 * e).round() as i32;
+        let y = (vy as f64 + (fy - vy) as f64 * e).round() as i32;
+        let _ = win.set_size(tauri::PhysicalSize::new(w.max(1) as u32, h.max(1) as u32));
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+        std::thread::sleep(std::time::Duration::from_millis(13));
+    }
+    let _ = win.set_ignore_cursor_events(false);
+}
+
+/// Tauri 的 Monitor 工作区（物理像素，已排除任务栏）。
+fn work_area(monitor: Option<tauri::Monitor>) -> Option<(i32, i32, i32, i32)> {
+    let m = monitor?;
+    let wa = m.work_area();
+    Some((
+        wa.position.x,
+        wa.position.y,
+        wa.size.width as i32,
+        wa.size.height as i32,
+    ))
+}
+
 /// 关闭缩略图反馈窗并清理暂存图。
 #[tauri::command]
 fn feedback_close(app: AppHandle) {
@@ -856,11 +905,20 @@ fn scroll_start(
         );
         crate::dlog::dlog(&format!("scroll: {}", done.message));
         if let Some(path) = done.path.clone() {
+            // 失败但只有第一帧：这是「滚动失败回退第一帧」，不是长图，
+            // 允许复制图片；真正拼出多帧的长图仍禁止复制（ADR-043）。
+            let kind = if done.status == crate::screenshot::scroll::Status::Failed
+                && done.frames <= 1
+            {
+                crate::screenshot::overlay::ResultKind::Full
+            } else {
+                crate::screenshot::overlay::ResultKind::Scroll
+            };
             crate::screenshot::overlay::set_result(
                 path,
                 done.width.max(1) as u32,
                 done.height.max(1) as u32,
-                crate::screenshot::overlay::ResultKind::Scroll,
+                kind,
             );
         }
         let url = done
@@ -2536,6 +2594,7 @@ fn main() {
             result_action,
             feedback_state,
             feedback_action,
+            feedback_start_animation,
             feedback_close,
             shot_full,
             shot_window,

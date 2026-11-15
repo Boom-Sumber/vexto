@@ -58,6 +58,8 @@ impl Tool for Screenshot {
                     .help("鼠标旁放大取色镜的放大倍数。"),
                 Field::number_unit("screenshot_feedback_seconds", "缩略图显示时长", 3, 5, "秒")
                     .help("全屏截图后右下角缩略图的显示时长；鼠标移入会暂停倒计时。"),
+                Field::number_unit("screenshot_feedback_fade_ms", "缩略图淡出时长", 200, 1500, "ms")
+                    .help("缩略图自动消失时的淡出动画时长，200–1500 ms。"),
                 Field::switch("screenshot_include_cursor", "截图包含鼠标指针")
                     .help("区域 / 全屏 / 活动窗口截图会把当前指针画进图里；滚动长图不包含。"),
                 Field::select(
