@@ -416,17 +416,9 @@ fn deliver(
     let width = raw.width as i32;
     let height = raw.height as i32;
 
-    // 一帧都没动过且失败：明确失败，不落一张「看起来像长图」的单帧（B7）。
-    if status == Status::Failed && !progressed {
-        return ScrollDone {
-            status,
-            width,
-            height: 0,
-            frames,
-            path: None,
-            message,
-        };
-    }
+    // 失败但已经抓到第一帧：保留它，交给结果框继续操作；不再返回空白
+    // （会话 72 需求：滚动失败时工具条仍可用）。
+    let fallback = status == Status::Failed && !progressed;
 
     on_progress(Progress {
         stage: Stage::Writing,
@@ -462,13 +454,19 @@ fn deliver(
         };
     }
 
+    let message = if fallback {
+        format!("{message}；已保留第一帧，可直接保存/复制/预览（{width}×{height}）")
+    } else {
+        format!("{message}（{width}×{height}），等待确认")
+    };
+
     ScrollDone {
         status,
         width,
         height,
         frames,
         path: Some(path),
-        message: format!("{message}（{width}×{height}），等待确认"),
+        message,
     }
 }
 
