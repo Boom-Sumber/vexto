@@ -2412,6 +2412,16 @@ fn main() {
     // 必须在任何 HTTP 客户端构建之前：局域网传输目标豁免代理（风险 55/62 同类坑）。
     transfer::send::ensure_lan_no_proxy();
     tauri::Builder::default()
+        // 单实例（S6）：第二个实例唤起已有窗口；没有窗口就打开设置页。
+        // 必须在其它插件之前注册（Tauri 官方要求）。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window(crate::popup::MAIN_LABEL) {
+                let _ = w.show();
+                let _ = w.set_focus();
+            } else {
+                crate::popup::open_settings(app);
+            }
+        }))
         // 钉屏 / 预览的图片读取：只读暂存目录的自定义协议（ADR-044）。
         // 不用 tauri 的 asset protocol——它会引入 `http-range`，与「零新 crate」冲突。
         .register_uri_scheme_protocol("vextoimg", |_ctx, request| {

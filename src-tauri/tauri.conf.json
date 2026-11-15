@@ -16,6 +16,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "publisher": "Vexto",
+    "shortDescription": "轻量工具集：划词翻译 / 截图 / 下载 / 局域网传文件",
+    "longDescription": "Vexto 是一款常驻 Windows 托盘的轻量工具箱：划词翻译、截图翻译与截图、HTTP / BT / magnet 下载、局域网跨设备传文件。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -23,6 +26,13 @@
       "icons/icon.ico"
     ],
     "externalBin": ["binaries/aria2c"],
-    "resources": ["licenses/*", "models/ocr/*"]
+    "resources": ["licenses/*", "models/ocr/*"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

@@ -20,6 +20,9 @@ tauri-plugin-global-shortcut = "2"
 # 后者要处理 COM 激活、快捷方式与 AUMID，代码量远大于一个依赖。
 tauri-plugin-notification = "2"
 
+# 单实例（S6）：第二个实例唤起已有进程。必须第一个注册。
+tauri-plugin-single-instance = "2"
+
 # 百度翻译（S1b 用）。必须 native-tls：rustls 会拉 aws-lc-sys，要 CMake/NASM，
 # 本机编不过（09-MVP-BASELINE §9.6 坑 1）。
 reqwest = { version = "0.13", default-features = false, features = [
