@@ -83,7 +83,7 @@ impl Tool for Translate {
     }
 
     fn icon(&self) -> &'static str {
-        "globe"
+        "translate"
     }
 
     fn enabled(&self) -> bool {

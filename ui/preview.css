@@ -42,12 +42,16 @@ body {
   display: flex;
 }
 
-.pv-viewport {
+.pv-viewport-wrap {
   flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+}
+
+.pv-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
   padding: var(--sp-4);
   background:
     linear-gradient(45deg, rgba(255, 255, 255, .03) 25%, transparent 25%) 0 0 / 16px 16px,
@@ -57,19 +61,37 @@ body {
 
 .pv-canvas {
   position: relative;
-  display: inline-flex;
-  max-width: 100%;
-  max-height: 100%;
+  width: max-content;
+  margin: 0 auto;
 }
 
 #pv-img {
-  max-width: 100%;
-  max-height: 100%;
+  max-width: none;
+  max-height: none;
   width: auto;
   height: auto;
   display: block;
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-float);
+}
+
+.pv-zoom {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-bar);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+  z-index: 3;
+}
+
+.pv-zoom .tb-btn {
+  width: 28px;
+  height: 28px;
 }
 
 .pv-band {
@@ -145,9 +167,11 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 120px;
+  overflow: hidden;
 }
 
 .pv-ocr-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -157,12 +181,42 @@ body {
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.pv-ocr-acts {
+  display: flex;
+  gap: 4px;
+}
+
+.pv-ocr-acts .ico-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pv-translation {
+  min-width: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.pv-translation-head {
+  flex: 0 0 auto;
+  padding: var(--sp-2) var(--sp-3) 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
 .pv-ocr pre {
   margin: 0;
   padding: var(--sp-3);
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 2.6em;
+  max-height: 220px;
   overflow: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);

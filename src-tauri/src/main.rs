@@ -373,6 +373,20 @@ async fn translate_text(
     }
 }
 
+/// 只翻译、不弹窗：截图预览里的 OCR 结果卡用。
+#[tauri::command]
+async fn translate_text_only(text: String) -> Result<Value, String> {
+    let t = text.trim().to_string();
+    if t.is_empty() {
+        return Err("没有要翻译的内容".into());
+    }
+    let cfg = config::load();
+    let r = tauri::async_runtime::spawn_blocking(move || translate::translate(&cfg, &t))
+        .await
+        .map_err(|e| format!("翻译任务未能启动：{e}"))??;
+    Ok(json!({ "dst": r.dst, "from": r.from, "to": r.to }))
+}
+
 // 就绪判断统一放在 `translate::engine_ready()`：它先按 `active_engine` 找到实例，
 // 再把实例里的凭据投影到扁平字段，最后才问引擎。这里曾经直接读废弃的 `cfg.engine`
 // （迁移后恒为空）→ 划词热键永远被引去设置页，会话 31 实机发现并修掉。
@@ -2425,6 +2439,7 @@ fn main() {
             close_popup,
             copy_text,
             translate_text,
+            translate_text_only,
             switch_engine,
             set_pinned,
             start_dragging,

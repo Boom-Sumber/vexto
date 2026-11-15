@@ -27,11 +27,17 @@
   </div>
 
   <main class="pv-main">
-    <div class="pv-viewport">
-      <div id="pv-canvas" class="pv-canvas">
-        <img id="pv-img" alt="" draggable="false" />
-        <div id="pv-band-top" class="pv-band top"></div>
-        <div id="pv-band-bottom" class="pv-band bottom"></div>
+    <div class="pv-viewport-wrap">
+      <div class="pv-viewport">
+        <div id="pv-canvas" class="pv-canvas">
+          <img id="pv-img" alt="" draggable="false" />
+          <div id="pv-band-top" class="pv-band top"></div>
+          <div id="pv-band-bottom" class="pv-band bottom"></div>
+        </div>
+      </div>
+      <div class="pv-zoom">
+        <button id="pv-zoom-out" class="tb-btn" type="button" title="缩小"></button>
+        <button id="pv-zoom-in" class="tb-btn" type="button" title="放大"></button>
       </div>
     </div>
 
@@ -58,14 +64,22 @@
       <div id="pv-ocr-box" class="pv-ocr" hidden>
         <div class="pv-ocr-head">
           <span>识别结果</span>
-          <button id="pv-copy-text" class="btn btn-ghost" type="button">复制文字</button>
+          <div class="pv-ocr-acts">
+            <button id="pv-translate" class="btn btn-ghost ico-btn" type="button" title="翻译识别结果"></button>
+            <button id="pv-copy-text" class="btn btn-ghost ico-btn" type="button" title="复制文字"></button>
+          </div>
         </div>
         <pre id="pv-ocr-text"></pre>
+        <div id="pv-translation" class="pv-translation" hidden>
+          <div class="pv-translation-head">译文</div>
+          <pre id="pv-translation-text"></pre>
+        </div>
       </div>
     </aside>
   </main>
 </div>
 
+<script src="contextmenu.js"></script>
 <script src="theme.js"></script>
 <script src="icons.js"></script>
 <script src="titlebar.js"></script>

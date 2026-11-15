@@ -139,6 +139,7 @@
         return;
       }
       if (done) resetSelection();
+      hideHint();
       el("dim").classList.add("hidden");
       hideToast();
       hideCard();
@@ -163,6 +164,7 @@
       sel.y = ny;
       setBox(nx, ny, sel.w, sel.h);
       positionToolbar(sel);
+      positionHint(sel);
       return;
     }
     if (enhanced) updateMagnifier(ev);
@@ -178,6 +180,7 @@
       el("box").classList.remove("moving");
       el("toolbar").classList.add("on");
       positionToolbar(sel);
+      positionHint(sel);
       return;
     }
     if (!dragging) return;
@@ -236,6 +239,7 @@
     magHex = "";
     resultKind = "";
     moving = false;
+    hideHint();
     const box = el("box");
     box.classList.remove("on", "done", "result", "moving");
     const img = el("result");
@@ -340,6 +344,7 @@
     el("magnifier").classList.remove("on");
     el("toolbar").classList.add("on");
     positionToolbar(rect);
+    positionHint(rect);
   }
 
   function positionToolbar(rect) {
@@ -353,6 +358,30 @@
     if (top < 12) top = Math.min(window.innerHeight - bh - 12, rect.y + rect.h + 12);
     bar.style.left = left + "px";
     bar.style.top = Math.max(12, top) + "px";
+  }
+
+  // 选框右上方的「按 L 滚动」提示：跟随选框移动；只在普通截图完成态显示。
+  function positionHint(rect) {
+    const hint = el("scroll-hint");
+    if (!hint) return;
+    if (purpose !== "shot" || !done || !sel || resultKind) {
+      hint.classList.remove("on");
+      return;
+    }
+    hint.classList.add("on");
+    const w = hint.offsetWidth || 150;
+    const h = hint.offsetHeight || 26;
+    let left = rect.x + rect.w - w;
+    let top = rect.y - h - 8;
+    if (top < 8) top = rect.y + 8;
+    left = Math.max(8, Math.min(window.innerWidth - w - 8, left));
+    hint.style.left = left + "px";
+    hint.style.top = top + "px";
+  }
+
+  function hideHint() {
+    const hint = el("scroll-hint");
+    if (hint) hint.classList.remove("on");
   }
 
   function finishScroll(rect) {
@@ -376,6 +405,7 @@
 
   function startScrollFromShot() {
     if (!sel || busy || resultKind) return;
+    hideHint();
     busy = true;
     enterCapture("滚动中… 用进度窗停止");
     invoke("scroll_start", {
@@ -394,6 +424,7 @@
 
   // 进入捕获态：只留边框；窗口点击穿透 + WDA_EXCLUDEFROMCAPTURE 由后端设置。
   function enterCapture(msg) {
+    hideHint();
     const snap = el("snap");
     if (snap) snap.style.display = "none";
     el("dim").classList.add("hidden");
@@ -410,6 +441,7 @@
     resultKind = kind;
     done = true;
     busy = false;
+    hideHint();
     const snap = el("snap");
     if (snap) snap.style.display = "none";
     el("dim").classList.add("hidden");
@@ -470,6 +502,10 @@
       const act = btn.dataset.act;
       if (act === "close") {
         cancel();
+        return;
+      }
+      if (act === "scroll") {
+        startScrollFromShot();
         return;
       }
       runAction(act);

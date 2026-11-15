@@ -14,6 +14,7 @@
   let head = 0;
   let tail = 0;
   let busy = false;
+  let zoom = 1;
 
   // 首屏状态拿到后再显示窗口（titlebar.js 的 reveal）；1.5s 兜底。
 
@@ -30,6 +31,7 @@
     state = { url: p.url, width: p.width || 0, height: p.height || 0 };
     head = 0;
     tail = 0;
+    zoom = 1;
     headEl.max = Math.max(0, state.height - 1);
     tailEl.max = Math.max(0, state.height - 1);
     headEl.value = 0;
@@ -38,9 +40,14 @@
     el("pv-info").textContent = state.width + " × " + state.height + " px";
     el("pv-msg").textContent = "";
     el("pv-ocr-box").hidden = true;
-    img.onload = updateBands;
+    el("pv-translation").hidden = true;
+    el("pv-translation-text").textContent = "";
+    img.onload = () => {
+      applyZoom();
+      updateBands();
+    };
     img.src = state.url;
-    updateBands();
+    applyZoom();
   }
 
   function clamp() {
@@ -60,13 +67,27 @@
     el("pv-band-bottom").style.height = Math.round(tail * s) + "px";
   }
 
+  // 预览图默认 1:1（按物理像素），不自动缩放；超出视口时由 .pv-viewport 滚动。
+  function applyZoom() {
+    if (!state.width || !state.height) return;
+    const dpr = window.devicePixelRatio || 1;
+    img.style.width = Math.round((state.width / dpr) * zoom) + "px";
+    img.style.height = Math.round((state.height / dpr) * zoom) + "px";
+    setTimeout(updateBands, 0);
+  }
+
+  function setZoom(next) {
+    zoom = Math.max(0.1, Math.min(4, next));
+    applyZoom();
+  }
+
   function msg(text) {
     el("pv-msg").textContent = text || "";
   }
 
   function setBusy(b) {
     busy = b;
-    for (const id of ["pv-save", "pv-copy", "pv-pin", "pv-ocr"]) {
+    for (const id of ["pv-save", "pv-copy", "pv-pin", "pv-ocr", "pv-translate", "pv-copy-text"]) {
       el(id).disabled = b;
     }
   }
@@ -89,7 +110,34 @@
       if (kind === "ocr") {
         el("pv-ocr-box").hidden = false;
         el("pv-ocr-text").textContent = r.text || "";
+        el("pv-translation").hidden = true;
+        el("pv-translation-text").textContent = "";
       }
+    } catch (e) {
+      msg(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function translateOcr() {
+    const text = el("pv-ocr-text").textContent;
+    if (!text.trim()) {
+      msg("没有可翻译的文字");
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    msg("翻译中…");
+    try {
+      const r = await invoke("translate_text_only", { text });
+      if (!r || !r.dst) {
+        msg("翻译失败");
+        return;
+      }
+      el("pv-translation").hidden = false;
+      el("pv-translation-text").textContent = r.dst;
+      msg("已翻译");
     } catch (e) {
       msg(String(e));
     } finally {
@@ -111,6 +159,14 @@
   el("pv-copy").addEventListener("click", () => act("clipboard"));
   el("pv-pin").addEventListener("click", () => act("pin"));
   el("pv-ocr").addEventListener("click", () => act("ocr"));
+  el("pv-translate").addEventListener("click", translateOcr);
+  el("pv-zoom-out").addEventListener("click", () => setZoom(zoom / 1.25));
+  el("pv-zoom-in").addEventListener("click", () => setZoom(zoom * 1.25));
+
+  el("pv-zoom-out").innerHTML = Icons.svg("minus", 16);
+  el("pv-zoom-in").innerHTML = Icons.svg("plus", 16);
+  el("pv-translate").innerHTML = Icons.raw("translate", 20);
+  el("pv-copy-text").innerHTML = Icons.svg("copy", 20);
 
   el("pv-copy-text").addEventListener("click", () => {
     const text = el("pv-ocr-text").textContent;

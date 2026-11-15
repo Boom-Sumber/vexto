@@ -48,6 +48,24 @@ html, body {
 }
 #box.moving { cursor: move; }
 
+/* 选框右上方：按 L 滚动截图提示；随选框移动，位置由 JS 更新 */
+#scroll-hint {
+  position: absolute;
+  z-index: 5;
+  display: none;
+  padding: 5px 9px;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+}
+#scroll-hint.on { display: block; }
+
 /* ── 会话 65：截图 / 滚动选框改版 ───────────────────────────────────── */
 
 /* 冻结屏幕的快照：放大镜与最终裁剪都基于它 */
