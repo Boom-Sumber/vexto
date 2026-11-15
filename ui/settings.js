@@ -778,7 +778,7 @@ function fieldList(f) {
     const en = itemControl({ type: "switch" }, it.enabled !== false, (v) =>
       patch(it.id, "enabled", v),
     );
-    en.title = "关闭后不出现在「翻译模式」列表";
+    en.title = "关闭后不出现在「翻译引擎」列表";
     en.classList.add("li-enable");
     head.append(en);
 
@@ -1645,6 +1645,19 @@ async function boot() {
     if (id && state.tools.some((t) => t.id === id)) {
       await selectTool(id, { keepBanner: true });
     }
+  });
+
+  // 标题栏的明暗切换会直接写配置并广播：当前停在通用页且没有未保存改动时，
+  // 把下拉同步到新值，避免界面显示和磁盘不一致。
+  await listen("appearance:changed", (ev) => {
+    const p = (ev && ev.payload) || {};
+    if (typeof state.values.appearance_theme === "string") {
+      state.values.appearance_theme = p.theme;
+    }
+    if (typeof state.values.accent_color === "string") {
+      state.values.accent_color = p.accent;
+    }
+    if (state.toolId === "general" && pendingCount() === 0) renderFields();
   });
 
   // 首屏（工具列表 + 字段值）都填好了，才让后端把窗口显示出来

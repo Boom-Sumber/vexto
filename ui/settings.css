@@ -865,6 +865,6 @@ input.capturing {
               transform var(--dur-fast) var(--ease-out);
 }
 #toast.on { opacity: 1; transform: none; }
-#toast .ico-svg { color: var(--success); flex: none; }
+#toast .ico-svg { color: var(--text-secondary); flex: none; }
 #toast.bad { border-color: var(--danger-border); color: var(--danger); }
 #toast.bad .ico-svg { color: var(--danger); }

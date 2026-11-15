@@ -108,7 +108,7 @@ impl Tool for Download {
                 "通用",
                 vec![
                     Field::group("下载路径"),
-                    Field::dir("download_dir", "下载目录"),
+                    Field::dir("download_dir", "下载目录").wide(),
                     Field::switch("remember_last_dir", "记住上次保存位置"),
                     Field::group("速度与并发"),
                     Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
@@ -139,7 +139,8 @@ impl Tool for Download {
                     )
                     .help("只在「本轮真的下过东西、队列连续空 10 秒」后触发一次；启动后 3 分钟内的空闲不算。"),
                     Field::text_hint("after_all_done_cmd", "要运行的程序", r"D:\tools\done.exe")
-                        .show_if("after_all_done", "run"),
+                        .show_if("after_all_done", "run")
+                        .wide(),
                     Field::group("删除与清理"),
                     Field::select(
                         "delete_mode",
@@ -175,7 +176,8 @@ impl Tool for Download {
                         ],
                     ),
                     Field::text_hint("proxy_url", "代理地址", "http://127.0.0.1:7890")
-                        .show_if("proxy_mode", "manual"),
+                        .show_if("proxy_mode", "manual")
+                        .wide(),
                     Field::group("请求"),
                     Field::text_presets(
                         "default_user_agent",
@@ -194,7 +196,8 @@ impl Tool for Download {
                             ("119.29.29.29,182.254.116.116", "腾讯 DNS"),
                             ("101.226.4.6,218.30.118.6", "360 DNS"),
                         ],
-                    ),
+                    )
+                    .help("下载引擎不支持 DoH，这里使用对应服务商的明文 DNS 地址。"),
                     Field::group("TLS"),
                     Field::switch("check_certificate", "校验证书")
                         .help("关掉可以下载自签名证书的站点，但会失去对中间人攻击的防护。"),
