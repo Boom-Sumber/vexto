@@ -82,12 +82,19 @@ function showToast(msg, kind) {
   toastTimer = setTimeout(() => box.classList.remove("on"), bad ? 6000 : 3000);
 }
 
-// 顶部横幅：热键被占用、保存警告都走这里，不弹窗也不写控制台（用户看不见）
+// 顶部横幅：热键被占用、保存警告都走这里，不弹窗也不写控制台（用户看不见）。
+// 与 toast 一样倒计时消失；真正需要长期可见的问题会在状态行 / 字段值里保留。
+let bannerTimer = null;
 function showBanner(msg) {
   const box = el("tool-status");
+  clearTimeout(bannerTimer);
   if (msg) {
     box.textContent = msg;
     box.classList.remove("hidden");
+    bannerTimer = setTimeout(() => {
+      box.textContent = "";
+      box.classList.add("hidden");
+    }, 8000);
   } else {
     box.textContent = "";
     box.classList.add("hidden");
