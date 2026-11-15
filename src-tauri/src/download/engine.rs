@@ -94,11 +94,11 @@ pub fn shutdown_all() -> Result<(), String> {
     };
     // 优雅关闭失败不致命：后面还有句柄 kill 兜底，所以只记日志不返回错误。
     if let Err(e) = crate::download::rpc::Rpc::new(g.port, &g.secret).and_then(|r| r.shutdown()) {
-        dlog::dlog(&format!("engine: 优雅关闭请求失败（将强制结束）：{e}"));
+        dlog::warn(&format!("engine: 优雅关闭请求失败（将强制结束）：{e}"));
     }
     let exited = wait_exit(&mut child, EXIT_TIMEOUT)?;
     if !exited {
-        dlog::dlog("engine: 等待 5 秒未退出，用 spawn 句柄强制结束");
+        dlog::warn("engine: 等待 5 秒未退出，用 spawn 句柄强制结束");
         kill_child(&mut child)?;
     }
     remove_conf(g.conf_path.take());
@@ -531,11 +531,12 @@ fn write_conf(cfg: &config::Config) -> Result<PathBuf, String> {
         .collect();
     // DNS 与证书校验：两项都是 aria2 的启动参数，改完要等下次启动 sidecar 才生效
     // （设置页的说明里写清了）。DNS 为空时**不写这一行**，让系统解析器说了算。
+    // aria2 1.37 的选项名是 `async-dns-server`（没有 `dns-server`）。
     let dns = dns_line(&cfg.dns_servers);
     let dns_opt = if dns.is_empty() {
         String::new()
     } else {
-        format!("dns-server={dns}\n")
+        format!("async-dns-server={dns}\n")
     };
     let cert = format!("check-certificate={}\n", cfg.check_certificate);
     let content = format!(
@@ -546,7 +547,7 @@ fn write_conf(cfg: &config::Config) -> Result<PathBuf, String> {
     Ok(p)
 }
 
-/// `--dns-server` 只接受 IP 列表（`PRI,SEC`，最多两个）。
+/// `async-dns-server` 只接受 IP 列表（`PRI,SEC`，最多两个）。
 ///
 /// 用户可能从网页上粘一串带空格、换行、分号的东西进来；非法字符写进 conf 会让
 /// aria2 直接起不来（错误只在 `--console-log-level=warn` 里一闪而过）。所以先把手写
@@ -598,7 +599,7 @@ fn kill_child(child: &mut Child) -> Result<(), String> {
 fn remove_conf(p: Option<PathBuf>) {
     if let Some(p) = p {
         if let Err(e) = std::fs::remove_file(&p) {
-            dlog::dlog(&format!("engine: 删除临时配置 {} 失败：{e}", p.display()));
+            dlog::warn(&format!("engine: 删除临时配置 {} 失败：{e}", p.display()));
         }
     }
 }

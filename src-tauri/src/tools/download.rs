@@ -69,17 +69,18 @@ impl Tool for Download {
     }
 
     /// 没有主窗口时，设置页这一行就是用户能看到运行状态的唯一地方。
+    /// 只保留「引擎状态 · 插件接管」两段，代理等细节不进状态栏。
     fn status_line(&self) -> String {
         let cfg = config::load();
         if !cfg.enable_download {
             return "未启用".to_string();
         }
-        format!(
-            "{}；{}；代理：{}",
-            crate::download::engine::status_line(),
-            crate::extension_bridge::status_line(),
-            crate::download::proxy::describe(&cfg)
-        )
+        let bridge = if cfg.extension_bridge_enabled {
+            "浏览器插件接管"
+        } else {
+            "浏览器插件接管已关闭"
+        };
+        format!("{} · {bridge}", crate::download::engine::status_line())
     }
 
     /// 引擎/插件接管有失败信息时红，aria2c 还没起来时黄（会话 52）。
@@ -126,7 +127,6 @@ impl Tool for Download {
                         &[("folder", "在文件夹中显示"), ("list", "打开下载列表")],
                     ),
                     Field::button("notify_test", "发送测试通知"),
-                    Field::group("完成后"),
                     Field::select(
                         "after_all_done",
                         "全部下载完成后",
@@ -179,15 +179,21 @@ impl Tool for Download {
                     Field::group("请求"),
                     Field::text_presets(
                         "default_user_agent",
-                        "默认 User-Agent",
+                        "User-Agent",
                         "留空 = 用 aria2 自带 UA",
                         UA_PRESETS,
-                    ),
+                    )
+                    .wide(),
                     Field::group("DNS"),
-                    Field::text_hint(
+                    Field::select(
                         "dns_servers",
                         "DNS 服务器",
-                        "223.5.5.5,119.29.29.29（留空 = 用系统）",
+                        &[
+                            ("", "系统默认"),
+                            ("223.5.5.5,223.6.6.6", "阿里 DNS"),
+                            ("119.29.29.29,182.254.116.116", "腾讯 DNS"),
+                            ("101.226.4.6,218.30.118.6", "360 DNS"),
+                        ],
                     ),
                     Field::group("TLS"),
                     Field::switch("check_certificate", "校验证书")
@@ -207,9 +213,10 @@ impl Tool for Download {
                     Field::group("下载引擎"),
                     Field::number_unit("rpc_port", "RPC 端口", 1024, 65535, "")
                         .help("aria2 的控制接口，只绑 127.0.0.1；被占用时会自动换一个可用端口。"),
-                    Field::button("download_engine_restart", "重启下载引擎"),
-                    Field::group("维护"),
-                    Field::button("open_download_dir", "打开下载目录"),
+                    Field::buttons(&[
+                        ("download_engine_restart", "重启下载引擎"),
+                        ("open_download_dir", "打开下载目录"),
+                    ]),
                 ],
             ),
         ]

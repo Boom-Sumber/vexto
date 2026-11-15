@@ -435,6 +435,7 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
                 f.kind,
                 tools::FieldKind::Note { .. }
                     | tools::FieldKind::Button
+                    | tools::FieldKind::ButtonRow { .. }
                     | tools::FieldKind::Group { .. }
             ) {
                 continue;
@@ -903,7 +904,7 @@ fn scroll_start(
             &cfg,
             &mut on_progress,
         );
-        crate::dlog::dlog(&format!("scroll: {}", done.message));
+        crate::dlog::warn(&format!("scroll: {}", done.message));
         if let Some(path) = done.path.clone() {
             // 失败但只有第一帧：这是「滚动失败回退第一帧」，不是长图，
             // 允许复制图片；真正拼出多帧的长图仍禁止复制（ADR-043）。
@@ -1340,6 +1341,8 @@ fn save_tool_config(
             warnings,
         };
     }
+    // 日志开关 / 等级立即生效，不必重启。
+    dlog::configure(cfg.log_enabled, &cfg.log_level);
 
     // 4) 副作用：热键重新注册。
     //    任一热键（或 OCR 启用开关）变了都要**整体重注册**：register_all
@@ -1642,7 +1645,7 @@ fn open_config_dir() -> SimpleOut {
     match std::process::Command::new("explorer").arg(&dir).spawn() {
         Ok(_) => SimpleOut {
             ok: true,
-            message: dir.display().to_string(),
+            message: "已打开配置目录".to_string(),
         },
         Err(e) => SimpleOut {
             ok: false,
@@ -1678,7 +1681,7 @@ fn open_config_file() -> SimpleOut {
     match std::process::Command::new("explorer").arg(&p).spawn() {
         Ok(_) => SimpleOut {
             ok: true,
-            message: p.display().to_string(),
+            message: "已打开配置文件".to_string(),
         },
         Err(e) => SimpleOut {
             ok: false,
@@ -2269,21 +2272,28 @@ fn download_ui_flags() -> UiFlagsOut {
 /// 不看「启用系统通知」开关：用户点测试就是要当场确认通道通不通，
 /// 总开关关着也该发——否则点了没反应，看起来像坏了。
 #[tauri::command]
-fn notify_test(app: AppHandle) -> Result<(), String> {
-    crate::download::notify::test(&app)
+fn notify_test(app: AppHandle) -> Result<SimpleOut, String> {
+    crate::download::notify::test(&app)?;
+    Ok(SimpleOut {
+        ok: true,
+        message: "测试通知已发送".to_string(),
+    })
 }
 
 /// 「打开下载目录」按钮。目录不存在就先建，否则资源管理器会弹「找不到」。
 #[tauri::command]
-fn open_download_dir() -> Result<(), String> {
+fn open_download_dir() -> Result<SimpleOut, String> {
     let cfg = config::load();
     let dir = crate::download::engine::configured_download_dir(&cfg);
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
     std::process::Command::new("explorer.exe")
         .arg(&dir)
         .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("打开下载目录失败：{e}"))
+        .map_err(|e| format!("打开下载目录失败：{e}"))?;
+    Ok(SimpleOut {
+        ok: true,
+        message: "已打开下载目录".to_string(),
+    })
 }
 
 /// 列表页「+」：打开新建任务窗口，**不关列表**（两窗并存，用户明确要求）。
@@ -2531,7 +2541,7 @@ fn transfer_open_dir() -> Result<SimpleOut, String> {
         .map_err(|e| format!("打开接收目录失败：{e}"))?;
     Ok(SimpleOut {
         ok: true,
-        message: dir.display().to_string(),
+        message: "已打开接收目录".to_string(),
     })
 }
 
@@ -2662,6 +2672,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let cfg = config::load();
+            dlog::configure(cfg.log_enabled, &cfg.log_level);
 
             // 开机自启自愈：配置是唯一真相，注册表只是它的投影。
             // 换过安装目录、被安全软件清掉、或用户手工删过，都在这里补齐 / 抹掉。
@@ -2912,6 +2923,7 @@ mod tests {
                         f.kind,
                         crate::tools::FieldKind::Note { .. }
                             | crate::tools::FieldKind::Button
+                            | crate::tools::FieldKind::ButtonRow { .. }
                             | crate::tools::FieldKind::Group { .. }
                     ) {
                         continue;

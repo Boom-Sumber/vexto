@@ -89,31 +89,14 @@ impl Tool for Transfer {
                 "通用",
                 vec![
                     Field::group("接收"),
-                    Field::switch("transfer_auto_accept", "自动保存")
-                        .help("打开后收到的文件不再弹确认框，直接写入保存目录。"),
-                    Field::switch("transfer_auto_complete", "自动完成")
-                        .help("传输结束后自动关闭传输页；关掉则停在「已完成」，由你点一下退出。"),
+                    Field::switch("transfer_auto_accept", "自动保存"),
+                    Field::switch("transfer_auto_complete", "自动完成"),
                     Field::switch("require_pin", "需要一个 PIN"),
                     Field::text_hint("pin", "PIN（4–6 位数字）", "4–6 位数字")
                         .show_if("require_pin", "true"),
-                    Field::dir("receive_dir", "保存目录"),
+                    Field::dir("receive_dir", "保存目录").wide(),
                     Field::group("设备"),
-                    Field::text_hint("device_alias", "别名", "不填用计算机名")
-                        .help("对方在设备列表 / 确认框里看到的就是这个名字。"),
-                ],
-            ),
-            // ── 高级 ──────────────────────────────────────────────────
-            Section::new(
-                "advanced",
-                "高级",
-                vec![
-                    Field::group("网络"),
-                    Field::number_unit("transfer_port", "端口", 1024, 65535, "")
-                        .help("TCP 与 UDP 组播同号；首次启用可能弹防火墙提示。改端口后对方也要用同一端口。"),
-                    Field::switch("transfer_use_https", "加密（HTTPS）")
-                        .help("关闭后走明文 HTTP；部分客户端会拒绝，且 lanflare 的 /info 仍自称 https。"),
-                    Field::text_hint("transfer_multicast", "多播地址", "224.0.0.167")
-                        .help("组播地址要和对方一致；默认 224.0.0.167。"),
+                    Field::text_hint("device_alias", "别名", "不填用计算机名"),
                     Field::select(
                         "transfer_device_type",
                         "设备类型",
@@ -126,17 +109,30 @@ impl Tool for Transfer {
                         ],
                     ),
                     Field::text_hint("transfer_device_model", "设备型号", "Windows"),
+                    Field::number_unit("transfer_peer_timeout_secs", "设备保留时长", 5, 3600, "秒"),
+                ],
+            ),
+            // ── 高级 ──────────────────────────────────────────────────
+            Section::new(
+                "advanced",
+                "高级",
+                vec![
+                    Field::group("网络"),
+                    Field::number_unit("transfer_port", "端口", 1024, 65535, ""),
+                    Field::switch("transfer_use_https", "加密（HTTPS）"),
+                    Field::text_hint("transfer_multicast", "多播地址", "224.0.0.167")
+                        .help("组播地址要和对方一致；默认 224.0.0.167。"),
                     Field::text_hint(
                         "transfer_interface_whitelist",
                         "网络接口白名单",
-                        "留空 = 所有网卡；如 192.168.1.*,10.0.0.*",
+                        "留空表示所有网卡",
                     )
-                    .help("逗号分隔的 IP 前缀，留空 = 所有网卡。"),
-                    Field::number_unit("transfer_peer_timeout_secs", "设备保留时长", 5, 3600, "秒")
-                        .help("超过这个时间没收到公告就从设备列表移除；不是扫描超时。"),
-                    Field::group("维护"),
-                    Field::button("transfer_restart", "重启传输服务"),
-                    Field::button("transfer_open_dir", "打开接收目录"),
+                    .help("逗号分割的 IP 前缀")
+                    .wide(),
+                    Field::buttons(&[
+                        ("transfer_restart", "重启传输服务"),
+                        ("transfer_open_dir", "打开接收目录"),
+                    ]),
                 ],
             ),
         ]
@@ -184,16 +180,34 @@ mod tests {
         assert_eq!(ids, vec!["general", "advanced"]);
     }
 
-    /// 每个页签都必须有分组标题，否则又退回「一长条平铺」，白拆两个页签。
+    /// 两组字段都按类别分段：通用是「接收 / 设备」，高级是「网络」。
     #[test]
     fn every_tab_has_groups() {
-        for s in Transfer.sections() {
-            let n = s
+        let s = Transfer.sections();
+        let count = |i: usize| {
+            s[i]
                 .fields
                 .iter()
                 .filter(|f| matches!(f.kind, FieldKind::Group { .. }))
-                .count();
-            assert!(n >= 2, "页签 {} 只有 {n} 个分组标题", s.id);
+                .count()
+        };
+        assert_eq!(count(0), 2);
+        assert_eq!(count(1), 1);
+    }
+
+    /// 设备身份三项（类型 / 型号 / 保留时长）归入「设备」分组。
+    #[test]
+    fn device_fields_are_in_general_device_group() {
+        let s = Transfer.sections();
+        let keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
+        for k in [
+            "transfer_device_type",
+            "transfer_device_model",
+            "transfer_peer_timeout_secs",
+        ] {
+            assert!(keys.contains(&k), "设备分组缺 {k}");
         }
+        let general: Vec<&str> = s[1].fields.iter().map(|f| f.key).collect();
+        assert!(!general.contains(&"transfer_device_type"));
     }
 }

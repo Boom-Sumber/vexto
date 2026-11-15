@@ -42,6 +42,7 @@ const Theme = (() => {
     } else {
       document.body.style.removeProperty("--theme");
     }
+    document.dispatchEvent(new CustomEvent("vexto:theme", { detail: { theme: resolved } }));
   }
 
   /** system 模式下监听系统深浅切换；其它模式不挂监听器（随窗口销毁释放）。 */
@@ -66,6 +67,9 @@ const Theme = (() => {
     ).matches
       ? "light"
       : "dark";
+    document.dispatchEvent(
+      new CustomEvent("vexto:theme", { detail: { theme: document.body.dataset.theme } }),
+    );
   }
 
   /** 页面 init：从后端读一次外观配置并应用。 */
@@ -114,5 +118,26 @@ const Theme = (() => {
     return document.body.style.getPropertyValue("--theme").trim() || "";
   }
 
-  return { apply, applyValues };
+  /** 当前实际显示的主题（system 已解析成 light / dark）。 */
+  function resolved() {
+    return document.body.dataset.theme === "light" ? "light" : "dark";
+  }
+
+  /** 标题栏的明暗切换：立即应用，并写回配置（成功与否都不阻塞视觉切换）。 */
+  async function toggle() {
+    const next = resolved() === "light" ? "dark" : "light";
+    lastMode = next;
+    applyValues(next, currentAccent());
+    try {
+      await window.__TAURI__.core.invoke("save_tool_config", {
+        toolId: "general",
+        values: { appearance_theme: next },
+      });
+    } catch {
+      // 配置写失败时界面已经切了，用户下次改设置会再落盘；不在这里弹错。
+    }
+    return next;
+  }
+
+  return { apply, applyValues, toggle, resolved };
 })();

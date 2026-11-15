@@ -1,27 +1,54 @@
-//! 条件调试日志：只有 `LIGHTBOX_DEBUG=1|true` 时才写盘。
-//! 默认关闭，避免用户不开调试也产生磁盘写入（ADR-012）。
+//! 条件日志：由设置页的「日志启用」与「日志记录等级」控制（ADR-053）。
+//! `LIGHTBOX_DEBUG=1|true` 仍可强制打开，便于开发时不受配置影响。
 //!
+//! 等级：TRACE < DEBUG < INFO < WARN < ERROR。低于配置等级的消息直接丢弃。
 //! 轮转（S2 新增）：文件超过 2 MB 就只保留最后 512 KB。常驻程序一开调试可能
 //! 跑好几天，不轮转迟早把用户的盘写满，而且日志太大也没法用记事本打开。
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 /// 超过这个大小就轮转
 const MAX_LOG_BYTES: u64 = 2 * 1024 * 1024;
 /// 轮转后保留的尾部大小
 const KEEP_TAIL_BYTES: usize = 512 * 1024;
 
-static ENABLED: OnceLock<bool> = OnceLock::new();
+const TRACE: u8 = 0;
+const DEBUG: u8 = 1;
+const INFO: u8 = 2;
+const WARN: u8 = 3;
+const ERROR: u8 = 4;
+
+static ENABLED: AtomicBool = AtomicBool::new(false);
+static LEVEL: AtomicU8 = AtomicU8::new(INFO);
+
+fn rank(level: &str) -> u8 {
+    match level.trim().to_ascii_lowercase().as_str() {
+        "trace" => TRACE,
+        "debug" => DEBUG,
+        "warn" | "warning" => WARN,
+        "error" => ERROR,
+        _ => INFO,
+    }
+}
+
+/// 启动时与保存设置后调用。`env LIGHTBOX_DEBUG` 只额外打开开关，不改等级。
+pub fn configure(enabled: bool, level: &str) {
+    ENABLED.store(enabled || env_debug(), Ordering::Relaxed);
+    LEVEL.store(rank(level), Ordering::Relaxed);
+}
+
+fn env_debug() -> bool {
+    matches!(std::env::var("LIGHTBOX_DEBUG").as_deref(), Ok("1") | Ok("true"))
+}
 
 pub fn is_enabled() -> bool {
-    *ENABLED.get_or_init(|| {
-        matches!(
-            std::env::var("LIGHTBOX_DEBUG").as_deref(),
-            Ok("1") | Ok("true")
-        )
-    })
+    ENABLED.load(Ordering::Relaxed) || env_debug()
+}
+
+fn should_write(level: u8) -> bool {
+    is_enabled() && level >= LEVEL.load(Ordering::Relaxed)
 }
 
 /// `%APPDATA%\vexto\debug.log`（ADR-038）。与配置文件同目录，迁移只带配置，
@@ -69,7 +96,30 @@ fn rotate_if_needed(p: &std::path::Path) {
 }
 
 pub fn dlog(msg: &str) {
-    if !is_enabled() {
+    write_at(INFO, msg);
+}
+
+/// 预留：需要区分更细的诊断时在调用点改用 debug / trace。
+#[allow(dead_code)]
+pub fn debug(msg: &str) {
+    write_at(DEBUG, msg);
+}
+
+#[allow(dead_code)]
+pub fn trace(msg: &str) {
+    write_at(TRACE, msg);
+}
+
+pub fn warn(msg: &str) {
+    write_at(WARN, msg);
+}
+
+pub fn error(msg: &str) {
+    write_at(ERROR, msg);
+}
+
+fn write_at(level: u8, msg: &str) {
+    if !should_write(level) {
         return;
     }
     let p = log_path();
@@ -81,16 +131,34 @@ pub fn dlog(msg: &str) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
+    let tag = match level {
+        TRACE => "TRACE",
+        DEBUG => "DEBUG",
+        WARN => "WARN",
+        ERROR => "ERROR",
+        _ => "INFO",
+    };
     // 写失败只能吞掉：日志写不进去不该让功能挂掉，而这个错误也没人可展示
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
-        let _ = writeln!(f, "[{ts}] {msg}");
+        let _ = writeln!(f, "[{ts}] [{tag}] {msg}");
         let _ = f.flush();
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{rotate_if_needed, KEEP_TAIL_BYTES, MAX_LOG_BYTES};
+    use super::{rank, rotate_if_needed, KEEP_TAIL_BYTES, MAX_LOG_BYTES};
+
+    /// 等级排序必须与设置页下拉一致；未知值按 INFO。
+    #[test]
+    fn level_rank_is_ordered() {
+        assert!(rank("trace") < rank("debug"));
+        assert!(rank("debug") < rank("info"));
+        assert!(rank("info") < rank("warn"));
+        assert!(rank("warn") < rank("error"));
+        assert_eq!(rank("INFO"), rank("info"));
+        assert_eq!(rank("乱填"), rank("info"));
+    }
 
     fn tmpfile(name: &str) -> std::path::PathBuf {
         let mut p = std::env::temp_dir();

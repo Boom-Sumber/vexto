@@ -1,9 +1,9 @@
 // 图标库：所有自绘图标只在这里定义，页面用 Icons.svg(name, size) 取用。
 //
 // 约定（见 docs/13-UI-DESIGN-SYSTEM.md §13.5）：
-// - 统一 24×24 viewBox、stroke 1.6、round caps/joins；
+// - 统一 24×24 viewBox、stroke 1.8、round caps/joins（与截图工具条一致）；
 // - 颜色一律 currentColor，跟着父元素文字色走；
-// - 尺寸只用 14 / 16 / 20 三档（标题栏 14，正文 16，强调 20）；
+// - 尺寸只用 14 / 16 / 20 三档（标题栏 14，正文 16，侧栏 / 强调 20）；
 // - 不写 fill，需要填充的单独标注。
 
 window.Icons = (function () {
@@ -28,7 +28,9 @@ window.Icons = (function () {
     external:
       '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/>' +
       '<path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
-    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/>',
+    info:
+      '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/>' +
+      '<path d="M12 7.6h.01" stroke-width="2.2"/>',
     // 行内「更多」菜单入口。按 §13.5 不许用 ⋯ 字符
     more:
       '<circle cx="6" cy="12" r="1.4"/>' +
@@ -39,22 +41,34 @@ window.Icons = (function () {
       '<path d="M9.5 9a2.5 2.5 0 1 1 3.7 2.2c-.8.4-1.2 1-1.2 1.8v.5"/>' +
       '<path d="M12 17h.01"/>',
     alert: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+    // 齿轮：外圈 + 8 齿（参考用户给的设计稿重新绘制，见 ADR-054）
     gear:
-      '<circle cx="12" cy="12" r="3"/>' +
-      '<path d="M12 3v2M12 19v2M3 12h2M19 12h2' +
-      'M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>',
+      '<path d="M10.72 2.89 L13.28 2.89 L13.25 5.72 L17.54 4.65 L19.35 6.46 ' +
+      'L17.32 8.44 L21.11 10.72 L21.11 13.28 L18.28 13.25 L19.35 17.54 ' +
+      'L17.54 19.35 L15.56 17.32 L13.28 21.11 L10.72 21.11 L10.75 18.28 ' +
+      'L6.46 19.35 L4.65 17.54 L6.68 15.56 L2.89 13.28 L2.89 10.72 ' +
+      'L5.72 10.75 L4.65 6.46 L6.46 4.65 L8.44 6.68 Z"/>' +
+      '<circle cx="12" cy="12" r="3.2"/>',
+    // 明暗主题切换
+    sun:
+      '<circle cx="12" cy="12" r="4"/>' +
+      '<path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2' +
+      'M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"/>',
+    moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
 
     // 文件 / 下载
     folder:
       '<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2h7A1.5 1.5 0 0 1 19 9.5v7' +
       'A1.5 1.5 0 0 1 17.5 18h-13A1.5 1.5 0 0 1 3 16.5z"/>',
     clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
-    download: '<path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/>',
+    download:
+      '<path d="M12 3.5v10.5"/><path d="M7.2 9.4 12 14.2l4.8-4.8"/>' +
+      '<path d="M4 17.5v2.5h16v-2.5"/>',
     // 发送方向（与 download 镜像）；用在传输进度行的方向标识上
-    upload: '<path d="M12 20V9"/><path d="M7 13l5-5 5 5"/><path d="M5 4h14"/>',
+    upload: '<path d="M12 20.5V10"/><path d="M7.2 14.6 12 9.8l4.8 4.8"/><path d="M4 4h16"/>',
     transfer:
-      '<path d="M7 4v13"/><path d="M4 14l3 3 3-3"/>' +
-      '<path d="M17 20V7"/><path d="M14 10l3-3 3 3"/>',
+      '<path d="M7 4.5v13"/><path d="M3.8 14.2 7 17.4l3.2-3.2"/>' +
+      '<path d="M17 19.5v-13"/><path d="M13.8 9.8 17 6.6l3.2 3.2"/>',
     file:
       '<path d="M6 3h7l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>' +
       '<path d="M13 3v5h5"/>',
@@ -83,10 +97,8 @@ window.Icons = (function () {
       '<rect x="12.8" y="5" width="3.2" height="14" rx="1"/>',
     play: '<path d="M8 5l11 7-11 7z"/>',
 
-    // 翻译弹窗
-    pin:
-      '<path d="M9.5 3.5h5l-.8 5.2 2.8 2.8H7.5l2.8-2.8z"/>' +
-      '<path d="M12 11.5V20"/>',
+    // 翻译弹窗：与截图工具条的钉住图标一致
+    pin: '<path d="M12 17v5"/><path d="M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6z"/>',
     copy:
       '<rect x="9" y="9" width="11" height="11" rx="2"/>' +
       '<path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
@@ -124,8 +136,9 @@ window.Icons = (function () {
       '<path d="M12 8v4l2.5 2.5"/>',
     // 截图：相机轮廓 + 镜头
     camera:
-      '<path d="M4 8h3l1.5-2h7L17 8h3v10H4z"/>' +
-      '<circle cx="12" cy="13" r="3"/>',
+      '<path d="M3.5 8.5a2 2 0 0 1 2-2h2l1.5-2h6l1.5 2h2a2 2 0 0 1 2 2v8' +
+      'a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>' +
+      '<circle cx="12" cy="12.5" r="3.2"/>',
     // 截图反馈 / 预览：眼睛
     preview:
       '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/>' +
@@ -167,7 +180,7 @@ window.Icons = (function () {
     const s = size || 16;
     return (
       `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" ` +
-      `stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ` +
+      `stroke="currentColor" stroke-width="1.8" stroke-linecap="round" ` +
       `stroke-linejoin="round" aria-hidden="true" class="ico-svg">${body}</svg>`
     );
   }

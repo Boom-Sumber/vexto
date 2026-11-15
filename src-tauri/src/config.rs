@@ -242,6 +242,12 @@ pub struct Config {
     /// 翻译缓存开关。默认开——同一段文字反复划是最高频场景，省一次就是省一次配额
     #[serde(default = "d_true")]
     pub cache_enabled: bool,
+    /// 日志总开关。默认关：常驻程序不该在用户没要求时写盘。
+    #[serde(default)]
+    pub log_enabled: bool,
+    /// 日志等级：`trace` / `debug` / `info` / `warn` / `error`。默认 `info`。
+    #[serde(default = "d_log_level")]
+    pub log_level: String,
 
     // ---- 路径 ----
     #[serde(default)]
@@ -320,9 +326,11 @@ pub struct Config {
     /// 拆成两个是为了对齐参考界面（「下载开始时 / 下载完成时」两个勾选）。
     #[serde(default = "d_true")]
     pub notify_on_done: bool,
-    /// 自定义 DNS 服务器，逗号分隔，落成 aria2 的 `--dns-server`。
+    /// 自定义 DNS 服务器，逗号分隔，落成 aria2 的 `dns-server=`。
     ///
-    /// **这不是 DoH**：aria2 只支持明文 DNS，要做 DoH 得自建 DNS 代理（见 ADR-024）。
+    /// 随包的 aria2 1.37 没有 DoH 选项（`-h#all` 只有 `--async-dns` /
+    /// `--async-dns-server=IP`），所以设置页按「系统默认 / 阿里 / 腾讯 / 360」
+    /// 给明文 DNS 选项，不假装支持 DoH。
     #[serde(default)]
     pub dns_servers: String,
     /// 是否校验 HTTPS 证书（aria2 `--check-certificate`）。默认开。
@@ -501,7 +509,7 @@ fn d_transfer_device_model() -> String {
     "Windows".to_string()
 }
 fn d_transfer_peer_timeout() -> u64 {
-    90
+    600
 }
 /// aria2 自己的默认值就是 5，跟它保持一致，别给用户一个"升级后突然变快"的惊喜。
 fn d_max_concurrent() -> u32 {
@@ -544,6 +552,9 @@ fn d_version() -> u32 {
 }
 fn d_appearance_theme() -> String {
     "dark".to_string()
+}
+fn d_log_level() -> String {
+    "info".to_string()
 }
 
 impl Default for Config {
@@ -593,6 +604,8 @@ impl Default for Config {
             popup_timeout_ms: d_popup_timeout(),
             auto_copy: false,
             cache_enabled: true,
+            log_enabled: false,
+            log_level: d_log_level(),
             download_dir: String::new(),
             receive_dir: String::new(),
             device_alias: String::new(),
@@ -1110,6 +1123,9 @@ mod tests {
         assert!(!c.screenshot_include_cursor);
         assert_eq!(c.ocr_engine, "paddle");
         assert!(c.pinscreen_single_window);
+        assert!(!c.log_enabled);
+        assert_eq!(c.log_level, "info");
+        assert_eq!(c.transfer_peer_timeout_secs, 600);
         assert!(c.enable_translate);
         assert!(!c.enable_download);
         assert!(c.cache_enabled);

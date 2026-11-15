@@ -45,10 +45,13 @@ impl Tool for About {
             "关于",
             vec![
                 Field::note("Vexto · 一个常驻托盘的轻量工具箱"),
-                Field::note("翻译 · 截图 OCR · 下载 · 局域网互传"),
-                Field::note("Rust + Tauri 2，纯静态前端，MIT 许可"),
-                Field::note("划词翻译参考 Pot（GPL-3.0），本项目未拷贝其源码。"),
-                Field::button("open_config_dir", "打开配置目录"),
+                Field::note("划词翻译 · 截图 · 下载 · 局域网互传"),
+                Field::note("本程序以 GNU GPL-3.0 协议开源。"),
+                Field::note(
+                    "本项目在功能与设计上借鉴了 Pot、ShareX、Rayburst、LocalSend 等开源项目，\
+                     未拷贝其源代码；相关版权与商标归各自作者所有。",
+                ),
+                Field::note("本程序按「现状」提供，不对使用后果作任何担保。"),
             ],
         )]
     }

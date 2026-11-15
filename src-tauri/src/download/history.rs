@@ -111,7 +111,7 @@ fn store(entries: Vec<HistoryEntry>) {
         let p = path();
         let tmp = p.with_extension("json.tmp");
         if std::fs::write(&tmp, text).is_err() || std::fs::rename(&tmp, &p).is_err() {
-            crate::dlog::dlog("history: 写盘失败");
+            crate::dlog::warn("history: 写盘失败");
         }
     }
 }

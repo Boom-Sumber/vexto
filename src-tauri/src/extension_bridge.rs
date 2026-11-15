@@ -156,7 +156,7 @@ fn serve(app: AppHandle, generation: u64, port: u16, secret: String) {
                 std::thread::sleep(Duration::from_millis(120));
             }
             Err(e) => {
-                crate::dlog::dlog(&format!("bridge: accept 失败：{e}"));
+                crate::dlog::error(&format!("bridge: accept 失败：{e}"));
                 std::thread::sleep(Duration::from_millis(300));
             }
         }

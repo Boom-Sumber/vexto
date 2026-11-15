@@ -93,6 +93,13 @@ pub enum FieldKind {
     Dir,
     /// 按钮（点了发命令，不是存值字段）
     Button,
+    /// 一排按钮，水平靠右排列。每项是 `(命令名, 显示文字)`。
+    ///
+    /// 设置页里「打开配置文件 / 打开配置目录」「重启服务 / 打开目录」这类
+    /// 成对动作要并排，单个 `Button` 只能一行一个。
+    ButtonRow {
+        actions: &'static [(&'static str, &'static str)],
+    },
     /// 纯说明文字，没有值。文案在 `text` 里
     Note {
         text: &'static str,
@@ -143,6 +150,9 @@ pub struct Field {
     /// 外观类字段所见即所得，不该再弹保存/放弃）。数据驱动，前端不认 key 名。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub auto_apply: bool,
+    /// true = 控件列加宽（长路径 / UA / 白名单这类需要看清全文的字段）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wide: bool,
 }
 
 impl Field {
@@ -154,6 +164,7 @@ impl Field {
             show_if: None,
             help: None,
             auto_apply: false,
+            wide: false,
         }
     }
 
@@ -166,6 +177,12 @@ impl Field {
     /// 改完立即保存生效（外观类字段）。设置页对带此标记的字段不走 pending。
     pub fn auto_apply(mut self) -> Self {
         self.auto_apply = true;
+        self
+    }
+
+    /// 控件列加宽（长路径 / UA / 白名单）。
+    pub fn wide(mut self) -> Self {
+        self.wide = true;
         self
     }
 
@@ -269,6 +286,12 @@ impl Field {
 
     pub fn button(key: &'static str, label: &'static str) -> Self {
         Self::new(key, label, FieldKind::Button)
+    }
+
+    /// 一排并排按钮。`key` 取第一项的命令名，便于 DOM 定位；本身不存值。
+    pub fn buttons(actions: &'static [(&'static str, &'static str)]) -> Self {
+        let key = actions.first().map(|(k, _)| *k).unwrap_or("button_row");
+        Self::new(key, "", FieldKind::ButtonRow { actions })
     }
 
     /// 纯说明文字。没有 key（用文案本身当 DOM id），文案放在 `kind.text` 里。
@@ -407,6 +430,7 @@ mod tests {
             (Field::hotkey("f", "F"), "hotkey"),
             (Field::dir("g", "G"), "dir"),
             (Field::button("h", "H"), "button"),
+            (Field::buttons(&[("a", "A")]), "button_row"),
             (Field::note("说明"), "note"),
             (Field::group("分组"), "group"),
             (Field::list("i", "I", vec![]), "list"),
@@ -433,6 +457,28 @@ mod tests {
         .unwrap();
         assert_eq!(v["presets"][0][0], "Chrome");
         assert_eq!(v["presets"][0][1], "Mozilla/5.0");
+    }
+
+    /// 并排按钮把「命令名 + 显示文字」原样交给前端，前端不认识具体业务。
+    #[test]
+    fn button_row_serializes_actions() {
+        let v: Value = serde_json::to_value(Field::buttons(&[
+            ("open_config_file", "打开配置文件"),
+            ("open_config_dir", "打开配置目录"),
+        ]))
+        .unwrap();
+        assert_eq!(v["type"], "button_row");
+        assert_eq!(v["actions"][0][0], "open_config_file");
+        assert_eq!(v["actions"][1][1], "打开配置目录");
+    }
+
+    /// `wide` 只在显式标记时出现，普通字段不带这个键。
+    #[test]
+    fn wide_is_omitted_when_false() {
+        let v: Value = serde_json::to_value(Field::text_hint("a", "A", "提示")).unwrap();
+        assert!(v.get("wide").is_none(), "不该出现 wide：{v}");
+        let v: Value = serde_json::to_value(Field::text_hint("b", "B", "提示").wide()).unwrap();
+        assert_eq!(v["wide"], true);
     }
 
     /// 分组标题没有任何值，前端只读 `title`。

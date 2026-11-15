@@ -1,4 +1,4 @@
-//! 翻译工具：一个工具、三个标签页。
+//! 翻译工具：一个工具、两个标签页（配置 / 服务管理）。
 //!
 //! 为什么是三个标签而不是三个左侧项：引擎配置是**划词与截图共用**的。如果拆成
 //! 「划词翻译」「截图翻译」两个左侧项，引擎配置无处可放——要么两边各渲染一遍
@@ -122,61 +122,38 @@ impl Tool for Translate {
     fn sections(&self) -> Vec<Section> {
         vec![
             Section::new(
-                "engine",
-                "引擎",
+                "config",
+                "配置",
                 vec![
-                    // ── 翻译：选一个已配置的实例 ──
-                    Field::group("翻译"),
-                    Field::select_dynamic("active_engine", "翻译模式", "engines")
-                        .help("从下面两个列表里选一个已配置的实例。"),
-                    // ── 厂商：卡片列表 + 弹窗新建 ──
-                    Field::group("厂商管理"),
-                    Field::list("vendor_profiles", "已配置的厂商", vendor_item_fields())
-                        .summary(&["name", "vendor", "use_llm"])
-                        .add_dialog()
-                        .test_action("test_engine_profile"),
-                    // ── 大模型（OpenAI 兼容）──
-                    Field::group("大模型管理"),
-                    Field::list("openai_profiles", "已配置的模型", openai_item_fields())
-                        .summary(&["name", "model"])
-                        .add_dialog()
-                        .test_action("test_engine_profile"),
-                ],
-            ),
-            Section::new(
-                "selection",
-                "翻译配置",
-                vec![
+                    Field::group("翻译引擎"),
+                    Field::select_dynamic("active_engine", "翻译引擎", "engines")
+                        .help("从「服务管理」里选一个已配置的实例。"),
                     Field::group("翻译方向"),
                     Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS),
                     Field::select("from", "源语言", FROM_STATIC),
                     Field::select("to", "目标语言", TO_STATIC),
                     Field::select("to2", "第二目标语言", TO_STATIC)
-                        .help("检测出的语言等于「目标语言」时译到「第二目标语言」，否则译到「目标语言」。常用：目标=中文、第二目标=英语，中英双向免切。"),
+                        .help("检测出的语言等于「目标语言」时译到「第二目标语言」"),
                     Field::group("交互"),
-                    Field::hotkey("hotkey", "划词热键"),
-                    Field::hotkey("hotkey_input", "输入翻译热键")
-                        .help("按这个组合键唤出输入翻译框，打完字回车即翻译；和划词共用弹窗，只是不会自动取词。"),
+                    Field::hotkey("hotkey", "划词翻译"),
+                    Field::hotkey("hotkey_input", "输入翻译"),
                     Field::switch("auto_copy", "译完自动复制译文"),
                 ],
             ),
             Section::new(
-                "ocr",
-                "截图翻译",
+                "services",
+                "服务管理",
                 vec![
-                    Field::group("截图翻译"),
-                    Field::switch("enable_ocr", "启用截图翻译")
-                        .help("按热键框选屏幕区域 → OCR 识别文字 → 走当前翻译引擎出译文。默认 PaddleOCR 模型随包，不需要系统语言包。"),
-                    Field::hotkey("hotkey_ocr", "截图热键"),
-                    Field::select(
-                        "ocr_engine",
-                        "识别引擎",
-                        &[
-                            ("paddle", "PaddleOCR（默认，中文更准）"),
-                            ("windows", "Windows 自带（零体积）"),
-                        ],
-                    )
-                    .help("PaddleOCR 模型随包（约 15.6 MB），单次识别约 0.5 秒；Windows 自带更快但小字号中文容易错。"),
+                    Field::group("厂商管理"),
+                    Field::list("vendor_profiles", "已配置的厂商", vendor_item_fields())
+                        .summary(&["name", "vendor", "use_llm"])
+                        .add_dialog()
+                        .test_action("test_engine_profile"),
+                    Field::group("大模型管理"),
+                    Field::list("openai_profiles", "已配置的模型", openai_item_fields())
+                        .summary(&["name", "model"])
+                        .add_dialog()
+                        .test_action("test_engine_profile"),
                 ],
             ),
         ]
@@ -262,30 +239,38 @@ mod tests {
     fn sections_are_named_for_the_ui() {
         let t = Translate;
         let s = t.sections();
-        assert_eq!(s.len(), 3);
-        assert_eq!(s[0].id, "engine");
-        assert_eq!(s[1].id, "selection");
-        assert_eq!(s[1].name, "翻译配置", "S2.5 改名，不再叫「划词翻译」");
-        assert_eq!(s[2].id, "ocr");
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].id, "config");
+        assert_eq!(s[0].name, "配置");
+        assert_eq!(s[1].id, "services");
+        assert_eq!(s[1].name, "服务管理");
     }
 
-    /// 新加的三个字段必须在「翻译配置」标签页里，否则用户在界面上找不到。
+    /// 翻译方向与交互字段在「配置」标签页里，否则用户在界面上找不到。
     #[test]
     fn translation_config_exposes_direction_fields() {
         let t = Translate;
         let s = t.sections();
-        let keys: Vec<&str> = s[1].fields.iter().map(|f| f.key).collect();
-        for k in ["to", "to2", "lang_detect", "from", "hotkey", "auto_copy"] {
-            assert!(keys.contains(&k), "「翻译配置」里缺字段 {k}，实际：{keys:?}");
+        let keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
+        for k in [
+            "active_engine",
+            "to",
+            "to2",
+            "lang_detect",
+            "from",
+            "hotkey",
+            "hotkey_input",
+            "auto_copy",
+        ] {
+            assert!(keys.contains(&k), "「配置」里缺字段 {k}，实际：{keys:?}");
         }
     }
 
-    // ── 会话 31：引擎页签按类别重组 ────────────────────────
+    // ── 会话 31：引擎页签按类别重组（本次拆成 配置 / 服务管理）────
 
-    /// 引擎页签的顺序：翻译（选实例）→ 厂商管理 → 大模型管理。
-    /// 三段的 `group` 标题必须按这个顺序出现，否则用户得自己在页面上找。
+    /// 配置页顺序：翻译引擎 → 翻译方向 → 交互。
     #[test]
-    fn engine_section_orders_groups() {
+    fn config_section_orders_groups() {
         let s = Translate.sections();
         let groups: Vec<&str> = s[0]
             .fields
@@ -295,23 +280,50 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(groups, vec!["翻译", "厂商管理", "大模型管理"]);
+        assert_eq!(groups, vec!["翻译引擎", "翻译方向", "交互"]);
+    }
+
+    /// 服务管理页顺序：厂商管理 → 大模型管理。
+    #[test]
+    fn services_section_orders_groups() {
+        let s = Translate.sections();
+        let groups: Vec<&str> = s[1]
+            .fields
+            .iter()
+            .filter_map(|f| match &f.kind {
+                crate::tools::FieldKind::Group { title } => Some(*title),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(groups, vec!["厂商管理", "大模型管理"]);
     }
 
     #[test]
-    fn engine_section_exposes_engine_select_and_both_lists() {
+    fn engine_select_lives_in_config_and_lists_in_services() {
         let s = Translate.sections();
-        let keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
-        for k in ["active_engine", "vendor_profiles", "openai_profiles"] {
-            assert!(keys.contains(&k), "引擎页缺字段 {k}，实际：{keys:?}");
+        let config_keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
+        assert!(config_keys.contains(&"active_engine"));
+        for old in ["vendor_profiles", "openai_profiles"] {
+            assert!(!config_keys.contains(&old), "{old} 应移到服务管理");
+        }
+        let service_keys: Vec<&str> = s[1].fields.iter().map(|f| f.key).collect();
+        for k in ["vendor_profiles", "openai_profiles"] {
+            assert!(service_keys.contains(&k), "服务管理缺字段 {k}");
         }
         // 老的两代字段都不该再出现在界面上
         for old in ["engine", "engine_mode", "vendor", "appid", "openai_key"] {
-            assert!(!keys.contains(&old), "老字段 {old} 不该还在引擎页");
+            assert!(!config_keys.contains(&old), "老字段 {old} 不该还在翻译页");
+        }
+        // 截图翻译标签页已移除，识别引擎改到截图工具
+        for gone in ["ocr_engine", "hotkey_ocr", "enable_ocr"] {
+            assert!(
+                !s.iter().any(|sec| sec.fields.iter().any(|f| f.key == gone)),
+                "截图翻译字段 {gone} 不该再出现在翻译工具里"
+            );
         }
     }
 
-    /// 「翻译模式」是动态下拉：选项来自配置，不是静态表。
+    /// 「翻译引擎」是动态下拉：选项来自配置，不是静态表。
     #[test]
     fn engine_select_is_dynamic() {
         let s = Translate.sections();
@@ -319,13 +331,13 @@ mod tests {
             .fields
             .iter()
             .find(|f| f.key == "active_engine")
-            .expect("找不到翻译模式字段");
+            .expect("找不到翻译引擎字段");
         match &f.kind {
             crate::tools::FieldKind::Select { dynamic, options } => {
                 assert_eq!(*dynamic, Some("engines"));
                 assert!(options.is_empty(), "动态下拉不该带静态选项");
             }
-            other => panic!("翻译模式应该是 select，实际：{other:?}"),
+            other => panic!("翻译引擎应该是 select，实际：{other:?}"),
         }
     }
 
@@ -333,7 +345,7 @@ mod tests {
     /// 测试改挂到每张卡片 / 新建弹窗上。
     /// 会话 42：说明不再单独占一行，改挂到字段的 help 上。
     #[test]
-    fn engine_section_has_no_standalone_test_or_long_notes() {
+    fn config_section_has_no_standalone_test_or_long_notes() {
         let s = Translate.sections();
         let keys: Vec<&str> = s[0].fields.iter().map(|f| f.key).collect();
         assert!(!keys.contains(&"test_translate"), "不该再有独立的测试按钮");
@@ -347,15 +359,15 @@ mod tests {
             .fields
             .iter()
             .find(|f| f.key == "active_engine")
-            .expect("找不到翻译模式字段");
-        assert!(f.help.is_some(), "翻译模式应该有 ? 说明");
+            .expect("找不到翻译引擎字段");
+        assert!(f.help.is_some(), "翻译引擎应该有 ? 说明");
     }
 
     /// 厂商卡片：折叠摘要取「名称 · 厂商 · 机翻/大模型」，新建走弹窗。
     #[test]
     fn vendor_list_is_collapsed_with_dialog() {
         let s = Translate.sections();
-        let f = s[0]
+        let f = s[1]
             .fields
             .iter()
             .find(|f| f.key == "vendor_profiles")
@@ -392,7 +404,7 @@ mod tests {
     #[test]
     fn vendor_credentials_follow_vendor_field() {
         let s = Translate.sections();
-        let f = s[0]
+        let f = s[1]
             .fields
             .iter()
             .find(|f| f.key == "vendor_profiles")
@@ -420,7 +432,7 @@ mod tests {
     #[test]
     fn openai_list_is_collapsed_with_dialog() {
         let s = Translate.sections();
-        let f = s[0]
+        let f = s[1]
             .fields
             .iter()
             .find(|f| f.key == "openai_profiles")
@@ -444,7 +456,7 @@ mod tests {
         }
     }
 
-    /// 另外两个页签也要按类别分段（用户要求「统一成按类别分类」）。
+    /// 两个页签都要按类别分段（用户要求「统一成按类别分类」）。
     #[test]
     fn other_sections_are_grouped_too() {
         let s = Translate.sections();
@@ -458,7 +470,7 @@ mod tests {
                 })
                 .collect()
         };
-        assert_eq!(groups_of(1), vec!["翻译方向", "交互"]);
-        assert_eq!(groups_of(2), vec!["截图翻译"]);
+        assert_eq!(groups_of(0), vec!["翻译引擎", "翻译方向", "交互"]);
+        assert_eq!(groups_of(1), vec!["厂商管理", "大模型管理"]);
     }
 }

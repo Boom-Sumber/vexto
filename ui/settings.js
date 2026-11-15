@@ -49,6 +49,37 @@ function setStatus(msg, kind) {
   const s = el("status");
   s.textContent = msg || "";
   s.className = kind === true ? "bad" : (typeof kind === "string" ? kind : "");
+  clearTimeout(statusTimer);
+  // 页脚状态自动消失；「有 N 项未保存」是常驻状态，交给 renderDirty 管。
+  if (msg && kind !== "dirty") {
+    statusTimer = setTimeout(() => {
+      if (pendingCount() > 0) return;
+      s.textContent = "";
+      s.className = "";
+    }, 4000);
+  }
+}
+let statusTimer = null;
+
+/// 右下角轻提示：操作类反馈统一走这里，3 秒消失（错误 6 秒）。
+let toastTimer = null;
+function showToast(msg, kind) {
+  if (!msg) return;
+  let box = el("toast");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "toast";
+    box.setAttribute("role", "status");
+    box.setAttribute("aria-live", "polite");
+    document.body.append(box);
+  }
+  const bad = kind === "bad";
+  box.className = "toast on" + (bad ? " bad" : "");
+  box.innerHTML =
+    Icons.svg(bad ? "alert" : "info", 16) + "<span></span>";
+  box.querySelector("span").textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => box.classList.remove("on"), bad ? 6000 : 3000);
 }
 
 // 顶部横幅：热键被占用、保存警告都走这里，不弹窗也不写控制台（用户看不见）
@@ -88,7 +119,7 @@ function renderSidebar() {
     if (t.icon && Icons.has(t.icon)) {
       lead = document.createElement("span");
       lead.className = "t-ico";
-      lead.innerHTML = Icons.svg(t.icon, 17);
+      lead.innerHTML = Icons.svg(t.icon, 20);
     } else {
       lead = document.createElement("span");
       lead.className = "dot";
@@ -302,6 +333,8 @@ function renderField(f) {
       return fieldHotkey(f);
     case "button":
       return fieldButton(f);
+    case "button_row":
+      return fieldButtonRow(f);
     case "note":
       return fieldNote(f);
     case "group":
@@ -316,7 +349,7 @@ function renderField(f) {
 
 function wrapField(f, extraClass) {
   const w = document.createElement("div");
-  w.className = "field" + (extraClass ? " " + extraClass : "");
+  w.className = "field" + (extraClass ? " " + extraClass : "") + (f.wide ? " wide" : "");
   w.dataset.key = f.key;
   if (f.show_if) w.dataset.showIf = JSON.stringify(f.show_if);
   return w;
@@ -1265,7 +1298,7 @@ function fieldButton(f) {
   b.type = "button";
   b.className = "btn";
   b.textContent = f.label || f.key;
-  b.addEventListener("click", () => runAction(f, b, w));
+  b.addEventListener("click", () => runAction(f.key, b));
   const row = document.createElement("div");
   row.className = "btn-row";
   row.append(b);
@@ -1274,38 +1307,39 @@ function fieldButton(f) {
   return w;
 }
 
-// 动作型字段：key 就是后端的命令名，前端不认识具体业务
-async function runAction(f, btn, wrapEl) {
+/// 一排并排按钮（打开配置 / 重启服务这类成对动作），靠右排列。
+function fieldButtonRow(f) {
+  const w = wrapField(f, "action");
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  for (const [key, label] of f.actions || []) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn";
+    b.textContent = label;
+    b.addEventListener("click", () => runAction(key, b));
+    row.append(b);
+  }
+  w.append(row);
+  return w;
+}
+
+// 动作型字段：key 就是后端的命令名，前端不认识具体业务。
+// 反馈统一走右下角 toast（自动消失），不在表单里堆常驻结果框。
+async function runAction(key, btn) {
   btn.disabled = true;
-  const old = wrapEl.querySelector(".result");
-  if (old) old.remove();
   try {
-    const res = await invoke(f.key);
+    const res = await invoke(key);
     showBanner("");
-    renderResult(wrapEl, res);
+    const bad = res && res.ok === false;
+    showToast((res && res.message) || (bad ? "操作失败" : "完成"), bad ? "bad" : "");
     // 动作可能改了引擎状态（「重启下载引擎」就会），状态行必须跟着刷新，
     // 否则用户看到「aria2c 未启动」还以为按钮没生效。
     await refreshAfterSave();
   } catch (e) {
-    showBanner(errText(e));
+    showToast(errText(e), "bad");
   } finally {
     btn.disabled = false;
-  }
-}
-
-// 后端的动作命令返回 {ok, message, ...}，统一渲染成结果框
-function renderResult(wrapEl, res) {
-  const box = document.createElement("div");
-  const ok = !res || res.ok !== false;
-  box.className = "result " + (ok ? "ok" : "bad");
-  let text = (res && res.message) || (ok ? "完成" : "失败");
-  if (res && res.ok && typeof res.ms === "number") {
-    text += "\n语向：" + (res.from || "?") + " → " + (res.to || "?") + "，耗时 " + res.ms + " ms";
-  }
-  box.textContent = text;
-  wrapEl.append(box);
-  if (res && Array.isArray(res.warnings) && res.warnings.length) {
-    showBanner(res.warnings.join("\n"));
   }
 }
 
@@ -1567,6 +1601,8 @@ async function boot() {
     const intent = dirtyIntent;
     hideDirtyModal();
     state.pending = {};
+    renderDirty();
+    setStatus("已放弃修改");
     if (intent) runIntent(intent);
     else await discardAll();
   });

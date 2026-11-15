@@ -8,12 +8,10 @@
 
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::System::Threading::GetCurrentProcessId;
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_DOWN, VK_NEXT, VIRTUAL_KEY};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClassNameW, GetParent, GetScrollInfo, GetTopWindow, GetWindow, GetWindowRect,
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, PostMessageW, WindowFromPoint,
-    GW_HWNDNEXT, SCROLLINFO, SIF_ALL, SB_LINEDOWN, SB_VERT, WM_KEYDOWN, WM_KEYUP, WM_MOUSEWHEEL,
-    WM_VSCROLL,
+    GW_HWNDNEXT, SCROLLINFO, SIF_ALL, SB_LINEDOWN, SB_VERT, WM_MOUSEWHEEL, WM_VSCROLL,
 };
 
 /// 滚轮一格。向下的增量是负数（与 Win32 的 `WHEEL_DELTA` 约定一致）。
@@ -23,23 +21,9 @@ const WHEEL_DELTA: i32 = 120;
 pub enum Action {
     Message,
     Wheel,
-    Key,
-    PageDown,
-    Manual,
 }
 
 impl Action {
-    /// 配置里的 `scroll_action`；未知值按默认的滚动消息处理。
-    pub fn parse(s: &str) -> Action {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "wheel" => Action::Wheel,
-            "key" => Action::Key,
-            "pagedown" => Action::PageDown,
-            "manual" => Action::Manual,
-            _ => Action::Message,
-        }
-    }
-
     /// 发完动作后给目标程序留多少时间渲染。
     ///
     /// Chromium 的滚动是**平滑动画**（约 250–350ms）：等太短会抓到中间帧，
@@ -49,8 +33,6 @@ impl Action {
         match self {
             Action::Wheel => 450,
             Action::Message => 400,
-            Action::Key | Action::PageDown => 400,
-            Action::Manual => 0,
         }
     }
 }
@@ -120,11 +102,8 @@ unsafe fn usable(hwnd: HWND, x: i32, y: i32) -> bool {
     )
 }
 
-/// 发一次滚动动作。返回是否真的投递出去（手动模式恒为 false）。
+/// 发一次滚动动作。返回是否真的投递出去。
 pub fn scroll(target: Target, action: Action, x: i32, y: i32) -> bool {
-    if action == Action::Manual {
-        return false;
-    }
     let hwnd = target.hwnd();
     unsafe {
         match action {
@@ -142,9 +121,6 @@ pub fn scroll(target: Target, action: Action, x: i32, y: i32) -> bool {
                 LPARAM(wheel_lparam(x, y) as isize),
             )
             .is_ok(),
-            Action::Key => post_key(hwnd, VK_DOWN),
-            Action::PageDown => post_key(hwnd, VK_NEXT),
-            Action::Manual => false,
         }
     }
 }
@@ -156,12 +132,6 @@ fn wheel_wparam() -> usize {
 /// `WM_MOUSEWHEEL` 的 lParam：低 16 位 x、高 16 位 y（屏幕坐标）。
 fn wheel_lparam(x: i32, y: i32) -> u32 {
     (x as u16 as u32) | ((y as u16 as u32) << 16)
-}
-
-unsafe fn post_key(hwnd: HWND, vk: VIRTUAL_KEY) -> bool {
-    let down = PostMessageW(Some(hwnd), WM_KEYDOWN, WPARAM(vk.0 as usize), LPARAM(0)).is_ok();
-    let up = PostMessageW(Some(hwnd), WM_KEYUP, WPARAM(vk.0 as usize), LPARAM(0)).is_ok();
-    down && up
 }
 
 /// 目标窗口（或它最近的父窗口）是否已经滚到底。
@@ -197,17 +167,6 @@ fn is_bottom(n_pos: i32, n_page: u32, n_max: i32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn action_parse_defaults_to_message() {
-        assert_eq!(Action::parse("message"), Action::Message);
-        assert_eq!(Action::parse("wheel"), Action::Wheel);
-        assert_eq!(Action::parse("Key"), Action::Key);
-        assert_eq!(Action::parse("pagedown"), Action::PageDown);
-        assert_eq!(Action::parse("manual"), Action::Manual);
-        assert_eq!(Action::parse(""), Action::Message);
-        assert_eq!(Action::parse("手改坏的值"), Action::Message);
-    }
 
     /// 滚轮向下：wParam 高 16 位是 -120 的补码。
     #[test]

@@ -48,10 +48,10 @@ impl Tool for General {
         } else {
             "缓存关闭"
         };
-        let log = if crate::dlog::is_enabled() {
+        let log = if cfg.log_enabled {
             "日志开启"
         } else {
-            "日志关闭（LIGHTBOX_DEBUG=1 可开）"
+            "日志关闭"
         };
         format!("{cache} · {log}")
     }
@@ -66,27 +66,38 @@ impl Tool for General {
                     "appearance_theme",
                     "主题",
                     &[
-                        ("dark", "暗色"),
-                        ("light", "明亮"),
-                        ("system", "跟随系统"),
+                        ("light", "浅色主题"),
+                        ("dark", "深色主题"),
+                        ("system", "系统主题"),
                     ],
                 )
-                .auto_apply()
-                .help("「跟随系统」跟着 Windows 的应用模式走（设置 → 个性化 → 颜色）。改完立即生效，不用点保存。"),
-                Field::color("accent_color", "主色调", ACCENT_PRESETS)
-                .auto_apply()
-                .help("按钮、光晕、LOGO 渐变都会跟着变。点已选中的色块恢复默认；「自定义」用系统取色器随便挑。改完立即生效，不用点保存。"),
+                .auto_apply(),
+                Field::color("accent_color", "主色调", ACCENT_PRESETS).auto_apply(),
                 Field::group("启动"),
                 Field::switch("autostart", "开机自动启动"),
                 Field::group("性能"),
-                Field::switch("lite_mode", "极轻模式")
-                    .help("开启时关闭窗口立即释放 WebView 内存；关闭后窗口只是隐藏，再次打开更快，但会一直占内存。"),
+                Field::switch("lite_mode", "轻量模式").help("托盘状态下释放界面内存"),
                 Field::group("翻译与弹窗"),
                 Field::switch("cache_enabled", "翻译缓存"),
                 Field::number_unit("popup_timeout_ms", "弹窗自动关闭", 3000, 120000, "毫秒"),
                 Field::group("配置与日志"),
-                Field::button("open_config_file", "打开配置文件"),
-                Field::button("open_config_dir", "打开配置目录"),
+                Field::switch("log_enabled", "日志启用"),
+                Field::select(
+                    "log_level",
+                    "日志记录等级",
+                    &[
+                        ("info", "INFO"),
+                        ("debug", "DEBUG"),
+                        ("warn", "WARN"),
+                        ("error", "ERROR"),
+                        ("trace", "TRACE"),
+                    ],
+                )
+                .show_if("log_enabled", "true"),
+                Field::buttons(&[
+                    ("open_config_file", "打开配置文件"),
+                    ("open_config_dir", "打开配置目录"),
+                ]),
             ],
         )]
     }

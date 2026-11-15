@@ -151,10 +151,10 @@ fn run_inner(
     let cy = rect.y + rect.h / 2;
     let target = input::target_at(cx, cy);
 
-    let configured = Action::parse(&cfg.scroll_action);
-    let manual = cfg.scroll_mode.trim().eq_ignore_ascii_case("manual")
-        || configured == Action::Manual;
-    let mut action = if manual { Action::Manual } else { configured };
+    // 滚动截图固定全自动：发滚动消息，窗口不响应时主循环会回退滚轮。
+    // 设置页不再暴露模式 / 滚动方式（ADR-054）。
+    let manual = false;
+    let mut action = Action::Message;
 
     let temp_dir = crate::config::data_dir();
     let mut raw = RawRows::create(&temp_dir, width)?;

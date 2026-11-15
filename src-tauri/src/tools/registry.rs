@@ -104,7 +104,10 @@ mod tests {
                     // 三者都可能重复（两个同名分组 / 两条一样的说明），跳过
                     let is_value_field = !matches!(
                         f.kind,
-                        FieldKind::Note { .. } | FieldKind::Button | FieldKind::Group { .. }
+                        FieldKind::Note { .. }
+                            | FieldKind::Button
+                            | FieldKind::ButtonRow { .. }
+                            | FieldKind::Group { .. }
                     );
                     if !is_value_field {
                         continue;
@@ -120,15 +123,15 @@ mod tests {
         }
     }
 
-    /// 翻译工具必须有三个标签（引擎 / 划词 / 截图），这是用户 m01468 定的信息架构。
+    /// 翻译工具必须有两个标签（配置 / 服务管理），这是去开发化后的信息架构。
     #[test]
-    fn translate_has_three_tabs() {
+    fn translate_has_two_tabs() {
         let t = super::by_id("translate").expect("必须有 translate 工具");
         let ids: Vec<&str> = t.sections().iter().map(|s| s.id).collect();
-        assert_eq!(ids, vec!["engine", "selection", "ocr"]);
+        assert_eq!(ids, vec!["config", "services"]);
     }
 
-    /// 翻译三个标签、下载三个标签（会话 25 起），其余三个工具都只有一个 Section，
+    /// 翻译两个标签、下载三个标签，其余工具都只有一个 Section，
     /// 这样前端不会给它们画一层没意义的标签栏。
     #[test]
     fn multi_section_tools_are_the_expected_ones() {
@@ -136,9 +139,9 @@ mod tests {
             let id = t.id();
             let n = t.sections().len();
             match id {
-                "translate" | "download" => {
-                    assert_eq!(n, 3, "工具 {id} 应该是三个标签")
-                }
+                "translate" => assert_eq!(n, 2, "工具 {id} 应该是两个标签"),
+                "download" => assert_eq!(n, 3, "工具 {id} 应该是三个标签"),
+                "screenshot" => assert_eq!(n, 2, "工具 {id} 应该是两个标签"),
                 "transfer" => assert_eq!(n, 2, "工具 transfer 应该是两个标签"),
                 _ => assert_eq!(n, 1, "工具 {id} 不该有多个 Section"),
             }

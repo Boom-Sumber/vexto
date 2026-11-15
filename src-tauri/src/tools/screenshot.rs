@@ -42,65 +42,49 @@ impl Tool for Screenshot {
     }
 
     fn sections(&self) -> Vec<Section> {
-        vec![Section::new(
-            "general",
-            "截图",
-            vec![
-                Field::group("截图"),
-                Field::switch("enable_screenshot", "启用截图")
-                    .help("按热键框选屏幕区域，松手后按下面的「截图后」动作交付；Esc 取消。"),
-                Field::hotkey("hotkey_screenshot", "区域截图热键"),
-                Field::dir("screenshot_dir", "保存目录")
-                    .help("留空 = 系统「图片」文件夹下的 Vexto 子目录。"),
-                Field::number_unit("screenshot_border_width", "选框边框宽度", 3, 5, "px")
-                    .help("框选时选框边框的粗细，3–5 px。"),
-                Field::number_unit("screenshot_magnifier_zoom", "放大镜倍数", 2, 10, "×")
-                    .help("鼠标旁放大取色镜的放大倍数。"),
-                Field::number_unit("screenshot_feedback_seconds", "缩略图显示时长", 3, 5, "秒")
-                    .help("全屏截图后右下角缩略图的显示时长；鼠标移入会暂停倒计时。"),
-                Field::number_unit("screenshot_feedback_fade_ms", "缩略图淡出时长", 200, 1500, "ms")
-                    .help("缩略图自动消失时的淡出动画时长，200–1500 ms。"),
-                Field::switch("screenshot_include_cursor", "截图包含鼠标指针")
-                    .help("区域 / 全屏 / 活动窗口截图会把当前指针画进图里；滚动长图不包含。"),
-                Field::select(
-                    "screenshot_after_action",
-                    "截图后",
-                    &[
-                        ("both", "复制图片并保存"),
-                        ("clipboard", "只复制图片"),
-                        ("path", "保存并复制路径"),
-                        ("save", "只保存"),
-                    ],
-                ),
-                Field::group("全屏 / 活动窗口"),
-                Field::hotkey("hotkey_fullscreen", "全屏截图热键"),
-                Field::button("shot_full", "全屏截图")
-                    .help("截整个虚拟屏幕；多显示器时是一整张。与全屏热键共用同一套反馈。"),
-                Field::button("shot_window", "活动窗口截图")
-                    .help("截当前前台窗口。从设置页点按钮时会截到设置页本身，建议用托盘菜单。"),
-                Field::group("滚动截图"),
-                Field::select(
-                    "scroll_mode",
-                    "默认模式",
-                    &[("auto", "全自动（推荐）"), ("manual", "半自动：自己滚，点停止")],
-                )
-                .help("自动模式默认发滚动消息，窗口没反应时自动回退滚轮；仍无效会明确报错。"),
-                Field::select(
-                    "scroll_action",
-                    "滚动方式",
-                    &[
-                        ("message", "滚动消息（默认）"),
-                        ("wheel", "鼠标滚轮"),
-                        ("key", "方向键"),
-                        ("pagedown", "PageDown"),
-                        ("manual", "手动滚动"),
-                    ],
-                ),
-                Field::group("钉屏"),
-                Field::switch("pinscreen_single_window", "单窗口多图")
-                    .help("关闭后每张图一个窗口，可以摆到屏幕不同位置，但内存占用更高。"),
-            ],
-        )]
+        vec![
+            Section::new(
+                "general",
+                "截图",
+                vec![
+                    Field::switch("enable_screenshot", "启用截图"),
+                    Field::dir("screenshot_dir", "保存目录").wide(),
+                    Field::number_unit("screenshot_border_width", "选框边框宽度", 3, 5, "px"),
+                    Field::number_unit("screenshot_magnifier_zoom", "放大镜倍数", 2, 10, "×"),
+                    Field::number_unit("screenshot_feedback_seconds", "缩略图显示时长", 3, 5, "秒"),
+                    Field::number_unit("screenshot_feedback_fade_ms", "缩略图淡出时长", 200, 1500, "ms"),
+                    Field::switch("screenshot_include_cursor", "截图包含鼠标指针"),
+                    Field::select(
+                        "screenshot_after_action",
+                        "截图后",
+                        &[
+                            ("both", "复制图片并保存"),
+                            ("clipboard", "只复制图片"),
+                            ("path", "保存并复制路径"),
+                            ("save", "只保存"),
+                        ],
+                    ),
+                    Field::select(
+                        "ocr_engine",
+                        "识别引擎",
+                        &[
+                            ("paddle", "PaddleOCR（默认，中文更准）"),
+                            ("windows", "Windows 自带（零体积）"),
+                        ],
+                    ),
+                    Field::group("钉屏"),
+                    Field::switch("pinscreen_single_window", "单窗口多图"),
+                ],
+            ),
+            Section::new(
+                "hotkeys",
+                "快捷键配置",
+                vec![
+                    Field::hotkey("hotkey_screenshot", "区域截图"),
+                    Field::hotkey("hotkey_fullscreen", "全屏截图"),
+                ],
+            ),
+        ]
     }
 }
 
@@ -119,7 +103,10 @@ mod tests {
             for f in &s.fields {
                 if matches!(
                     f.kind,
-                    FieldKind::Note { .. } | FieldKind::Button | FieldKind::Group { .. }
+                    FieldKind::Note { .. }
+                        | FieldKind::Button
+                        | FieldKind::ButtonRow { .. }
+                        | FieldKind::Group { .. }
                 ) {
                     continue;
                 }
@@ -138,5 +125,28 @@ mod tests {
         let c = crate::config::Config::default();
         assert!(!c.enable_screenshot);
         assert_eq!(c.hotkey_screenshot, "Ctrl+Alt+A");
+    }
+
+    /// 截图页与快捷键页分开；截图页不再画任何说明文本，
+    /// 滚动 / 全屏 / 活动窗口的旧配置项全部撤掉（去开发化，ADR-054）。
+    #[test]
+    fn sections_are_general_and_hotkeys_without_help() {
+        let s = Screenshot.sections();
+        assert_eq!(s.len(), 2);
+        assert_eq!((s[0].id, s[0].name), ("general", "截图"));
+        assert_eq!((s[1].id, s[1].name), ("hotkeys", "快捷键配置"));
+        for f in &s[0].fields {
+            assert!(f.help.is_none(), "截图页不再显示说明文本：{}", f.key);
+        }
+        let keys: Vec<&str> = s
+            .iter()
+            .flat_map(|sec| sec.fields.iter().map(|f| f.key))
+            .collect();
+        for gone in ["scroll_mode", "scroll_action", "shot_full", "shot_window"] {
+            assert!(!keys.contains(&gone), "旧配置项 {gone} 应删除");
+        }
+        let hot = &s[1].fields;
+        assert!(hot.iter().any(|f| f.key == "hotkey_screenshot"));
+        assert!(hot.iter().any(|f| f.key == "hotkey_fullscreen"));
     }
 }

@@ -150,7 +150,7 @@ fn send(app: &tauri::AppHandle, title: &str, body: &str, path: &str) {
         .show()
     {
         // 通知失败不影响下载：记日志即可（企业策略可能禁掉通知）。
-        crate::dlog::dlog(&format!("notify: 发送失败：{e}"));
+        crate::dlog::warn(&format!("notify: 发送失败：{e}"));
     }
 }
 

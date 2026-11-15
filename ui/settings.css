@@ -296,12 +296,15 @@ h1 {
 /* 开关行的标题点击会切换开关（settings.js 挂的） */
 .field.switch .meta { cursor: pointer; user-select: none; }
 
-/* 控件列：默认固定弹性宽度，开关 / 单控件行自动收窄 */
+/* 控件列：固定宽度、整体靠右。长文本框字段（路径 / UA / 白名单）加 .wide 放宽。
+ * 用户要求所有文本框 / 选择框 / 开关靠右对齐且宽度统一，不要铺满整行。 */
 .ctrl {
-  flex: 0 1 340px;
+  flex: 0 0 240px;
+  width: 240px;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 6px;
 }
 .ctrl input:not([type="checkbox"]):not([type="radio"]),
@@ -309,8 +312,20 @@ h1 {
 .ctrl textarea {
   width: 100%;
 }
-.field.switch .ctrl { flex: 0 0 auto; }
-.field.action .ctrl { flex: 1 1 auto; flex-direction: row; align-items: center; }
+.field.wide .ctrl { flex-basis: 360px; width: 360px; }
+.field.switch .ctrl { flex: 0 0 auto; width: auto; }
+.field.action .ctrl {
+  flex: 1 1 auto;
+  width: auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+/* 并排按钮（打开配置 / 重启服务）靠右 */
+.field.action .btn-row {
+  width: 100%;
+  justify-content: flex-end;
+}
 
 /* 字段旁的「?」：只保留给没有标题行的按钮字段 */
 .field-help {
@@ -340,8 +355,8 @@ h1 {
 .field.action { margin: 0 0 var(--sp-2); }
 .field.action > .setting-row { border-bottom: none; }
 /* 按钮不要被拉满整列 */
-.field.action .btn { justify-self: start; }
-.field.action .ctrl { align-items: flex-start; }
+.field.action .btn { justify-self: end; }
+.field.action .ctrl { align-items: flex-end; }
 
 #help-tip {
   position: fixed;
@@ -588,7 +603,7 @@ input.capturing {
 
 .li-row {
   display: grid;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: minmax(0, 1fr) 240px;
   align-items: center;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
@@ -601,9 +616,9 @@ input.capturing {
   text-align: right;
 }
 
-/* 展开区网格里的开关靠左，别被 1fr 列拉满整行 */
+/* 展开区网格里的开关靠右，与页面级开关一致 */
 .li-row .switch-pill,
-.fm-switch .switch-pill { justify-self: start; }
+.fm-switch .switch-pill { justify-self: end; }
 
 .list-add { align-self: flex-start; }
 .list-add svg { width: 15px; height: 15px; }
@@ -646,7 +661,7 @@ input.capturing {
 
 .fm-row {
   display: grid;
-  grid-template-columns: 104px 1fr;
+  grid-template-columns: minmax(0, 1fr) 240px;
   align-items: center;
   gap: var(--sp-3);
   margin-bottom: var(--sp-3);
@@ -658,6 +673,8 @@ input.capturing {
   color: var(--text-secondary);
   text-align: right;
 }
+.fm-row .input,
+.fm-row select { width: 100%; }
 
 /* 开关行和其它行共用 104px 标签列：标签右对齐、开关靠控件列左侧。
  * 曾经给这行单独换过「1fr auto」两栏，结果标签贴到弹窗左边缘、开关被推到
@@ -821,3 +838,33 @@ input.capturing {
   gap: var(--sp-2);
 }
 .modal-acts .btn { height: 30px; }
+
+/* ── 轻提示（操作类反馈，自动倒计时消失）──────────────────────────────── */
+
+#toast {
+  position: fixed;
+  right: var(--sp-6);
+  bottom: var(--sp-6);
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 360px;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  box-shadow: var(--shadow-float);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+#toast.on { opacity: 1; transform: none; }
+#toast .ico-svg { color: var(--success); flex: none; }
+#toast.bad { border-color: var(--danger-border); color: var(--danger); }
+#toast.bad .ico-svg { color: var(--danger); }

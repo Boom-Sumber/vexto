@@ -47,7 +47,7 @@ window.TitleBar = (function () {
     });
   }
 
-  function mountIcons() {
+  function mountActions() {
     for (const b of document.querySelectorAll(".tb-btn[data-win]")) {
       const act = b.dataset.win;
       const name = act === "min" ? "minimize" : act === "max" ? "maximize" : "close";
@@ -69,6 +69,44 @@ window.TitleBar = (function () {
         action(act);
       });
     }
+  }
+
+  /// 标题左侧的程序图标（与侧栏 brand 同一份 Vexto.svg 蒙版）。
+  function mountBrand() {
+    const tb = document.querySelector(".tb");
+    const title = tb && tb.querySelector(".tb-title");
+    if (!title) return;
+    const lead = document.createElement("div");
+    lead.className = "tb-lead";
+    lead.dataset.tauriDragRegion = "";
+    const logo = document.createElement("span");
+    logo.className = "tb-logo logo-mask";
+    logo.setAttribute("aria-hidden", "true");
+    logo.dataset.tauriDragRegion = "";
+    tb.insertBefore(lead, title);
+    lead.append(logo, title);
+  }
+
+  /// 最小化左侧的明暗主题切换。
+  function mountTheme() {
+    const actions = document.querySelector(".tb .tb-actions");
+    if (!actions || !window.Theme) return;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tb-btn tb-theme";
+    b.title = "切换明暗主题";
+    b.setAttribute("aria-label", "切换明暗主题");
+    const sync = () => {
+      const dark = (window.Theme.resolved?.() || "dark") === "dark";
+      window.Icons.fill(b, dark ? "sun" : "moon", 14);
+    };
+    b.addEventListener("click", async () => {
+      await window.Theme.toggle();
+      sync();
+    });
+    document.addEventListener("vexto:theme", sync);
+    actions.insertBefore(b, actions.firstChild);
+    sync();
   }
 
   function mountResize() {
@@ -100,7 +138,9 @@ window.TitleBar = (function () {
   /// `opts.maximize === false`：不可最大化，双击标题栏也不该触发。
   function mount(opts) {
     const o = opts || {};
-    mountIcons();
+    mountBrand();
+    mountActions();
+    mountTheme();
     if (o.resize !== false) mountResize();
     mountFocus();
 
