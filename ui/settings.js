@@ -1157,11 +1157,24 @@ function fieldSelect(f) {
     sel.dataset.optSig = JSON.stringify(opts);
   } else {
     const cur = val(f.key);
+    let matched = false;
     for (const [v, txt] of f.options || []) {
       const o = document.createElement("option");
       o.value = v;
       o.textContent = txt;
-      if (String(cur) === String(v)) o.selected = true;
+      if (String(cur) === String(v)) {
+        o.selected = true;
+        matched = true;
+      }
+      sel.append(o);
+    }
+    // 老配置里可能存着不在预设表里的值（例如旧版手填的 DNS）。原样补一项，
+    // 不要因为下拉没有这个值就把界面显示成第一项、让用户以为配置被改了。
+    if (cur != null && String(cur) !== "" && !matched) {
+      const o = document.createElement("option");
+      o.value = String(cur);
+      o.textContent = String(cur);
+      o.selected = true;
       sel.append(o);
     }
   }
