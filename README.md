@@ -103,4 +103,4 @@ ui/                纯静态前端
 - PaddleOCR PP-OCRv4 模型：Apache-2.0（`paddleocr-models-NOTICE.txt`）
 - pure-onnx-ocr：Apache-2.0（`pure-onnx-ocr-Apache-2.0.txt`）
 
-本程序自身许可尚未最终确定（S6 收尾项）；禁止引入 GPL / AGPL 依赖，见 `docs/07-LICENSING.md`。
+本程序以 **GNU GPL-3.0** 协议开源，全文见仓库根 `LICENSE`。第三方组件仍按各自许可分发；详见 `docs/07-LICENSING.md`。
