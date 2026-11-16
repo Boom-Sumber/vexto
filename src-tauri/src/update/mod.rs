@@ -254,16 +254,35 @@ pub fn update_open_release() -> Result<(), String> {
 pub(crate) fn open_url(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let cmdline = format!("start \"\" \"{}\"", url.replace('"', ""));
-        std::process::Command::new("cmd")
-            .args(["/C", cmdline.as_str()])
-            .creation_flags(0x0800_0000)
-            .spawn()
-            .map_err(|e| {
-                dlog::warn(&format!("update: 打开浏览器失败：{e}"));
-                "无法打开浏览器".to_string()
-            })?;
+        // 和安装器一样走系统 shell：`cmd /C start` 在部分环境（作业对象 /
+        // 重定向目录）会被错误解析成 `\\`，弹「Windows 找不到」。
+        use windows::core::{HSTRING, PCWSTR};
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        if !url.starts_with("https://") {
+            return Err("只允许打开 HTTPS 链接".to_string());
+        }
+        let op = HSTRING::from("open");
+        let file = HSTRING::from(url);
+        let h = unsafe {
+            ShellExecuteW(
+                None,
+                &op,
+                &file,
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        if h.0 as isize <= 32 {
+            dlog::warn(&format!(
+                "update: ShellExecuteW 打开链接失败，code={}",
+                h.0 as isize
+            ));
+            return Err("无法打开浏览器".to_string());
+        }
+        dlog::dlog(&format!("update: 已通过系统 shell 打开链接 {url}"));
         Ok(())
     }
     #[cfg(not(windows))]
