@@ -64,26 +64,13 @@ impl Tool for About {
                 ),
                 Field::note("本程序按「现状」提供，不对使用后果作任何担保。"),
                 Field::group("更新"),
-                Field::note(
-                    "自动检查每 24 小时最多一次；发现新版本不会弹窗。\
-                     安装会关闭 Vexto 并原地覆盖，配置与安装目录保留。",
-                ),
-                Field::select(
-                    "update_download_source",
-                    "下载线路",
-                    UPDATE_SOURCES,
-                )
-                .help(
-                    "自动：依次尝试 v4.gh-proxy.org、gh-proxy.org、直连 GitHub。\
-                     下载后用 GitHub 给出的 sha256 校验安装包。",
-                ),
+                Field::select("update_download_source", "下载线路", UPDATE_SOURCES),
                 Field::text_hint(
                     "update_custom_proxy",
                     "自定义代理",
                     "例如 https://gh-proxy.org/",
                 )
-                .show_if("update_download_source", "custom")
-                .help("作为下载地址前缀使用，必须以 http:// 或 https:// 开头。"),
+                .show_if("update_download_source", "custom"),
                 Field::update("update", "更新"),
             ],
         )]

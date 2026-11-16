@@ -1812,7 +1812,9 @@ function renderUpdatePanel() {
 function updateStateText(s) {
   switch (s.phase) {
     case "idle":
-      return "还没有检查过更新。";
+      return s.lastCheck
+        ? "点击「检查更新」查看是否有新版本。"
+        : "还没有检查过更新。";
     case "checking":
       return "正在检查新版本…";
     case "available":
