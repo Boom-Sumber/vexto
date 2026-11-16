@@ -10,7 +10,7 @@ pub mod download;
 pub mod github;
 pub mod install;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -382,10 +382,9 @@ fn run_download(
         match res {
             Ok(()) => {
                 let _ = std::fs::remove_file(&final_path);
-                if let Err(e) = std::fs::rename(&part, &final_path) {
-                    dlog::warn(&format!("update: 保存安装包失败：{e}"));
+                if let Err(e) = promote(&part, &final_path) {
                     let _ = std::fs::remove_file(&part);
-                    errors.push("无法保存安装包".to_string());
+                    errors.push(e);
                     continue;
                 }
                 dlog::dlog(&format!("update: 已通过「{label}」下载安装包"));
@@ -411,8 +410,27 @@ fn run_download(
     fail(&app, &msg);
 }
 
-fn finish_ready(app: &AppHandle, path: PathBuf, via: Option<String>, size: u64) {
-    set(Some(app), |s| {
+/// `.part` → 正式文件名。
+///
+/// 正常环境用 rename；但在 MSIX 虚拟化 / 重定向的 `%LOCALAPPDATA%` 下，
+/// `MoveFileExW` 会把同一目录误判成不同卷并返回 `os error 17`。退回复制 + 删除，
+/// 代价只在异常环境里多一次 21 MB 写入。
+fn promote(part: &Path, final_path: &Path) -> Result<(), String> {
+    match std::fs::rename(part, final_path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            dlog::warn(&format!("update: 改名失败（{e}），改为复制"));
+            if let Err(e2) = std::fs::copy(part, final_path) {
+                dlog::warn(&format!("update: 复制安装包失败：{e2}"));
+                return Err("无法保存安装包".to_string());
+            }
+            let _ = std::fs::remove_file(part);
+            Ok(())
+        }
+    }
+}
+
+fn finish_ready(app: &AppHandle, path: PathBuf, via: Option<String>, size: u64) {    set(Some(app), |s| {
         s.ready_path = Some(path);
         s.view.phase = Phase::Ready;
         s.view.downloaded = size;
@@ -619,5 +637,20 @@ mod tests {
             Some(env!("CARGO_PKG_VERSION")),
             "tauri.conf.json 与 Cargo.toml 的版本号不一致"
         );
+    }
+
+    /// `.part` 提升为正式文件：正常环境走 rename。
+    #[test]
+    fn promote_moves_part_into_place() {
+        let dir = std::env::temp_dir().join(format!("vexto-promote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let part = dir.join("a.part");
+        let final_path = dir.join("a.exe");
+        std::fs::write(&part, b"abc").unwrap();
+        promote(&part, &final_path).unwrap();
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"abc");
+        assert!(!part.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
