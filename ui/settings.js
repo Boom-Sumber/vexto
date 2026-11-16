@@ -184,6 +184,9 @@ async function selectTool(id, opts = {}) {
 
   renderFields();
 
+  // 侧栏「发现新版本」点击后，等目标工具渲染完再滚到更新面板。
+  scrollToUpdatePanel();
+
   // 翻译工具的热键注册失败原因要显示出来
   await refreshHotkeyError();
 }
@@ -1713,6 +1716,7 @@ function fieldUpdate(f) {
   invoke(f.status_command)
     .then((s) => {
       updateState = s;
+      renderUpdateBadge();
       renderUpdatePanel();
     })
     .catch(() => {});
@@ -1749,25 +1753,24 @@ function renderUpdatePanel() {
   const line = document.createElement("div");
   line.className = "upd-state" + (s.phase === "error" ? " bad" : "");
   line.textContent = updateStateText(s);
-  box.append(line);
 
+  let notes = null;
   if (s.notes && (s.phase === "available" || s.phase === "downloading" || s.phase === "ready")) {
-    const notes = document.createElement("div");
+    notes = document.createElement("div");
     notes.className = "upd-notes";
     notes.textContent = s.notes;
-    box.append(notes);
   }
 
+  let bar = null;
   if (s.phase === "downloading") {
     const total = s.assetSize || 0;
     const got = s.downloaded || 0;
     const pct = total > 0 ? Math.min(100, Math.round((got / total) * 100)) : 0;
-    const bar = document.createElement("div");
+    bar = document.createElement("div");
     bar.className = "upd-bar";
     const fill = document.createElement("i");
     fill.style.width = pct + "%";
     bar.append(fill);
-    box.append(bar);
   }
 
   const acts = document.createElement("div");
@@ -1806,7 +1809,19 @@ function renderUpdatePanel() {
     default:
       break;
   }
-  if (acts.childNodes.length) box.append(acts);
+
+  // 「检查更新」和状态文案同一行；其它 phase 仍按纵向排列。
+  if (s.phase === "idle" || s.phase === "up_to_date") {
+    const row = document.createElement("div");
+    row.className = "upd-line";
+    row.append(line, acts);
+    box.append(row);
+  } else {
+    box.append(line);
+    if (notes) box.append(notes);
+    if (bar) box.append(bar);
+    if (acts.childNodes.length) box.append(acts);
+  }
 }
 
 function updateStateText(s) {
@@ -1829,7 +1844,7 @@ function updateStateText(s) {
         (total > 0 ? " / " + fmtSize(total) + "（" + pct + "%）" : "");
     }
     case "ready":
-      return "安装包已就绪" + (s.via ? "（" + s.via + "）" : "") + "。";
+      return "安装包已就绪。";
     case "installing":
       return "正在启动安装程序…";
     case "error":
@@ -1851,6 +1866,7 @@ async function updateInvoke(btn, cmd) {
     const s = await invoke(cmd);
     if (s && s.phase) {
       updateState = s;
+      renderUpdateBadge();
       renderUpdatePanel();
     }
   } catch (e) {
@@ -1859,6 +1875,7 @@ async function updateInvoke(btn, cmd) {
     try {
       if (updatePanel) {
         updateState = await invoke(updatePanel.field.status_command);
+        renderUpdateBadge();
         renderUpdatePanel();
       }
     } catch {
@@ -1876,6 +1893,43 @@ function requestInstall(btn, f) {
     return;
   }
   updateInvoke(btn, f.install_command);
+}
+
+// ── 侧栏「发现新版本」提示 ──────────────────────────────────────────────
+//
+// 只在后端的 phase=available 时出现；点击跳到「关于」并滚到更新面板。
+// 有未保存改动时交给既有的三出口确认框，保存/放弃后再滚。
+
+let updateJumpPending = false;
+
+function renderUpdateBadge() {
+  const badge = el("update-badge");
+  if (!badge) return;
+  const s = updateState;
+  if (s && s.phase === "available" && s.latest) {
+    el("update-badge-text").textContent = "发现新版本 " + s.latest;
+    badge.classList.remove("hidden");
+  } else {
+    badge.classList.add("hidden");
+  }
+}
+
+function scrollToUpdatePanel() {
+  if (!updateJumpPending) return;
+  if (!updatePanel || !updatePanel.box || !updatePanel.box.isConnected) return;
+  updateJumpPending = false;
+  updatePanel.box.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+async function jumpToUpdate() {
+  updateJumpPending = true;
+  if (state.toolId === "about") {
+    scrollToUpdatePanel();
+    return;
+  }
+  await selectTool("about", { keepBanner: true });
+  // selectTool 在未保存改动时会弹确认框并提前返回；那时由 runIntent
+  // 再次调用 selectTool，结束时再滚。
 }
 
 // ── 启动 ─────────────────────────────────────────────────────────────────
@@ -1902,7 +1956,10 @@ async function boot() {
   el("btnDiscard").addEventListener("click", () => discardAll());
 
   // ── 未保存改动的确认框 ────────────────────────────────────────────
-  el("mCancel").addEventListener("click", hideDirtyModal);
+  el("mCancel").addEventListener("click", () => {
+    updateJumpPending = false;
+    hideDirtyModal();
+  });
   el("mDiscard").addEventListener("click", async () => {
     const intent = dirtyIntent;
     hideDirtyModal();
@@ -1943,8 +2000,19 @@ async function boot() {
   // 更新状态由后端推整份快照；页面生命周期内只注册一次。
   await listen("update:state", (ev) => {
     updateState = ev && ev.payload;
+    renderUpdateBadge();
     renderUpdatePanel();
   });
+
+  // 首屏也拉一次：没有事件时侧栏提示和面板也能显示当前状态。
+  invoke("update_state")
+    .then((s) => {
+      updateState = s;
+      renderUpdateBadge();
+      renderUpdatePanel();
+    })
+    .catch(() => {});
+  el("update-badge").addEventListener("click", jumpToUpdate);
 
   // 标题栏的明暗切换会直接写配置并广播：当前停在通用页且没有未保存改动时，
   // 把下拉同步到新值，避免界面显示和磁盘不一致。

@@ -44,6 +44,34 @@
   gap: 3px;
 }
 
+/* 侧栏底部「发现新版本」提示。只在 phase=available 时出现，点击跳到关于页。 */
+.update-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: var(--sp-3);
+  padding: 9px 11px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.update-badge:hover { border-color: var(--accent); }
+.update-badge.hidden { display: none; }
+.update-badge .ub-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px 1px var(--accent-soft);
+}
+
 /* 工具项：图标 + 文字；选中 = 主题色淡底 + 左侧渐变指示条（demo 口径）。
  * 会话 53：字号放大一档 + 加粗 + 字距加宽（用户对菜单文字的要求）。 */
 .tool {
@@ -916,6 +944,15 @@ input.capturing {
   overflow-wrap: anywhere;
 }
 .upd-state.bad { color: var(--danger); }
+/* 「检查更新」和状态文案同一行 */
+.upd-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.upd-line .upd-state { flex: 1 1 auto; }
+.upd-line .upd-acts { flex: none; width: auto; }
 .upd-notes {
   max-height: 180px;
   overflow: auto;
