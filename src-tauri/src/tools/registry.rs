@@ -108,7 +108,7 @@ mod tests {
                             | FieldKind::Button
                             | FieldKind::ButtonRow { .. }
                             | FieldKind::Group { .. }
-                            | FieldKind::Update { .. }
+                            | FieldKind::About { .. }
                     );
                     if !is_value_field {
                         continue;

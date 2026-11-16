@@ -123,7 +123,7 @@ mod tests {
                         | FieldKind::Button
                         | FieldKind::ButtonRow { .. }
                         | FieldKind::Group { .. }
-                        | FieldKind::Update { .. }
+                        | FieldKind::About { .. }
                 ) {
                     continue;
                 }

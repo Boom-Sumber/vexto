@@ -251,7 +251,7 @@ pub fn update_open_release() -> Result<(), String> {
     open_url(&url)
 }
 
-fn open_url(url: &str) -> Result<(), String> {
+pub(crate) fn open_url(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -711,6 +711,18 @@ pub fn status_suffix() -> String {
         }
     }
     String::new()
+}
+
+/// 「复制诊断信息」里的更新状态，不包含安装包 URL / 路径。
+pub fn diagnostics_line() -> String {
+    let g = state();
+    format!(
+        "phase={:?} current={} latest={} required={}",
+        g.view.phase,
+        g.view.current,
+        g.view.latest.as_deref().unwrap_or("-"),
+        g.view.required
+    )
 }
 
 #[cfg(test)]

@@ -46,9 +46,8 @@ let engineSelectNodes = [];
 // 应用更新面板：后端推整份快照（update:state），这里只按 phase 渲染。
 // 命令名由 schema 给出，前端不认识「更新」的业务细节。
 let updateState = null;
-let updatePanel = null;
-// list_tools 里的 update 字段 schema：侧栏按钮在还没打开关于页时也要拿到安装命令。
-let updateFieldSchema = null;
+// list_tools 里的 about 字段 schema：侧栏按钮 / 关于页在打开前也能拿到更新命令。
+let aboutFieldSchema = null;
 
 // ── 小工具 ────────────────────────────────────────────────────────────────
 
@@ -170,6 +169,7 @@ async function selectTool(id, opts = {}) {
 
   el("tool-name").textContent = tool.name;
   el("tool-desc").textContent = tool.desc || "";
+  el("pane-head").classList.toggle("hidden", !!tool.hide_header);
   renderStatusLine(tool);
   renderEnable(tool);
   renderSidebar();
@@ -186,8 +186,8 @@ async function selectTool(id, opts = {}) {
 
   renderFields();
 
-  // 侧栏「发现新版本」点击后，等目标工具渲染完再滚到更新面板。
-  scrollToUpdatePanel();
+  // 侧栏「发现新版本」点击后，等目标工具渲染完再滚到更新操作区。
+  scrollToAboutUpdate();
 
   // 翻译工具的热键注册失败原因要显示出来
   await refreshHotkeyError();
@@ -299,7 +299,7 @@ function renderFields() {
       box.append(fieldGroup(f));
       continue;
     }
-    if (f.type === "list") {
+    if (f.type === "list" || f.type === "about") {
       card = null;
       const node = renderField(f);
       if (node) box.append(node);
@@ -360,8 +360,8 @@ function renderField(f) {
       return fieldGroup(f);
     case "list":
       return fieldList(f);
-    case "update":
-      return fieldUpdate(f);
+    case "about":
+      return fieldAbout(f);
     default:
       // 后端加了新类型而前端还没跟上：明确报出来，不要静默吞掉
       return noteNode("未知字段类型「" + f.type + "」，请更新设置页");
@@ -1642,11 +1642,14 @@ async function refreshAfterSave() {
 async function reloadTools() {
   try {
     state.tools = await invoke("list_tools");
-    updateFieldSchema = null;
+    aboutFieldSchema = null;
     for (const t of state.tools) {
       for (const sec of t.sections || []) {
         for (const f of sec.fields || []) {
-          if (f.type === "update") updateFieldSchema = f;
+          if (f.type === "about") {
+            aboutFieldSchema = f;
+            if (f.part === "top") loadAboutInfo(f).catch(() => {});
+          }
         }
       }
     }
@@ -1711,150 +1714,45 @@ function runIntent(intent) {
   }
 }
 
-// ── 应用更新面板 ────────────────────────────────────────────────────────
+// ── 更新状态与操作 ──────────────────────────────────────────────────────
 //
-// 状态是后端推来的整份快照；切换工具重绘 DOM 后只需要重新挂一次节点，
-// 事件监听在 boot() 里只注册一次（页面销毁即解绑）。
+// 更新不再占一张设置卡片：状态 / 进度 / 按钮放在关于页品牌区下方，
+// 「更新」卡片只保留下载线路。状态仍由后端整份快照推送。
 
-function fieldUpdate(f) {
-  const w = wrapField(f, "update");
-  const box = document.createElement("div");
-  box.className = "upd-box";
-  w.append(box);
-  updatePanel = { box, field: f };
-  // 面板可能是检查完成后才打开的：先拉一次当前快照，别只等事件。
-  invoke(f.status_command)
-    .then((s) => {
+let aboutUpdateBlock = null;
+let updateJumpPending = false;
+
+function fmtSize(n) {
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  if (n >= 1024) return Math.round(n / 1024) + " KB";
+  return n + " B";
+}
+
+async function updateInvoke(btn, cmd) {
+  if (btn) btn.disabled = true;
+  try {
+    const s = await invoke(cmd);
+    if (s && s.phase) {
       updateState = s;
       renderUpdateBadge();
-      renderUpdatePanel();
-    })
-    .catch(() => {});
-  renderUpdatePanel();
-  return w;
-}
-
-function renderUpdatePanel() {
-  if (!updatePanel || !updatePanel.box.isConnected) return;
-  const box = updatePanel.box;
-  const f = updatePanel.field;
-  box.textContent = "";
-
-  const s = updateState;
-  if (!s) {
-    const loading = document.createElement("div");
-    loading.className = "upd-head";
-    loading.textContent = "正在读取更新状态…";
-    box.append(loading);
-    return;
-  }
-
-  const head = document.createElement("div");
-  head.className = "upd-head";
-  const cur = document.createElement("span");
-  cur.textContent = "当前版本 Vexto " + s.current;
-  const last = document.createElement("span");
-  last.textContent = s.lastCheck
-    ? "上次检查：" + new Date(s.lastCheck * 1000).toLocaleString()
-    : "尚未检查过";
-  head.append(cur, last);
-  box.append(head);
-
-  if (s.required) {
-    const need = document.createElement("div");
-    need.className = "upd-required";
-    need.textContent =
-      "立即更新：最低版本 " + (s.minVersion || s.latest || "");
-    box.append(need);
-  }
-
-  const line = document.createElement("div");
-  line.className = "upd-state" + (s.phase === "error" ? " bad" : "");
-  line.textContent = updateStateText(s);
-
-  let notes = null;
-  if (s.notes && (s.phase === "available" || s.phase === "downloading" || s.phase === "ready")) {
-    notes = document.createElement("div");
-    notes.className = "upd-notes";
-    notes.textContent = s.notes;
-  }
-
-  let bar = null;
-  if (s.phase === "downloading") {
-    const total = s.assetSize || 0;
-    const got = s.downloaded || 0;
-    const pct = total > 0 ? Math.min(100, Math.round((got / total) * 100)) : 0;
-    bar = document.createElement("div");
-    bar.className = "upd-bar";
-    const fill = document.createElement("i");
-    fill.style.width = pct + "%";
-    bar.append(fill);
-  }
-
-  let errLine = null;
-  if (s.error && s.phase !== "error") {
-    errLine = document.createElement("div");
-    errLine.className = "upd-state bad";
-    errLine.textContent = s.error;
-  }
-
-  const acts = document.createElement("div");
-  acts.className = "upd-acts";
-  const add = (label, primary, fn) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "btn" + (primary ? " btn-primary" : "");
-    b.textContent = label;
-    b.addEventListener("click", () => fn(b));
-    acts.append(b);
-    return b;
-  };
-  switch (s.phase) {
-    case "idle":
-    case "up_to_date":
-      add("检查更新", true, (b) => updateInvoke(b, f.check_command));
-      break;
-    case "checking":
-      add("检测中…", true, () => {}).disabled = true;
-      break;
-    case "installing":
-      break;
-    case "available":
-      if (s.url) add("打开发布页", false, (b) => updateInvoke(b, f.open_command));
-      add("下载并安装", true, (b) => updateInvoke(b, f.download_command));
-      break;
-    case "downloading":
-      add("取消下载", false, (b) => updateInvoke(b, f.cancel_command));
-      break;
-    case "ready":
-      if (s.url) add("打开发布页", false, (b) => updateInvoke(b, f.open_command));
-      add("立即安装", true, (b) => requestInstall(b, f));
-      break;
-    case "error":
-      if (s.url) add("打开发布页", false, (b) => updateInvoke(b, f.open_command));
-      add("重试", true, (b) => updateInvoke(b, f.check_command));
-      break;
-    default:
-      break;
-  }
-
-  // 「检查更新」和状态文案同一行；检测中保持按钮可见，只换成「检测中…」并禁用。
-  if (s.phase === "idle" || s.phase === "up_to_date" || s.phase === "checking") {
-    const row = document.createElement("div");
-    row.className = "upd-line";
-    row.append(line, acts);
-    box.append(row);
-    if (errLine) box.append(errLine);
-  } else {
-    box.append(line);
-    if (errLine) box.append(errLine);
-    if (notes) box.append(notes);
-    if (bar) box.append(bar);
-    if (acts.childNodes.length) box.append(acts);
+      renderAboutUpdate();
+    }
+  } catch (e) {
+    showToast(errText(e), "bad");
+    try {
+      updateState = await invoke("update_state");
+      renderUpdateBadge();
+      renderAboutUpdate();
+    } catch {
+      /* 拉不到就保持原样 */
+    }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
-function updateStateText(s) {
+function aboutUpdateStatusText(s) {
+  if (!s) return "正在读取更新状态…";
   switch (s.phase) {
     case "idle":
       return s.lastCheck
@@ -1874,7 +1772,7 @@ function updateStateText(s) {
         (total > 0 ? " / " + fmtSize(total) + "（" + pct + "%）" : "");
     }
     case "ready":
-      return "安装包已就绪。";
+      return "安装包已就绪，点击「立即更新」。";
     case "installing":
       return "正在启动安装程序…";
     case "error":
@@ -1884,53 +1782,107 @@ function updateStateText(s) {
   }
 }
 
-function fmtSize(n) {
-  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
-  if (n >= 1024) return Math.round(n / 1024) + " KB";
-  return n + " B";
-}
+function renderAboutUpdate() {
+  const box = aboutUpdateBlock;
+  if (!box || !box.isConnected) return;
+  const info = aboutInfoCache;
+  if (!info) return;
+  const s = updateState;
+  box.textContent = "";
 
-async function updateInvoke(btn, cmd) {
-  if (btn) btn.disabled = true;
-  try {
-    const s = await invoke(cmd);
-    if (s && s.phase) {
-      updateState = s;
-      renderUpdateBadge();
-      renderUpdatePanel();
-    }
-  } catch (e) {
-    showToast(errText(e), "bad");
-    // 失败后拉一次真实状态，避免按钮停在旧 phase。
-    try {
-      if (updatePanel) {
-        updateState = await invoke(updatePanel.field.status_command);
-        renderUpdateBadge();
-        renderUpdatePanel();
-      }
-    } catch {
-      /* 拉不到就保持原样 */
-    }
-  } finally {
-    if (btn) btn.disabled = false;
+  const status = document.createElement("div");
+  status.className = "upd-state" + (s && s.phase === "error" ? " bad" : "");
+  status.textContent = aboutUpdateStatusText(s);
+  box.append(status);
+
+  if (s && s.phase === "downloading") {
+    const total = s.assetSize || 0;
+    const got = s.downloaded || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((got / total) * 100)) : 0;
+    const bar = document.createElement("div");
+    bar.className = "upd-bar";
+    const fill = document.createElement("i");
+    fill.style.width = pct + "%";
+    bar.append(fill);
+    box.append(bar);
+  }
+
+  if (s && s.required && s.minVersion) {
+    const need = document.createElement("div");
+    need.className = "upd-required";
+    need.textContent = "立即更新：最低版本 " + s.minVersion;
+    box.append(need);
+  }
+
+  const acts = document.createElement("div");
+  acts.className = "about-actions";
+  const addBtn = (label, primary, disabled, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn" + (primary ? " btn-primary" : "");
+    b.textContent = label;
+    if (disabled) b.disabled = true;
+    else b.addEventListener("click", () => fn(b));
+    acts.append(b);
+  };
+  const phase = s ? s.phase : "idle";
+  switch (phase) {
+    case "checking":
+      addBtn("检测中…", true, true, () => {});
+      break;
+    case "available":
+      addBtn("下载并安装", true, false, (b) => updateInvoke(b, info.update.download));
+      break;
+    case "downloading":
+      addBtn("取消下载", false, false, (b) => updateInvoke(b, info.update.cancel));
+      break;
+    case "ready":
+      addBtn("立即更新", true, false, (b) => requestInstallCmd(b, info.update.install));
+      break;
+    case "installing":
+      addBtn("正在启动安装程序…", true, true, () => {});
+      break;
+    case "error":
+      addBtn("重试", true, false, (b) => updateInvoke(b, info.update.check));
+      break;
+    default:
+      addBtn("检查更新", true, false, (b) => updateInvoke(b, info.update.check));
+      break;
+  }
+
+  const diag = document.createElement("button");
+  diag.type = "button";
+  diag.className = "btn";
+  diag.textContent = "复制诊断信息";
+  diag.addEventListener("click", (e) => aboutCopyDiagnostics(e.currentTarget, info));
+  const dir = document.createElement("button");
+  dir.type = "button";
+  dir.className = "btn";
+  dir.textContent = "打开日志目录";
+  dir.addEventListener("click", () => aboutOpenDir(info));
+  acts.append(diag, dir);
+  box.append(acts);
+
+  if (s && s.notes && (s.phase === "available" || s.phase === "downloading" || s.phase === "ready")) {
+    const details = document.createElement("details");
+    details.className = "about-update-notes";
+    const summary = document.createElement("summary");
+    summary.textContent = "更新说明";
+    const body = document.createElement("div");
+    body.className = "upd-notes";
+    body.textContent = s.notes;
+    details.append(summary, body);
+    box.append(details);
   }
 }
 
-/// 安装会关闭 Vexto；有未保存改动时先走既有的三出口确认框。
-function requestInstall(btn, f) {
+function requestInstallCmd(btn, cmd) {
   if (pendingCount() > 0) {
-    showDirtyModal({ kind: "update", cmd: f.install_command });
+    showDirtyModal({ kind: "update", cmd });
     return;
   }
-  updateInvoke(btn, f.install_command);
+  updateInvoke(btn, cmd);
 }
-
-// ── 侧栏「发现新版本」提示 ──────────────────────────────────────────────
-//
-// 只在后端的 phase=available 时出现；点击跳到「关于」并滚到更新面板。
-// 有未保存改动时交给既有的三出口确认框，保存/放弃后再滚。
-
-let updateJumpPending = false;
 
 function renderUpdateBadge() {
   const badge = el("update-badge");
@@ -1964,22 +1916,192 @@ function renderUpdateBadge() {
   }
 }
 
-function scrollToUpdatePanel() {
+function scrollToAboutUpdate() {
   if (!updateJumpPending) return;
-  if (!updatePanel || !updatePanel.box || !updatePanel.box.isConnected) return;
+  if (!aboutUpdateBlock || !aboutUpdateBlock.isConnected) return;
   updateJumpPending = false;
-  updatePanel.box.scrollIntoView({ block: "center", behavior: "smooth" });
+  aboutUpdateBlock.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
 async function jumpToUpdate() {
   updateJumpPending = true;
   if (state.toolId === "about") {
-    scrollToUpdatePanel();
+    scrollToAboutUpdate();
     return;
   }
   await selectTool("about", { keepBanner: true });
-  // selectTool 在未保存改动时会弹确认框并提前返回；那时由 runIntent
-  // 再次调用 selectTool，结束时再滚。
+}
+
+// ── 关于页（富内容）─────────────────────────────────────────────────────
+//
+// 内容全部来自后端 about_info：品牌 / 简介 / 功能卡 / 链接 / 许可证 / 组件表。
+// 前端只按 part 渲染，不在 JS 里写业务文案（ADR-015 的口径）。
+
+let aboutInfoCache = null;
+let aboutInfoPromise = null;
+
+function loadAboutInfo(f) {
+  if (aboutInfoCache) return Promise.resolve(aboutInfoCache);
+  if (!aboutInfoPromise) {
+    aboutInfoPromise = invoke(f.data_command)
+      .then((info) => {
+        aboutInfoCache = info;
+        return info;
+      })
+      .catch((e) => {
+        aboutInfoPromise = null;
+        throw e;
+      });
+  }
+  return aboutInfoPromise;
+}
+
+function fieldAbout(f) {
+  const w = wrapField(f, "about");
+  const box = document.createElement("div");
+  box.className = "about-page";
+  w.append(box);
+  loadAboutInfo(f)
+    .then((info) => {
+      if (!box.isConnected) return;
+      renderAboutPart(box, info, f.part);
+    })
+    .catch((e) => {
+      box.textContent = "读取关于信息失败：" + errText(e);
+    });
+  return w;
+}
+
+function aboutEl(tag, className, text) {
+  const n = document.createElement(tag);
+  if (className) n.className = className;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+function aboutIcon(name, size) {
+  const span = document.createElement("span");
+  span.className = "about-feature-icon";
+  if (name && Icons.has(name)) {
+    span.innerHTML = Icons.svg(name, size || 20);
+  } else {
+    span.textContent = "·";
+  }
+  return span;
+}
+
+function renderAboutPart(box, info, part) {
+  if (part === "legal") {
+    renderAboutLegal(box, info);
+    return;
+  }
+
+  const hero = aboutEl("div", "about-hero");
+  const logo = aboutEl("span", "about-logo logo-mask");
+  const titleBox = document.createElement("div");
+  const nameRow = aboutEl("div", "about-name-row");
+  nameRow.append(aboutEl("h1", "about-name", info.name));
+  nameRow.append(aboutEl("span", "about-version", "v" + info.version));
+  titleBox.append(nameRow, aboutEl("div", "about-subtitle", info.subtitle));
+  hero.append(logo, titleBox);
+  box.append(hero);
+
+  box.append(aboutEl("p", "about-intro", info.intro));
+
+  const grid = aboutEl("div", "about-features");
+  for (const feat of info.features || []) {
+    const card = aboutEl("div", "about-feature");
+    const body = document.createElement("div");
+    body.append(aboutEl("div", "about-feature-title", feat.title));
+    body.append(aboutEl("div", "about-feature-desc", feat.desc));
+    card.append(aboutIcon(feat.icon, 20), body);
+    grid.append(card);
+  }
+  box.append(grid);
+
+  const links = aboutEl("div", "about-links");
+  for (const link of info.links || []) {
+    const b = aboutEl("button", "about-link", link.label);
+    b.type = "button";
+    b.addEventListener("click", () => {
+      invoke(info.openLinkCommand, { kind: link.id })
+        .catch((e) => showToast(errText(e), "bad"));
+    });
+    links.append(b);
+  }
+  box.append(links);
+
+  // 更新状态 / 进度 / 按钮放在品牌区下方；「更新」卡片只保留下载线路。
+  const updateBox = aboutEl("div", "about-update-block");
+  box.append(updateBox);
+  aboutUpdateBlock = updateBox;
+  renderAboutUpdate();
+  // 从侧栏提示跳过来时，块刚渲染完才滚得动。
+  scrollToAboutUpdate();
+}
+
+function renderAboutLegal(box, info) {
+  box.append(aboutEl("hr", "about-divider"));
+  box.append(aboutEl("h2", "about-section-title", "开源许可"));
+  box.append(aboutEl("p", "about-text", info.license));
+  box.append(aboutEl("p", "about-text about-attribution", info.attribution));
+
+  const licenseActs = aboutEl("div", "about-actions");
+  const view = aboutEl("button", "btn", "查看许可证全文");
+  view.type = "button";
+  view.addEventListener("click", () => {
+    invoke(info.openLinkCommand, { kind: "license" })
+      .catch((e) => showToast(errText(e), "bad"));
+  });
+  licenseActs.append(view);
+  box.append(licenseActs);
+
+  const details = document.createElement("details");
+  details.className = "about-components";
+  details.open = true;
+  const summary = document.createElement("summary");
+  summary.append(aboutEl("span", null, "第三方开源组件"));
+  summary.append(aboutEl("span", "about-chevron"));
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  for (const h of ["组件", "版本", "许可证"]) hr.append(aboutEl("th", null, h));
+  thead.append(hr);
+  const tbody = document.createElement("tbody");
+  for (const c of info.components || []) {
+    const tr = document.createElement("tr");
+    tr.append(aboutEl("td", null, c.name));
+    tr.append(aboutEl("td", null, c.version));
+    tr.append(aboutEl("td", null, c.license));
+    tbody.append(tr);
+  }
+  table.append(thead, tbody);
+  details.append(summary, table);
+  box.append(details);
+
+  box.append(aboutEl("footer", "about-footer", info.footer));
+}
+
+async function aboutCopyDiagnostics(btn, info) {
+  btn.disabled = true;
+  try {
+    const text = await invoke(info.diagnosticsCommand);
+    await invoke("copy_text", { text });
+    showToast("已复制诊断信息");
+  } catch (e) {
+    showToast(errText(e), "bad");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function aboutOpenDir(info) {
+  try {
+    const res = await invoke(info.openDirCommand);
+    if (res && res.ok === false) showToast(res.message || "打开目录失败", "bad");
+  } catch (e) {
+    showToast(errText(e), "bad");
+  }
 }
 
 // ── 启动 ─────────────────────────────────────────────────────────────────
@@ -2051,28 +2173,34 @@ async function boot() {
   await listen("update:state", (ev) => {
     updateState = ev && ev.payload;
     renderUpdateBadge();
-    renderUpdatePanel();
+    renderAboutUpdate();
   });
 
-  // 首屏也拉一次：没有事件时侧栏提示和面板也能显示当前状态。
+  // 首屏也拉一次：没有事件时侧栏提示和关于页更新区也能显示当前状态。
   invoke("update_state")
     .then((s) => {
       updateState = s;
       renderUpdateBadge();
-      renderUpdatePanel();
+      renderAboutUpdate();
     })
     .catch(() => {});
-  el("update-badge").addEventListener("click", () => {
+  el("update-badge").addEventListener("click", async () => {
     const s = updateState;
-    const cmd = updateFieldSchema && updateFieldSchema.install_command;
-    if (s && s.phase === "ready" && cmd) {
-      // 安装包已就绪：侧栏按钮直接启动安装；未保存改动先确认。
-      if (pendingCount() > 0) {
-        showDirtyModal({ kind: "update", cmd });
+    if (s && s.phase === "ready") {
+      let info = aboutInfoCache;
+      if (!info && aboutFieldSchema) {
+        info = await loadAboutInfo(aboutFieldSchema).catch(() => null);
+      }
+      const cmd = info && info.update && info.update.install;
+      if (cmd) {
+        // 安装包已就绪：侧栏按钮直接启动安装；未保存改动先确认。
+        if (pendingCount() > 0) {
+          showDirtyModal({ kind: "update", cmd });
+          return;
+        }
+        updateInvoke(null, cmd);
         return;
       }
-      updateInvoke(null, cmd);
-      return;
     }
     jumpToUpdate();
   });

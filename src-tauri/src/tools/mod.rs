@@ -107,7 +107,11 @@ pub enum FieldKind {
     ButtonRow {
         actions: &'static [(&'static str, &'static str)],
     },
-    /// 纯说明文字，没有值。文案在 `text` 里
+    /// 纯说明文字，没有值。文案在 `text` 里。
+    ///
+    /// 关于页改用富内容字段后暂时没有工具使用它，但它是设置 schema 的通用类型，
+    /// 留给后续工具的说明行；不对它做 dead_code 清理。
+    #[allow(dead_code)]
     Note {
         text: &'static str,
     },
@@ -138,15 +142,11 @@ pub enum FieldKind {
         #[serde(skip_serializing_if = "Option::is_none")]
         test_action: Option<&'static str>,
     },
-    /// 应用更新面板（会话 82）。不存配置值；六条命令名由后端给出，
-    /// 前端只按后端推送的 phase 渲染，不认识「更新」这件事的业务细节。
-    Update {
-        status_command: &'static str,
-        check_command: &'static str,
-        download_command: &'static str,
-        cancel_command: &'static str,
-        install_command: &'static str,
-        open_command: &'static str,
+    /// 关于页的富内容块（会话 87）。`part` = `top`（品牌 / 功能 / 链接 / 操作）
+    /// 或 `legal`（许可证 / 第三方组件 / 页脚）；内容由 `data_command` 返回。
+    About {
+        data_command: &'static str,
+        part: &'static str,
     },
 }
 
@@ -335,22 +335,31 @@ impl Field {
     }
 
     /// 纯说明文字。没有 key（用文案本身当 DOM id），文案放在 `kind.text` 里。
+    #[allow(dead_code)]
     pub fn note(text: &'static str) -> Self {
         Self::new(text, "", FieldKind::Note { text })
     }
 
-    /// 应用更新面板。命令名集中在这里，前端不写死。
-    pub fn update(key: &'static str, label: &'static str) -> Self {
+    /// 关于页上半部分：品牌、简介、功能卡片、链接与操作。
+    pub fn about_top(key: &'static str, label: &'static str) -> Self {
         Self::new(
             key,
             label,
-            FieldKind::Update {
-                status_command: "update_state",
-                check_command: "update_check",
-                download_command: "update_download",
-                cancel_command: "update_cancel",
-                install_command: "update_install",
-                open_command: "update_open_release",
+            FieldKind::About {
+                data_command: "about_info",
+                part: "top",
+            },
+        )
+    }
+
+    /// 关于页下半部分：许可证、第三方组件与页脚。
+    pub fn about_legal(key: &'static str, label: &'static str) -> Self {
+        Self::new(
+            key,
+            label,
+            FieldKind::About {
+                data_command: "about_info",
+                part: "legal",
             },
         )
     }
@@ -464,6 +473,11 @@ pub trait Tool: Send + Sync {
     /// 默认绿；服务启动失败这类必须红的，由工具自己覆盖。
     fn status_kind(&self) -> &'static str {
         "ok"
+    }
+    /// 是否隐藏设置页右侧的通用页头（工具名 / 说明 / 状态行）。
+    /// 「关于」改用品牌区展示，其他工具默认显示。
+    fn hide_header(&self) -> bool {
+        false
     }
     /// 设置项分组。多数工具返回一个 Section，翻译返回三个。
     fn sections(&self) -> Vec<Section>;

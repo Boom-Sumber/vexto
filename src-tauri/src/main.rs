@@ -69,6 +69,8 @@ struct ToolOut {
     status_line: String,
     /// 状态行颜色语义：ok 绿 / warn 黄 / error 红（会话 52）
     status_kind: &'static str,
+    /// 是否隐藏右侧通用页头（关于页用品牌区代替）
+    hide_header: bool,
     sections: Vec<tools::Section>,
 }
 
@@ -438,7 +440,7 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
                     | tools::FieldKind::Button
                     | tools::FieldKind::ButtonRow { .. }
                     | tools::FieldKind::Group { .. }
-                    | tools::FieldKind::Update { .. }
+                    | tools::FieldKind::About { .. }
             ) {
                 continue;
             }
@@ -1184,6 +1186,7 @@ fn list_tools() -> Vec<ToolOut> {
             switchable: t.switchable(),
             status_line: t.status_line(),
             status_kind: t.status_kind(),
+            hide_header: t.hide_header(),
             sections: t.sections(),
         })
         .collect()
@@ -1698,6 +1701,24 @@ fn open_config_dir() -> SimpleOut {
             message: format!("打开目录失败：{e}\n路径：{}", dir.display()),
         },
     }
+}
+
+/// 关于页内容：品牌、功能、链接、许可证、第三方组件。
+#[tauri::command]
+fn about_info() -> tools::about::AboutInfo {
+    tools::about::info()
+}
+
+/// 关于页外链：只接受固定 id，不接受任意 URL。
+#[tauri::command]
+fn about_open_link(kind: String) -> Result<(), String> {
+    tools::about::open_link(&kind)
+}
+
+/// 复制诊断信息：版本 / 系统 / 配置与日志路径 / 更新状态，不含凭据。
+#[tauri::command]
+fn about_diagnostics() -> String {
+    tools::about::diagnostics()
 }
 
 /// 设置页启动时调用：取走「应该跳到哪个工具」。
@@ -2631,6 +2652,9 @@ fn main() {
             open_config_dir,
             open_config_file,
             take_pending_tool,
+            about_info,
+            about_open_link,
+            about_diagnostics,
             config_path,
             hotkey_error,
             // 翻译弹窗 / 窗口首帧
@@ -2990,7 +3014,7 @@ mod tests {
                             | crate::tools::FieldKind::Button
                             | crate::tools::FieldKind::ButtonRow { .. }
                             | crate::tools::FieldKind::Group { .. }
-                            | crate::tools::FieldKind::Update { .. }
+                            | crate::tools::FieldKind::About { .. }
                     ) {
                         continue;
                     }
