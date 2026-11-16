@@ -124,7 +124,7 @@ fn show_popup(app: &AppHandle, payload: Value) {
 
 /// 给弹窗 payload 补上「多久自动关闭」。
 ///
-/// `popup_timeout_ms` 在「通用」里可以改，但 S1 起前端一直是硬编码 15000，
+/// `popup_timeout_ms` 在「常规」里可以改，但 S1 起前端一直是硬编码 15000，
 /// 这个配置从来没生效过。现在由后端统一塞进去，前端只负责用——
 /// 配置在后端、行为也在后端驱动，前端不该自己猜一个数。
 fn with_timeout(mut payload: Value, cfg: &config::Config) -> Value {
@@ -1342,6 +1342,18 @@ fn save_tool_config(
         );
     }
 
+    // 截图命名规则先校验：非法规则一个字节都不写进配置，
+    // 否则用户会以为保存成功、截图却换了名字或直接失败（会话 81）。
+    if let Some(Value::String(rule)) = patch.get("screenshot_name_rule") {
+        if let Err(e) = crate::screenshot::output::render_name(rule) {
+            return SaveOut {
+                ok: false,
+                message: e,
+                warnings,
+            };
+        }
+    }
+
     // 3) 目录字段：不存在就提示（不阻塞保存，用户可能马上就要去建）
     for k in ["download_dir", "receive_dir", "screenshot_dir"] {
         if let Some(Value::String(s)) = patch.get(k) {
@@ -1694,7 +1706,7 @@ fn take_pending_tool() -> Option<String> {
 
 /// 打开 `config.json` 本身（用系统默认程序，通常是记事本 / VS Code）。
 ///
-/// 用户 m02639 要求把侧栏那行配置路径移进「通用」，并加一个按钮直接打开文件。
+/// 用户 m02639 要求把侧栏那行配置路径移进「常规」，并加一个按钮直接打开文件。
 /// 文件不存在时先写一份默认配置出来，否则点按钮只会弹一个「找不到文件」。
 #[tauri::command]
 fn open_config_file() -> SimpleOut {
@@ -2483,6 +2495,12 @@ fn transfer_pick_files() -> Result<Vec<String>, String> {
     fileops::pick_files()
 }
 
+/// 预览截图命名规则生成的示例文件名（设置页「预览」按钮）。
+#[tauri::command]
+fn preview_screenshot_name(rule: String) -> Result<String, String> {
+    crate::screenshot::output::render_name(&rule)
+}
+
 /// 主窗口加载时取预选视图（托盘「局域网互传…」用）。
 #[tauri::command]
 fn transfer_take_view() -> Option<String> {
@@ -2634,6 +2652,7 @@ fn main() {
             feedback_close,
             shot_full,
             shot_window,
+            preview_screenshot_name,
             // 滚动截图（S7 会话 62）
             scroll_start,
             scroll_stop,

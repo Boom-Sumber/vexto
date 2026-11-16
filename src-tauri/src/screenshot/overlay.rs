@@ -96,7 +96,7 @@ pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome
         "save_as" => {
             let dir = output::resolve_dir(cfg);
             let _ = std::fs::create_dir_all(&dir);
-            let def = output::next_png_path(&dir);
+            let def = output::next_png_path(&dir, cfg);
             match crate::fileops::pick_save_png(&def)? {
                 Some(dst) => {
                     crate::fileops::move_file(&src, &dst)?;
@@ -116,7 +116,7 @@ pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome
             }
         }
         "save" => {
-            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg), cfg)?;
             Ok(preview::ActionOutcome {
                 pin_label: None,
                 message: format!("已保存（{w}×{h}）：{}", dst.display()),
@@ -125,7 +125,7 @@ pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome
             })
         }
         "path" => {
-            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg), cfg)?;
             if let Err(e) = output::copy_path(&dst) {
                 return Err(format!(
                     "已保存（{w}×{h}）到 {}，但复制路径失败：{e}",
@@ -153,7 +153,7 @@ pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome
             })
         }
         "default" => {
-            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg))?;
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg), cfg)?;
             let after = cfg.screenshot_after_action.trim();
             let mut message = format!("已保存（{w}×{h}）：{}", dst.display());
             if matches!(after, "both" | "path") {
@@ -333,7 +333,7 @@ pub fn apply(
             let tmp = staged_crop(&src, sx, sy, sw, sh)?;
             let dir = output::resolve_dir(&cfg);
             let _ = std::fs::create_dir_all(&dir);
-            let def = output::next_png_path(&dir);
+            let def = output::next_png_path(&dir, &cfg);
             match crate::fileops::pick_save_png(&def)? {
                 Some(dst) => {
                     crate::fileops::move_file(&tmp, &dst)?;
@@ -358,7 +358,7 @@ pub fn apply(
         "save" => {
             let dir = output::resolve_dir(&cfg);
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败：{e}"))?;
-            let dst = output::next_png_path(&dir);
+            let dst = output::next_png_path(&dir, &cfg);
             let (ow, oh) = preview::crop_region_png(&src, &dst, sx, sy, sw, sh)?;
             Ok(preview::ActionOutcome {
                 pin_label: None,
@@ -370,7 +370,7 @@ pub fn apply(
         "path" => {
             let dir = output::resolve_dir(&cfg);
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败：{e}"))?;
-            let dst = output::next_png_path(&dir);
+            let dst = output::next_png_path(&dir, &cfg);
             let (ow, oh) = preview::crop_region_png(&src, &dst, sx, sy, sw, sh)?;
             if let Err(e) = output::copy_path(&dst) {
                 return Err(format!("已保存（{ow}×{oh}）到 {}，但复制路径失败：{e}", dst.display()));

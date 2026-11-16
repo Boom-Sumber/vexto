@@ -238,7 +238,7 @@ pub fn save_as_current(label: &str) -> Result<String, String> {
     let cfg = crate::config::load();
     let dir = output::resolve_dir(&cfg);
     let _ = std::fs::create_dir_all(&dir);
-    let def = output::next_png_path(&dir);
+    let def = output::next_png_path(&dir, &cfg);
     let Some(dst) = crate::fileops::pick_save_png(&def)? else {
         return Ok("已取消保存".into());
     };

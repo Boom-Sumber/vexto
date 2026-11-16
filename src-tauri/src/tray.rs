@@ -4,109 +4,36 @@
 //! 划词翻译 / 输入翻译 / 截图（全屏、区域、活动窗口）/ 任务窗口（下载、互传）/
 //! 设置 / 重启应用 / 退出程序。
 //!
-//! 菜单项 = 固定文案 + 图标；没有「…」后缀。工具配置统一从「设置」进。
+//! 菜单项 = 固定文案 + **透明占位图标**（会话 81 用户要求去掉可见图标）。
+//! 保留占位是为了让文字统一缩进——Windows 原生菜单只有在「有图标列」时才会
+//! 给文字留出左侧间距；完全去掉图标会让文字贴到左边缘。占位图透明，视觉上
+//! 看不到任何图标。
+//!
 //! 菜单 id 约定：叶子项用固定字符串，子菜单只是容器。
 
 use crate::QUITTING;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::menu::{IconMenuItem, Menu, PredefinedMenuItem, Submenu};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::AppHandle;
 
 /// 翻译 / 输入翻译两项在工具停用时置灰。
 static TRANSLATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
 static INPUT_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
 
-// 20×20 菜单图标（透明底，黑白两套，按系统菜单明暗自动选）。
-// 源图在 src-tauri/icons/menu/{light,dark}/；用户提供的 SVG 按菜单文本色重绘。
-struct IconSet {
-    translate: &'static [u8],
-    input: &'static [u8],
-    shot_full: &'static [u8],
-    shot_region: &'static [u8],
-    shot_window: &'static [u8],
-    download: &'static [u8],
-    transfer: &'static [u8],
-    settings: &'static [u8],
-    restart: &'static [u8],
-    quit: &'static [u8],
+/// 20×20 全透明占位图：只为撑出菜单的文字缩进。
+fn spacer() -> Option<tauri::image::Image<'static>> {
+    Some(tauri::image::Image::new_owned(vec![0; 20 * 20 * 4], 20, 20))
 }
 
-const LIGHT: IconSet = IconSet {
-    translate: include_bytes!("../icons/menu/light/translate.png"),
-    input: include_bytes!("../icons/menu/light/input.png"),
-    shot_full: include_bytes!("../icons/menu/light/shot-full.png"),
-    shot_region: include_bytes!("../icons/menu/light/shot-region.png"),
-    shot_window: include_bytes!("../icons/menu/light/shot-window.png"),
-    download: include_bytes!("../icons/menu/light/download.png"),
-    transfer: include_bytes!("../icons/menu/light/transfer.png"),
-    settings: include_bytes!("../icons/menu/light/settings.png"),
-    restart: include_bytes!("../icons/menu/light/restart.png"),
-    quit: include_bytes!("../icons/menu/light/quit.png"),
-};
-
-const DARK: IconSet = IconSet {
-    translate: include_bytes!("../icons/menu/dark/translate.png"),
-    input: include_bytes!("../icons/menu/dark/input.png"),
-    shot_full: include_bytes!("../icons/menu/dark/shot-full.png"),
-    shot_region: include_bytes!("../icons/menu/dark/shot-region.png"),
-    shot_window: include_bytes!("../icons/menu/dark/shot-window.png"),
-    download: include_bytes!("../icons/menu/dark/download.png"),
-    transfer: include_bytes!("../icons/menu/dark/transfer.png"),
-    settings: include_bytes!("../icons/menu/dark/settings.png"),
-    restart: include_bytes!("../icons/menu/dark/restart.png"),
-    quit: include_bytes!("../icons/menu/dark/quit.png"),
-};
-
-/// 系统菜单当前是浅色还是深色。菜单图标必须跟菜单文字同色，所以不能固定用
-/// 品牌色；Windows 把这项存在 `AppsUseLightTheme` 里。
-fn system_menu_is_light() -> bool {
-    #[cfg(windows)]
-    {
-        use windows::core::w;
-        use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-        let mut value: u32 = 0;
-        let mut size = std::mem::size_of::<u32>() as u32;
-        let rc = unsafe {
-            RegGetValueW(
-                HKEY_CURRENT_USER,
-                w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
-                w!("AppsUseLightTheme"),
-                RRF_RT_REG_DWORD,
-                None,
-                Some(&mut value as *mut u32 as *mut core::ffi::c_void),
-                Some(&mut size),
-            )
-        };
-        rc.0 == 0 && value != 0
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
-}
-
-fn icons() -> &'static IconSet {
-    if system_menu_is_light() {
-        &LIGHT
-    } else {
-        &DARK
-    }
-}
-
-fn menu_icon(bytes: &'static [u8]) -> Option<tauri::image::Image<'static>> {
-    tauri::image::Image::from_bytes(bytes).ok()
-}
-
-fn icon_item(
+fn item(
     app: &AppHandle,
     id: &str,
     text: &str,
     enabled: bool,
-    bytes: &'static [u8],
 ) -> tauri::Result<IconMenuItem<tauri::Wry>> {
-    IconMenuItem::with_id(app, id, text, enabled, menu_icon(bytes), None::<&str>)
+    IconMenuItem::with_id(app, id, text, enabled, spacer(), None::<&str>)
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
@@ -114,15 +41,14 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .map(|t| t.enabled())
         .unwrap_or(true);
 
-    let ic = icons();
-    let translate = icon_item(app, "translate", "划词翻译", translate_on, ic.translate)?;
-    let input = icon_item(app, "input_translate", "输入翻译", translate_on, ic.input)?;
+    let translate = item(app, "translate", "划词翻译", translate_on)?;
+    let input = item(app, "input_translate", "输入翻译", translate_on)?;
     *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate.clone());
     *INPUT_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(input.clone());
 
-    let shot_full = icon_item(app, "shot-full", "全屏截图", true, ic.shot_full)?;
-    let shot_region = icon_item(app, "shot-region", "区域截图", true, ic.shot_region)?;
-    let shot_window = icon_item(app, "shot-window", "活动窗口截图", true, ic.shot_window)?;
+    let shot_full = item(app, "shot-full", "全屏截图", true)?;
+    let shot_region = item(app, "shot-region", "区域截图", true)?;
+    let shot_window = item(app, "shot-window", "活动窗口截图", true)?;
     let shot_menu = Submenu::with_items(
         app,
         "截图",
@@ -130,13 +56,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         &[&shot_full, &shot_region, &shot_window],
     )?;
 
-    let downloads = icon_item(app, "downloads", "下载", true, ic.download)?;
-    let transfer = icon_item(app, "transfer", "互传", true, ic.transfer)?;
+    let downloads = item(app, "downloads", "下载", true)?;
+    let transfer = item(app, "transfer", "互传", true)?;
     let task_menu = Submenu::with_items(app, "任务窗口", true, &[&downloads, &transfer])?;
 
-    let settings = icon_item(app, "settings", "设置", true, ic.settings)?;
-    let restart = icon_item(app, "restart", "重启应用", true, ic.restart)?;
-    let quit = icon_item(app, "quit", "退出程序", true, ic.quit)?;
+    let settings = item(app, "settings", "设置", true)?;
+    let restart = item(app, "restart", "重启应用", true)?;
+    let quit = item(app, "quit", "退出程序", true)?;
 
     let separator = PredefinedMenuItem::separator(app)?;
     let items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
@@ -185,6 +111,32 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                     app.exit(0);
                 }
                 _ => {}
+            }
+        })
+        // 左键功能由设置决定（会话 81，默认打开设置页）。右键菜单不受影响：
+        // `show_menu_on_left_click(false)` 已经让左键不弹菜单。
+        .on_tray_icon_event(|tray, event| {
+            let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            else {
+                return;
+            };
+            let app = tray.app_handle().clone();
+            match crate::config::load().tray_left_click.trim() {
+                "tasks" => crate::open_download_window(&app),
+                "input" => crate::open_input_translate(app.clone()),
+                "screenshot" => {
+                    if crate::config::load().enable_screenshot {
+                        crate::popup::open_shot_overlay(&app);
+                    } else {
+                        crate::open_settings_at(&app, "screenshot");
+                    }
+                }
+                // settings / 空值 / 手改坏的值都回落到设置页
+                _ => crate::open_settings(&app),
             }
         });
 
@@ -253,25 +205,11 @@ pub fn set_translate_enabled(app: &AppHandle, on: bool) {
 mod tests {
     use super::*;
 
-    /// 打包前就确认黑白两套菜单图标都能被 Tauri 解码；坏一张会让整个托盘菜单变空白。
+    /// 占位图必须是 20×20 全透明：菜单文字靠它缩进，不能画出一个黑块。
     #[test]
-    fn menu_icons_decode() {
-        for set in [&LIGHT, &DARK] {
-            for (name, bytes) in [
-                ("translate", set.translate),
-                ("input", set.input),
-                ("shot-full", set.shot_full),
-                ("shot-region", set.shot_region),
-                ("shot-window", set.shot_window),
-                ("download", set.download),
-                ("transfer", set.transfer),
-                ("settings", set.settings),
-                ("restart", set.restart),
-                ("quit", set.quit),
-            ] {
-                let img = menu_icon(bytes).unwrap_or_else(|| panic!("菜单图标 {name} 解码失败"));
-                assert!(img.width() >= 16 && img.height() >= 16, "{name} 图标太小");
-            }
-        }
+    fn spacer_is_fully_transparent() {
+        let img = spacer().expect("占位图必须能创建");
+        assert_eq!((img.width(), img.height()), (20, 20));
+        assert!(img.rgba().iter().all(|b| *b == 0), "占位图必须全透明");
     }
 }

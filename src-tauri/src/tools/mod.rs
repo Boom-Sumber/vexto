@@ -59,6 +59,13 @@ pub enum FieldKind {
     },
     /// 密码/密钥，前端用 `type=password` 并给个「显示」眼睛
     Password,
+    /// 命名模板：文本框 + 格式预设（只替换 `$...$`）+ 预览按钮（会话 81）。
+    Template {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+        presets: &'static [(&'static str, &'static str)],
+        preview_command: &'static str,
+    },
     /// 数字，带上下限与单位
     Number {
         min: u32,
@@ -210,6 +217,29 @@ impl Field {
             FieldKind::Text {
                 placeholder: Some(placeholder.to_string()),
                 presets: Some(presets),
+            },
+        )
+    }
+
+    /// 命名模板：文本框 + 格式预设 + 预览。
+    ///
+    /// `presets` 的值是**占位符内容**（不是整条规则）：点一下只替换 `$...$`
+    /// 里的部分，用户自定义的前缀 / 后缀保持不变。`preview_command` 是后端
+    /// 命令名，前端把当前输入框内容作为 `rule` 传过去，返回一行示例文件名。
+    pub fn template(
+        key: &'static str,
+        label: &'static str,
+        placeholder: &'static str,
+        presets: &'static [(&'static str, &'static str)],
+        preview_command: &'static str,
+    ) -> Self {
+        Self::new(
+            key,
+            label,
+            FieldKind::Template {
+                placeholder: Some(placeholder.to_string()),
+                presets,
+                preview_command,
             },
         )
     }
@@ -396,7 +426,7 @@ pub trait Tool: Send + Sync {
     fn set_enabled(&self, on: bool) -> Result<(), String>;
     /// 设置页右上角是否显示「启用」开关。
     ///
-    /// 「通用」是配置容器、「关于」是只读信息，两者都**没有可停用的东西**。
+    /// 「常规」是配置容器、「关于」是只读信息，两者都**没有可停用的东西**。
     /// 以前是显示开关、点了再回滚 + 弹原因（讲道理但绕）；会话 25 用户要求
     /// 直接不显示——没有意义的选择不该出现在界面上。
     fn switchable(&self) -> bool {

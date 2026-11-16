@@ -6,6 +6,14 @@ use crate::config;
 
 pub struct Screenshot;
 
+/// 命名规则里的 `$...$` 可填的格式。点一下只替换占位符内容，
+/// 用户输入的前缀 / 后缀（如 `Vexto_`、`.png`）保持不变。
+pub const NAME_PRESETS: &[(&str, &str)] = &[
+    ("日期时间", "yyyyMMdd_HHmmss"),
+    ("UUID", "uuid"),
+    ("Unix 时间戳(秒)", "unix"),
+];
+
 impl Tool for Screenshot {
     fn id(&self) -> &'static str {
         "screenshot"
@@ -49,6 +57,14 @@ impl Tool for Screenshot {
                 vec![
                     Field::switch("enable_screenshot", "启用截图"),
                     Field::dir("screenshot_dir", "保存目录").wide(),
+                    Field::template(
+                        "screenshot_name_rule",
+                        "截图命名规则",
+                        "Vexto_$yyyyMMdd_HHmmss$.png",
+                        NAME_PRESETS,
+                        "preview_screenshot_name",
+                    )
+                    .wide(),
                     Field::number_unit("screenshot_border_width", "选框边框宽度", 3, 5, "px"),
                     Field::number_unit("screenshot_magnifier_zoom", "放大镜倍数", 2, 10, "×"),
                     Field::number_unit("screenshot_feedback_seconds", "缩略图显示时长", 3, 5, "秒"),

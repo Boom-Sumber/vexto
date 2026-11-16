@@ -325,6 +325,8 @@ function renderField(f) {
       return fieldInput(f, "text");
     case "password":
       return fieldInput(f, "password");
+    case "template":
+      return fieldTemplate(f);
     case "dir":
       // S2 先用文本框填完整路径，原生目录选择器留到后续会话（用户 m02150 定）。
       return fieldInput(f, "text", f.placeholder || "例如 D:\\Downloads");
@@ -1016,8 +1018,94 @@ function fieldInput(f, inputType) {
   return w;
 }
 
-function fieldNumber(f) {
+/// 命名模板：文本框 + 格式预设 + 预览（会话 81）。
+///
+/// 预设按钮只替换 `$...$` 里的格式，保留用户自己写的前缀 / 后缀：
+/// `Vexto_$yyyyMMdd_HHmmss$.png` 点 UUID → `Vexto_$uuid$.png`。
+/// 预览走 `preview_command`（后端渲染真实时间 / UUID），结果显示在按钮旁边。
+function fieldTemplate(f) {
   const [w, ctrl] = fieldRow(f);
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.value = val(f.key) == null ? "" : String(val(f.key));
+  if (f.placeholder) inp.placeholder = f.placeholder;
+  inp.spellcheck = false;
+  inp.autocomplete = "off";
+  ctrl.append(inp);
+
+  const out = document.createElement("div");
+  out.className = "tpl-preview hidden";
+
+  const applyToken = (token) => {
+    const cur = inp.value;
+    const m = /\$[^$]*\$/.exec(cur);
+    let next;
+    if (m) {
+      next = cur.slice(0, m.index) + "$" + token + "$" + cur.slice(m.index + m[0].length);
+    } else {
+      const ext = /\.png$/i.exec(cur);
+      next = ext
+        ? cur.slice(0, ext.index) + "$" + token + "$" + cur.slice(ext.index)
+        : cur + "$" + token + "$";
+    }
+    inp.value = next;
+    out.classList.add("hidden");
+    commit(f.key, next);
+  };
+
+  if (Array.isArray(f.presets) && f.presets.length) {
+    const row = document.createElement("div");
+    row.className = "presets";
+    for (const [name, token] of f.presets) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "preset-btn";
+      b.textContent = name;
+      b.title = "$" + token + "$";
+      b.addEventListener("click", () => applyToken(token));
+      row.append(b);
+    }
+    ctrl.append(row);
+  }
+
+  if (f.preview_command) {
+    const row = document.createElement("div");
+    row.className = "tpl-preview-row";
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn";
+    b.textContent = "预览";
+    const run = async () => {
+      b.disabled = true;
+      try {
+        const name = await invoke(f.preview_command, { rule: inp.value });
+        out.textContent = "示例：" + name;
+        out.classList.remove("bad");
+      } catch (e) {
+        out.textContent = errText(e);
+        out.classList.add("bad");
+      } finally {
+        out.classList.remove("hidden");
+        b.disabled = false;
+      }
+    };
+    b.addEventListener("click", run);
+    row.append(b, out);
+    ctrl.append(row);
+  }
+
+  inp.addEventListener("input", () => out.classList.add("hidden"));
+  inp.addEventListener("blur", () => commit(f.key, inp.value.trim()));
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inp.blur();
+    }
+  });
+  return w;
+}
+
+function fieldNumber(f) {  const [w, ctrl] = fieldRow(f);
 
   const row = document.createElement("div");
   row.className = "num-row" + (f.unit ? " has-unit" : "");

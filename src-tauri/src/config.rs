@@ -209,6 +209,10 @@ pub struct Config {
     /// 截图保存目录。留空 = 系统「图片」下的 Vexto 子目录。
     #[serde(default)]
     pub screenshot_dir: String,
+    /// 截图文件名规则。`$...$` 里是格式占位（`yyyyMMdd_HHmmss` / `uuid` / `unix`），
+    /// 其余部分是用户自定义的前缀 / 后缀。默认 `Vexto_$yyyyMMdd_HHmmss$.png`。
+    #[serde(default = "d_screenshot_name_rule")]
+    pub screenshot_name_rule: String,
     /// 截图后的动作：`both`（复制图片并保存）/ `clipboard` / `path`（保存并复制路径）/ `save`
     #[serde(default = "d_shot_after")]
     pub screenshot_after_action: String,
@@ -413,6 +417,11 @@ pub struct Config {
     #[serde(default)]
     pub autostart: bool,
 
+    /// 托盘图标左键功能：`settings` / `tasks` / `input` / `screenshot`。
+    /// 默认打开设置页。右键菜单不受影响。
+    #[serde(default = "d_tray_left_click")]
+    pub tray_left_click: String,
+
     /// 极轻模式：关闭窗口时销毁 WebView，把内存还给系统。
     /// **默认开**（`d_true`，老配置没有这个字段时按开处理，ADR-013 只增字段）。
     /// 关掉后窗口只 `hide()`、WebView 常驻，下次打开更快但会一直占内存。
@@ -470,8 +479,17 @@ fn d_hotkey_screenshot() -> String {
 fn d_hotkey_fullscreen() -> String {
     "Ctrl+PrintScreen".to_string()
 }
+/// 默认截图文件名规则（会话 81）。`$...$` 是格式占位，其余部分是前缀 / 后缀。
+pub const DEFAULT_SCREENSHOT_NAME_RULE: &str = "Vexto_$yyyyMMdd_HHmmss$.png";
+
 fn d_shot_after() -> String {
     "both".to_string()
+}
+fn d_screenshot_name_rule() -> String {
+    DEFAULT_SCREENSHOT_NAME_RULE.to_string()
+}
+fn d_tray_left_click() -> String {
+    "settings".to_string()
 }
 fn d_scroll_mode() -> String {
     "auto".to_string()
@@ -596,6 +614,7 @@ impl Default for Config {
             ocr_engine: d_ocr_engine(),
             enable_screenshot: false,
             screenshot_dir: String::new(),
+            screenshot_name_rule: d_screenshot_name_rule(),
             screenshot_after_action: d_shot_after(),
             scroll_mode: d_scroll_mode(),
             scroll_action: d_scroll_action(),
@@ -652,6 +671,7 @@ impl Default for Config {
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),
             autostart: false,
+            tray_left_click: d_tray_left_click(),
             lite_mode: true,
             appearance_theme: d_appearance_theme(),
             accent_color: String::new(),
@@ -1566,8 +1586,7 @@ mod tests {
     /// 外观字段（外观功能会话）：老配置缺省 → 暗色 + 跟随默认主色；
     /// 显式值原样读写。ADR-013：只增字段不破坏旧配置。
     #[test]
-    fn appearance_fields_default_and_roundtrip() {
-        let c: Config = serde_json::from_str("{}").unwrap();
+    fn appearance_fields_default_and_roundtrip() {        let c: Config = serde_json::from_str("{}").unwrap();
         assert_eq!(c.appearance_theme, "dark");
         assert!(c.accent_color.is_empty());
 
@@ -1577,5 +1596,22 @@ mod tests {
         .unwrap();
         assert_eq!(c2.appearance_theme, "system");
         assert_eq!(c2.accent_color, "#3b82f6");
+    }
+
+    /// 会话 81：老配置缺省时左键 = 打开设置页；命名规则 = 默认时间格式。
+    #[test]
+    fn tray_left_click_and_screenshot_name_defaults() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.tray_left_click, "settings");
+        assert_eq!(
+            c.screenshot_name_rule,
+            "Vexto_$yyyyMMdd_HHmmss$.png"
+        );
+        let c2: Config = serde_json::from_str(
+            r#"{"tray_left_click":"tasks","screenshot_name_rule":"shot_$uuid$.png"}"#,
+        )
+        .unwrap();
+        assert_eq!(c2.tray_left_click, "tasks");
+        assert_eq!(c2.screenshot_name_rule, "shot_$uuid$.png");
     }
 }

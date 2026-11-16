@@ -2906,7 +2906,7 @@ dependencies = [
 
 [[package]]
 name = "lightbox"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "arboard",
  "if-addrs 0.13.4",
@@ -2928,6 +2928,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uiautomation",
+ "uuid",
  "whatlang",
  "windows",
  "windows-future",

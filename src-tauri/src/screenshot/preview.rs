@@ -461,7 +461,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let cfg = crate::config::load();
             let dir = output::resolve_dir(&cfg);
             let _ = std::fs::create_dir_all(&dir);
-            let def = output::next_png_path(&dir);
+            let def = output::next_png_path(&dir, &cfg);
             let Some(dst) = crate::fileops::pick_save_png(&def)? else {
                 return Ok(ActionOutcome {
                     pin_label: None,
@@ -482,7 +482,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let cfg = crate::config::load();
             let dir = output::resolve_dir(&cfg);
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败：{e}"))?;
-            let dst = output::next_png_path(&dir);
+            let dst = output::next_png_path(&dir, &cfg);
             let (w, h) = crop_png(&src, &dst, head, tail)?;
             Ok(ActionOutcome {
                 pin_label: None,

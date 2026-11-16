@@ -8,7 +8,7 @@ use super::translate_tool::Translate;
 
 /// 所有工具，按设置页左侧列表的顺序返回。
 ///
-/// 顺序是有意义的：「通用」永远第一个，「关于」永远最后，中间按使用频率排。
+/// 顺序是有意义的：「常规」永远第一个，「关于」永远最后，中间按使用频率排。
 pub fn all() -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(General),
@@ -156,7 +156,7 @@ mod tests {
         assert_eq!(ids, vec!["general", "network", "advanced"]);
     }
 
-    /// 「通用」「关于」是配置容器与只读信息，不该有启用开关（会话 25 用户要求）。
+    /// 「常规」「关于」是配置容器与只读信息，不该有启用开关（会话 25 用户要求）。
     #[test]
     fn general_and_about_are_not_switchable() {
         for id in ["general", "about"] {

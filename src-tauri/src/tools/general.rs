@@ -1,4 +1,4 @@
-//! 通用：影响两个以上工具的东西才放这里（S2 任务书 §2.6.1 的判定标准）。
+//! 常规：影响两个以上工具的东西才放这里（S2 任务书 §2.6.1 的判定标准）。
 //!
 //! 目前只有：翻译缓存、弹窗时长、日志、配置目录。热键刻意**不**放这里——划词热键
 //! 属翻译、截图热键属截图、下载热键属下载，各归各的分区，这样用户改划词热键时不会
@@ -15,7 +15,7 @@ impl Tool for General {
     }
 
     fn name(&self) -> &'static str {
-        "通用"
+        "常规"
     }
 
     fn desc(&self) -> &'static str {
@@ -31,8 +31,8 @@ impl Tool for General {
     }
 
     fn set_enabled(&self, _on: bool) -> Result<(), String> {
-        // 通用项不允许整体停用：它只是配置容器，停用了没有意义
-        Err("「通用」是配置分组，不能停用".to_string())
+        // 常规项不允许整体停用：它只是配置容器，停用了没有意义
+        Err("「常规」是配置分组，不能停用".to_string())
     }
 
     /// 设置页不显示「启用」开关：这里没有可停用的东西，
@@ -59,7 +59,7 @@ impl Tool for General {
     fn sections(&self) -> Vec<Section> {
         vec![Section::new(
             "general",
-            "通用",
+            "常规",
             vec![
                 Field::group("外观"),
                 Field::select(
@@ -75,6 +75,16 @@ impl Tool for General {
                 Field::color("accent_color", "主色调", ACCENT_PRESETS).auto_apply(),
                 Field::group("启动"),
                 Field::switch("autostart", "开机自动启动"),
+                Field::select(
+                    "tray_left_click",
+                    "托盘图标左键",
+                    &[
+                        ("settings", "打开设置页"),
+                        ("tasks", "打开任务窗口"),
+                        ("input", "打开输入翻译"),
+                        ("screenshot", "区域截图"),
+                    ],
+                ),
                 Field::group("性能"),
                 Field::switch("lite_mode", "轻量模式").help("托盘状态下释放界面内存"),
                 Field::group("翻译与弹窗"),
