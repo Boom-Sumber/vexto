@@ -83,7 +83,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &items)?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Vexto — 划词翻译")
+        .tooltip("Vexto — 工具箱")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| {
