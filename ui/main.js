@@ -565,50 +565,177 @@ async function refreshPeers() {
 
 function fmtTfBytes(n) { return fmtBytes(n); }
 
-function renderPending() {
-  // 接收页已不再列待确认卡片（确认走独立确认窗），容器不在就直接返回
-  const box = el("reqList");
-  if (!box) return;
-  box.innerHTML = "";
-  const list = tfView.pending || [];
-  el("reqEmpty").classList.toggle("hidden", list.length > 0);
-  for (const r of list) {
-    const d = document.createElement("div");
-    d.className = "tf-req";
-    const names = r.files.map((f) => f.name).join("、");
-    d.innerHTML =
-      '<div class="rhead"><span class="who"></span><span class="num"></span></div>' +
-      '<div class="rfiles"></div>' +
-      '<div class="racts"><button class="btn" type="button">拒绝</button>' +
-      '<button class="btn btn-primary" type="button">接受</button></div>';
-    d.querySelector(".who").textContent = r.sender_alias + " (" + r.sender_ip + ")";
-    d.querySelector(".num").textContent = fmtTfBytes(r.total_bytes);
-    d.querySelector(".rfiles").textContent = names;
-    const [rej, acc] = d.querySelectorAll("button");
-    rej.addEventListener("click", () => respond(r.session_id, false));
-    acc.addEventListener("click", () => respond(r.session_id, true));
-    box.appendChild(d);
+// ── 收到传输请求：互传窗口内的遮罩子对话框（会话 80） ──────────────────
+//
+// 用户要求确认框是「互传窗口的子窗口 + 遮罩层」，不再是独立窗口。
+// 数据仍然走 transfer_pending 拉全量；每 1.2 秒拉一次，对方点「取消」后
+// 后端会把请求从待确认列表里剔掉，这里发现列表空了就自动关框。
+
+const cf = { req: null, timer: null, busy: false };
+
+function shortIp(ip) {
+  if (!ip) return "#—";
+  const parts = String(ip).split(".");
+  return "#" + (parts.length > 1 ? parts[parts.length - 1] : ip);
+}
+
+function cfError(msg) {
+  el("cfError").textContent = msg || "";
+  el("cfError").classList.toggle("hidden", !msg);
+}
+
+function cfSetBusy(on) {
+  el("cfAccept").disabled = on;
+  el("cfReject").disabled = on;
+  el("cfClose").disabled = on;
+}
+
+function cfRenderFiles(files) {
+  const ul = el("cfFileList");
+  ul.innerHTML = "";
+  const shown = files.slice(0, 4);
+  for (const f of shown) {
+    const li = document.createElement("li");
+    const ico = document.createElement("span");
+    ico.className = "ico";
+    ico.innerHTML = Icons.svg("file", 14);
+    const n = document.createElement("span");
+    n.className = "n";
+    n.textContent = f.name;
+    n.title = f.name;
+    li.append(ico, n);
+    ul.appendChild(li);
+  }
+  if (files.length > shown.length) {
+    const li = document.createElement("li");
+    li.className = "more";
+    li.textContent = "……";
+    ul.appendChild(li);
+  }
+}
+
+function renderConfirm(req) {
+  cf.req = req;
+  cfError("");
+  cfSetBusy(false);
+
+  el("cfIcon").innerHTML = Icons.svg(deviceIcon(req.sender_type), 20);
+  el("cfSender").textContent = req.sender_alias || "未知设备";
+  el("cfIp").textContent = shortIp(req.sender_ip);
+  el("cfIp").title = req.sender_ip || "";
+  el("cfModel").textContent = req.sender_model || "未知型号";
+
+  const count = req.files.length;
+  el("cfCount").textContent = count === 1 ? "一个文件" : count + " 个文件";
+  el("cfPreviewText").textContent =
+    count === 1 ? req.files[0].name : "查看接收文件列表 (" + count + ")";
+  el("cfPreviewText").title = count === 1 ? req.files[0].name : "";
+  cfRenderFiles(req.files);
+  el("cfTotal").textContent = "共 " + fmtTfBytes(req.total_bytes);
+  el("cfPath").textContent = tfView.receiveDir || "—";
+  el("cfPath").title = tfView.receiveDir || "";
+}
+
+function openConfirm(req) {
+  if (!req) return;
+  if (cf.req && cf.req.session_id === req.session_id) return;
+  renderConfirm(req);
+  el("cfLayer").classList.remove("hidden");
+  if (!cf.timer) cf.timer = setInterval(pollIncoming, 1200);
+  // 接收目录可能还没拉过，顺手刷新一次
+  if (!tfView.receiveDir) refreshLocalInfo();
+}
+
+function closeConfirm(msg) {
+  el("cfLayer").classList.add("hidden");
+  if (cf.timer) {
+    clearInterval(cf.timer);
+    cf.timer = null;
+  }
+  cf.req = null;
+  cf.busy = false;
+  cfError("");
+  if (msg) tfNotice(msg);
+}
+
+/// 轮询待确认列表：对方撤销后列表里会没有当前请求，此时自动关框。
+async function pollIncoming() {
+  const cur = cf.req;
+  if (!cur || cf.busy) return;
+  try {
+    const list = (await invoke("transfer_pending")) || [];
+    // 请求可能在 await 期间被应答 / 换掉，别再动已经不是当前这条的界面
+    if (cf.req !== cur || cf.busy) return;
+    if (!list.length) {
+      closeConfirm("对方已取消传输");
+      return;
+    }
+    if (!list.some((r) => r.session_id === cur.session_id)) {
+      // 当前这条已失效，还有别的请求就换过去，否则关框
+      renderConfirm(list[0]);
+    }
+  } catch (e) {
+    /* 网络/服务临时不可用时保持现状，下一轮再试 */
+  }
+}
+
+async function respondIncoming(accept) {
+  if (!cf.req || cf.busy) return;
+  cf.busy = true;
+  cfError("");
+  cfSetBusy(true);
+  try {
+    await invoke("transfer_respond", {
+      sessionId: cf.req.session_id,
+      accept,
+    });
+    const list = (await invoke("transfer_pending")) || [];
+    cf.busy = false;
+    if (list.length) {
+      renderConfirm(list[0]);
+      cfSetBusy(false);
+    } else {
+      closeConfirm();
+    }
+  } catch (e) {
+    cf.busy = false;
+    cfSetBusy(false);
+    const msg = errText(e);
+    // 对方刚撤销 / 已被处理：关框比留一个点不动的按钮更合理
+    if (msg.includes("取消") || msg.includes("过期")) {
+      closeConfirm("传输请求已失效");
+    } else {
+      cfError(msg);
+    }
   }
 }
 
 async function refreshPending() {
   try {
-    tfView.pending = (await invoke("transfer_pending")) || [];
-    renderPending();
+    const list = (await invoke("transfer_pending")) || [];
+    tfView.pending = list;
+    if (list.length) {
+      openConfirm(list[0]);
+    } else if (cf.req && !cf.busy) {
+      closeConfirm("对方已取消传输");
+    }
   } catch (e) {
-    /* 确认窗是主路径，这里失败只记提示 */
+    /* 确认框是主路径，这里失败只记提示 */
     tfNotice("读取待确认请求失败：" + errText(e), true);
   }
 }
 
-async function respond(sessionId, accept) {
-  try {
-    await invoke("transfer_respond", { sessionId, accept });
-    await refreshPending();
-  } catch (e) {
-    tfNotice(errText(e), true);
-  }
-}
+el("cfAccept").addEventListener("click", () => respondIncoming(true));
+el("cfReject").addEventListener("click", () => respondIncoming(false));
+el("cfClose").addEventListener("click", () => respondIncoming(false));
+el("cfOpenDir").addEventListener("click", () => {
+  if (!tfView.receiveDir) return;
+  invoke("open_path", { path: tfView.receiveDir }).catch((e) => cfError(errText(e)));
+});
+Icons.fill(el("cfClose"), "close", 14);
+Icons.fill(el("cfOpenDir"), "folder", 16);
+el("cfPreviewIcon").className = "ico";
+el("cfPreviewIcon").innerHTML = Icons.svg("file", 14);
 
 function upsertRow(view) {
   // 发送页已不列「传输进度」（进度全在覆盖整窗的传输页里），容器没了就别写
@@ -1367,7 +1494,9 @@ el("hsClear").addEventListener("click", async (ev) => {
         tfView.peers = e.peers || [];
         renderPeers();
       } else if (e.type === "incoming") {
-        refreshPending();
+        // 收到请求：切到互传页，确认框是它上面的遮罩子对话框（会话 80）
+        if (tfView.view !== "transfer") setView("transfer");
+        setSub("receive");
       } else if (e.type === "progress") {
         upsertRow(e.view);
         tpOnProgress(e.view);
@@ -1394,4 +1523,6 @@ el("hsClear").addEventListener("click", async (ev) => {
   tpLoad();
   // 选文件卡片先渲染一次空态（提示语 + 「文件：0」）
   renderPick();
+  // 窗口打开前就到达的待确认请求（事件已经错过）也要弹出来
+  refreshPending();
 })();

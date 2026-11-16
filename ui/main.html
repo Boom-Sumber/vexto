@@ -253,6 +253,49 @@
     </div>
   </section>
 
+  <!-- 收到传输请求：互传窗口内的遮罩子对话框（会话 80）。
+       数据来自 transfer_pending；对方撤销后自动关闭。 -->
+  <div id="cfLayer" class="cf-layer hidden">
+    <div class="cf-dialog" role="dialog" aria-modal="true" aria-labelledby="cfSender">
+      <button id="cfClose" class="icon-btn cf-close" type="button" title="拒绝并关闭"
+              aria-label="拒绝并关闭"></button>
+
+      <div class="cf-icon" id="cfIcon"></div>
+      <div class="cf-alias" id="cfSender">—</div>
+
+      <div class="cf-tags">
+        <div class="cf-tag cf-ip" id="cfIp">#—</div>
+        <div class="cf-tag" id="cfModel">—</div>
+      </div>
+
+      <div class="cf-prompt">想要发送给你 <b id="cfCount">一个文件</b></div>
+
+      <div class="cf-file">
+        <div class="cf-file-preview" id="cfPreview">
+          <span id="cfPreviewIcon"></span>
+          <span class="fname" id="cfPreviewText">查看接收文件列表</span>
+        </div>
+        <div class="cf-tooltip">
+          <ul id="cfFileList"></ul>
+        </div>
+      </div>
+      <div class="cf-total" id="cfTotal"></div>
+
+      <div class="cf-path">
+        <div class="path-text" id="cfPath" title="">—</div>
+        <button id="cfOpenDir" class="icon-btn cf-folder" type="button" title="打开接收目录"
+                aria-label="打开接收目录"></button>
+      </div>
+
+      <div id="cfError" class="notice notice-danger hidden"></div>
+
+      <div class="cf-actions">
+        <button id="cfReject" class="btn cf-reject" type="button">拒绝</button>
+        <button id="cfAccept" class="btn btn-primary" type="button">接收</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 轻提示浮层：右下角堆叠，3 秒自动消失（见 main.js 的 tfNotice） -->
   <div id="toastHost" class="toast-host" aria-live="polite"></div>
 </div>

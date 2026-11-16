@@ -11,7 +11,7 @@ body {
   margin: 0;
   /* v2 氛围光：两层紫红 radial 光晕铺在 app 底色上（demo 口径）。
      第一条声明是不支持相对色引擎的兜底；颜色从 --theme 现算，
-     换主色调时光晕跟着变。透明窗口（popup / transfer_confirm）在
+     换主色调时光晕跟着变。透明窗口（popup / pin / feedback）在
      自己的 CSS 里覆盖回 transparent，光晕不会漏进去。 */
   background: var(--bg-app);
   background:

@@ -2483,12 +2483,6 @@ fn transfer_pick_files() -> Result<Vec<String>, String> {
     fileops::pick_files()
 }
 
-/// 确认窗拉数据：取最早一条待确认请求。
-#[tauri::command]
-fn transfer_take_confirm() -> Option<transfer::IncomingRequest> {
-    transfer::server::pending_list().into_iter().next()
-}
-
 /// 主窗口加载时取预选视图（托盘「局域网互传…」用）。
 #[tauri::command]
 fn transfer_take_view() -> Option<String> {
@@ -2689,7 +2683,6 @@ fn main() {
             transfer_send,
             transfer_cancel_send,
             transfer_pick_files,
-            transfer_take_confirm,
             transfer_take_view,
             transfer_take_drop,
             transfer_local_info,
@@ -2783,7 +2776,8 @@ fn main() {
             }
 
             // 传输事件出口：一律转发给前端（transfer:event）；
-            // 收到传输请求时另开确认小窗（S4b，§S4.7.2）。
+            // 收到传输请求时打开互传窗口，确认对话框由前端渲染成
+            // 带遮罩的子对话框（会话 80，用户要求）。
             {
                 let for_emit = handle.clone();
                 transfer::server::set_event_sink(move |evt| {

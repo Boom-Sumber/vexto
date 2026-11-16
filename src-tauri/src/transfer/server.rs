@@ -482,11 +482,21 @@ pub fn refresh_peers_now() -> Result<(), String> {
 }
 
 /// 当前待确认的传入请求（最旧在前）。
+///
+/// 先剔掉「对端已经撤销」的条目：对方点取消时 `prepare-upload` 那侧会丢掉
+/// 等待应答的 `oneshot` 接收端，发送端 `is_closed()` 随即为 true。
+/// 不剔的话确认框会一直挂着一条早就没人等的请求（会话 80 用户反馈）。
 pub fn pending_list() -> Vec<IncomingRequest> {
-    lock(&globals().pending)
-        .iter()
-        .map(|p| p.view.clone())
-        .collect()
+    let mut pending = lock(&globals().pending);
+    let before = pending.len();
+    pending.retain(|p| !p.decision_tx.is_closed());
+    if pending.len() != before {
+        crate::dlog::dlog(&format!(
+            "transfer: 清理 {} 条已撤销的待确认请求",
+            before - pending.len()
+        ));
+    }
+    pending.iter().map(|p| p.view.clone()).collect()
 }
 
 /// 接受 / 拒绝一条待确认请求（S4.7.2 确认框的两个按钮）。
@@ -1179,6 +1189,12 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
         }
         ServerTransferEvent::SessionEnded { session_id, reason } => {
             crate::dlog::dlog(&format!("transfer: 会话 {session_id} 结束：{reason:?}"));
+            // 对方在确认框还没应答时取消：把这条待确认请求也撤掉，
+            // 否则确认框会一直留着一条已经没人等的请求（会话 80）。
+            if reason == SessionEndReason::CancelledBySender {
+                let mut pending = lock(&globals().pending);
+                pending.retain(|p| p.view.session_id != session_id);
+            }
             // 会话级终态也要发一条：传输页靠它把「传输中」翻成「已完成 / 已取消」，
             // 否则取消之后页面会停在最后那个百分比上不动。
             let (status, message) = match reason {
@@ -1248,6 +1264,37 @@ mod tests {
     #[test]
     fn identity_path_lives_next_to_config() {
         assert_eq!(identity_path().file_name().unwrap(), "transfer-identity.json");
+    }
+
+    /// 对方在确认框上还没被应答就取消：接收端 `oneshot` 被丢掉，
+    /// 待确认列表必须自动剔掉这条，确认框才会自己关（会话 80）。
+    #[test]
+    fn pending_list_drops_entries_whose_sender_went_away() {
+        let (tx, rx) = oneshot::channel::<PrepareUploadDecision>();
+        drop(rx);
+        let view = IncomingRequest {
+            session_id: "gone80".into(),
+            sender_alias: "phone".into(),
+            sender_ip: "192.168.1.2".into(),
+            sender_model: String::new(),
+            sender_type: "mobile".into(),
+            total_bytes: 1,
+            files: vec![IncomingFile {
+                id: "a".into(),
+                name: "a".into(),
+                size: 1,
+            }],
+        };
+        lock(&globals().pending).push(PendingIncoming {
+            view,
+            decision_tx: tx,
+        });
+
+        let list = pending_list();
+        assert!(
+            !list.iter().any(|r| r.session_id == "gone80"),
+            "对端已撤销的请求必须从待确认列表里消失"
+        );
     }
 
     /// respond 的决策语义：accept 全收、decline 全拒；一次性 oneshot 用后即废。

@@ -1217,3 +1217,209 @@
   background: var(--accent);
 }
 .switch:focus-visible { box-shadow: var(--ring); outline: none; }
+
+/* ── 收到传输请求：互传窗口内的遮罩子对话框（会话 80） ──────────────────
+   布局沿用原独立确认窗（transfer_confirm.html），但改成主窗口里的
+   absolute 遮罩层：标题栏、侧栏都被盖住，视觉上就是互传窗口的子对话框。 */
+
+.cf-layer {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: var(--bg-overlay);
+  backdrop-filter: blur(2px);
+}
+.cf-layer.hidden { display: none; }
+
+.cf-dialog {
+  position: relative;
+  width: 400px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-float);
+}
+
+.cf-close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+}
+
+.cf-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--h-control) + var(--sp-6));
+  height: calc(var(--h-control) + var(--sp-6));
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.cf-alias {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: .02em;
+}
+
+.cf-tags { display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: center; }
+
+.cf-tag {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+}
+.cf-ip:hover { color: var(--accent); border-color: var(--accent); }
+
+.cf-prompt {
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  text-align: center;
+}
+.cf-prompt b { color: var(--accent); }
+
+.cf-file { position: relative; display: flex; justify-content: center; width: 100%; }
+
+.cf-file-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  cursor: default;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.cf-file-preview:hover { border-color: var(--border-default); background: var(--bg-app); }
+.cf-file-preview .fname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  z-index: var(--z-float);
+  width: max-content;
+  max-width: 280px;
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  box-shadow: var(--shadow-float);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(var(--sp-1));
+  transition: opacity var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.cf-file:hover .cf-tooltip,
+.cf-file:focus-within .cf-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.cf-tooltip ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.cf-tooltip li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 250px;
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  color: var(--text-primary);
+}
+.cf-tooltip li .n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-tooltip li .ico { color: var(--text-muted); }
+.cf-tooltip li.more { justify-content: center; color: var(--text-muted); }
+
+.cf-total { font-size: var(--fs-xs); color: var(--text-muted); }
+
+.cf-path {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+.cf-path .path-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--h-control);
+  line-height: var(--h-control);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-folder {
+  flex: 0 0 auto;
+  width: var(--h-control);
+  height: var(--h-control);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+}
+.cf-folder:hover { border-color: var(--accent); color: var(--accent); }
+
+.cf-actions { display: flex; gap: var(--sp-3); width: 100%; }
+.cf-actions .btn {
+  flex: 1 1 0;
+  height: calc(var(--h-control) + var(--sp-1));
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+.cf-reject {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.cf-reject:hover {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+  color: var(--danger);
+}

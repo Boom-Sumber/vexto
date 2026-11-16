@@ -22,8 +22,6 @@ pub const SETTINGS_LABEL: &str = "settings";
 pub const MAIN_LABEL: &str = "main";
 /// 新建下载任务窗口。列表页点「+」时与主窗口**同时存在**。
 pub const NEW_TASK_LABEL: &str = "new-task";
-/// 收到传输请求的确认小窗（S4b，§S4.7.2）。
-pub const CONFIRM_LABEL: &str = "transfer_confirm";
 
 /// S5 OCR 框选 overlay：覆盖整个虚拟屏幕的透明窗口（暗幕 + 十字光标）。
 pub const OCR_LABEL: &str = "ocr_overlay";
@@ -220,38 +218,51 @@ fn cursor() -> (i32, i32) {
     (p.x, p.y)
 }
 
-/// 把弹窗摆到光标右下方，并保证整块不越出主屏。
+/// CSS 逻辑像素 → 物理像素。窗口 API 的 `PhysicalSize` 不认逻辑像素。
+fn to_physical(logical: f64, scale: f64) -> f64 {
+    (logical * scale).round()
+}
+
+/// 把弹窗摆到光标右下方，并保证整块不越出屏幕。
 ///
-/// `h` 必须是**即将使用的真实窗口高度**，不能拿最小高度糊弄：
+/// `h_logical` 必须是**即将使用的真实窗口高度**（逻辑像素），不能拿最小高度糊弄：
 /// 弹窗内容一变高就会冲出屏幕底部（S1b 实测出现过 bottom=1106 > 屏高 1080，
 /// 底部 26 px 跑到屏幕外，用户看不到也点不到）。
-fn clamp_pos(app: &AppHandle, x: i32, y: i32, h: i32) -> (i32, i32) {
-    let w = POPUP_W as i32;
-    if let Ok(Some(m)) = app.primary_monitor() {
-        let size = m.size();
-        let pos = m.position();
-        let mut nx = x;
-        let mut ny = y;
-        if nx + w > pos.x + size.width as i32 {
-            nx = pos.x + size.width as i32 - w - 8;
-        }
-        if ny + h > pos.y + size.height as i32 {
-            // 下方放不下就翻到光标上方
-            ny = y - h - 20;
-        }
-        if nx < pos.x + 8 {
-            nx = pos.x + 8;
-        }
-        if ny < pos.y + 8 {
-            ny = pos.y + 8;
-        }
-        // 屏幕太矮、上下都放不下时，至少保证底边不越界
-        if ny + h > pos.y + size.height as i32 {
-            ny = (pos.y + size.height as i32 - h).max(pos.y);
-        }
-        return (nx, ny);
+fn clamp_pos(app: &AppHandle, x: i32, y: i32, h_logical: f64) -> (i32, i32) {
+    let monitor = app
+        .monitor_from_point(x as f64, y as f64)
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+    let Some(m) = monitor else {
+        return (x, y);
+    };
+    let scale = m.scale_factor();
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+    let w = to_physical(POPUP_W, scale) as i32;
+    let h = to_physical(h_logical, scale) as i32;
+    let size = m.size();
+    let pos = m.position();
+    let mut nx = x;
+    let mut ny = y;
+    if nx + w > pos.x + size.width as i32 {
+        nx = pos.x + size.width as i32 - w - 8;
     }
-    (x, y)
+    if ny + h > pos.y + size.height as i32 {
+        // 下方放不下就翻到光标上方
+        ny = y - h - 20;
+    }
+    if nx < pos.x + 8 {
+        nx = pos.x + 8;
+    }
+    if ny < pos.y + 8 {
+        ny = pos.y + 8;
+    }
+    // 屏幕太矮、上下都放不下时，至少保证底边不越界
+    if ny + h > pos.y + size.height as i32 {
+        ny = (pos.y + size.height as i32 - h).max(pos.y);
+    }
+    (nx, ny)
 }
 
 /// 划词模式下用户主动点进源文本框 → 这时才允许窗口抢焦点。
@@ -273,10 +284,19 @@ pub fn focus_for_typing(app: &AppHandle) {
 /// 划词模式跟着光标走；输入模式用户在打字，窗口位置必须稳定，
 /// 否则每翻译一次就跳一次，眼睛和手都跟不上。
 fn center_pos(app: &AppHandle) -> (i32, i32) {
-    if let Ok(Some(m)) = app.primary_monitor() {
+    // 输入翻译在光标所在显示器居中，避免多屏不同缩放时跑到主屏去。
+    let (cx, cy) = cursor();
+    let monitor = app
+        .monitor_from_point(cx as f64, cy as f64)
+        .ok()
+        .flatten()
+        .or_else(|| app.primary_monitor().ok().flatten());
+    if let Some(m) = monitor {
         let size = m.size();
         let pos = m.position();
-        let nx = pos.x + (size.width as i32 - POPUP_W as i32) / 2;
+        let scale = m.scale_factor();
+        let w = to_physical(POPUP_W, scale) as i32;
+        let nx = pos.x + (size.width as i32 - w) / 2;
         // 偏上 1/6 屏高：下方留给译文展开，上方留出桌面看背景
         let ny = pos.y + (size.height as i32 / 6).max(40);
         return (nx, ny.max(pos.y + 8));
@@ -286,7 +306,7 @@ fn center_pos(app: &AppHandle) -> (i32, i32) {
 
 fn create_popup(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let (cx, cy) = cursor();
-    let (x, y) = clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32);
+    let (x, y) = clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN);
     WebviewWindowBuilder::new(app, POPUP_LABEL, WebviewUrl::App("popup.html".into()))
         .title("Vexto")
         .inner_size(POPUP_W, POPUP_H_MIN)
@@ -329,16 +349,21 @@ fn left_button_down() -> bool {
 /// 窗口比卡片大一圈（给阴影留的画布），那一圈是透明的。若按窗口矩形判定，
 /// 用户点在卡片外 5~12 px 的透明区就既不会关闭弹窗、也点不到下面的程序，
 /// 变成"看不见却吃鼠标"的死区。所以这里要把边距扣掉，只认可见卡片。
-fn point_in_window(hwnd: isize, x: i32, y: i32) -> bool {
+///
+/// `GetWindowRect` 返回物理像素，`CARD_PAD_*` 是 CSS 逻辑像素，必须乘缩放比。
+fn point_in_window(hwnd: isize, x: i32, y: i32, scale: f64) -> bool {
     let mut r = RECT::default();
     let ok = unsafe { GetWindowRect(HWND(hwnd as *mut core::ffi::c_void), &mut r) }.is_ok();
     if !ok {
         return false;
     }
-    x >= r.left + CARD_PAD_X
-        && x < r.right - CARD_PAD_X
-        && y >= r.top + CARD_PAD_TOP
-        && y < r.bottom - CARD_PAD_BOTTOM
+    let pad_x = to_physical(CARD_PAD_X as f64, scale) as i32;
+    let pad_top = to_physical(CARD_PAD_TOP as f64, scale) as i32;
+    let pad_bottom = to_physical(CARD_PAD_BOTTOM as f64, scale) as i32;
+    x >= r.left + pad_x
+        && x < r.right - pad_x
+        && y >= r.top + pad_top
+        && y < r.bottom - pad_bottom
 }
 
 /// 弹窗是 `focusable(false)`（不抢焦点，才保得住用户选中的文字），
@@ -348,7 +373,7 @@ fn point_in_window(hwnd: isize, x: i32, y: i32) -> bool {
 /// 选轮询而不是 `WH_MOUSE_LL` 全局钩子的理由：钩子会让全系统每次鼠标移动都进我们的
 /// 回调，回调稍慢一点 Windows 就静默把钩子摘掉，出问题时极难排查；轮询最多慢 30ms，
 /// 而且**点击照常穿透给下面的程序**，用户点哪就激活哪，体验上跟没有这个窗口一样。
-fn watch_outside_click(app: AppHandle, hwnd: isize) {
+fn watch_outside_click(app: AppHandle, hwnd: isize, scale: f64) {
     // 初始状态就按下的左键要吞掉：热键触发时用户的手指可能正按着不动，
     // 那不叫"点击外部"。
     let mut prev_down = left_button_down();
@@ -369,7 +394,7 @@ fn watch_outside_click(app: AppHandle, hwnd: isize) {
         let down = left_button_down();
         if down && !prev_down {
             let (cx, cy) = cursor();
-            let inside = point_in_window(hwnd, cx, cy);
+            let inside = point_in_window(hwnd, cx, cy, scale);
             crate::dlog::dlog(&format!(
                 "popup: 左键按下 at ({cx},{cy}) inside={inside} hwnd={hwnd}"
             ));
@@ -399,7 +424,8 @@ fn ensure_outside_watcher(app: &AppHandle, win: &tauri::WebviewWindow) {
         return; // 已经在看了
     }
     let a = app.clone();
-    std::thread::spawn(move || watch_outside_click(a, hwnd));
+    let scale = win.scale_factor().unwrap_or(1.0);
+    std::thread::spawn(move || watch_outside_click(a, hwnd, scale));
 }
 
 // ---------- 弹窗 ----------
@@ -453,9 +479,10 @@ pub fn show(app: &AppHandle, payload: Value) {
             center_pos(app)
         } else {
             let (cx, cy) = cursor();
-            clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN as i32)
+            clamp_pos(app, cx + 14, cy + 18, POPUP_H_MIN)
         };
-        let _ = win.set_size(tauri::PhysicalSize::new(POPUP_W as u32, POPUP_H_MIN as u32));
+        // 逻辑尺寸：Tauri 会按显示器 DPI 自己换算成物理像素。
+        let _ = win.set_size(tauri::LogicalSize::new(POPUP_W, POPUP_H_MIN));
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
     if first_of_round {
@@ -568,11 +595,17 @@ pub fn prune_hidden_windows(app: &AppHandle) {
 /// 由前端报告卡片尺寸。原生窗口尺寸必须后端设置（ADR-011），
 /// 前端算出来的 CSS 尺寸后端不知道。
 ///
-/// `height` / `width` 是**卡片**尺寸（前端已把阴影边距加上，所以其实是窗口尺寸）。
+/// `height` / `width` 是**卡片**尺寸（前端已把阴影边距加上，所以其实是窗口尺寸），
+/// 单位是 **CSS 逻辑像素**。缩放比不是 1 时必须先乘再交给 `PhysicalSize`，
+/// 否则 150% 缩放下窗口只有应有尺寸的 2/3，卡片内容会被裁掉。
 /// 变高后必须重新夹取位置：否则从 110 撑到 640 时会冲出屏幕底部。
 pub fn resize(win: &tauri::WebviewWindow, height: f64, width: f64) {
-    let w = width.clamp(POPUP_W - 200.0, POPUP_W + 200.0);
-    let h = height.clamp(POPUP_H_MIN * 0.5, POPUP_H_MAX);
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+    let w_logical = width.clamp(POPUP_W - 200.0, POPUP_W + 200.0);
+    let h_logical = height.clamp(POPUP_H_MIN * 0.5, POPUP_H_MAX);
+    let w = to_physical(w_logical, scale);
+    let h = to_physical(h_logical, scale);
     let _ = win.set_size(tauri::PhysicalSize::new(w as u32, h as u32));
 
     // 变高/变宽后重新夹到屏幕内（用新高度判断，不是最小高度）。
@@ -759,10 +792,8 @@ pub fn open_main_window(app: &AppHandle) {
 
 /// 打开主窗口并预选视图（`view` 目前只有 `"transfer"`）。
 pub fn open_main_window_with_view(app: &AppHandle, view: &str) {
-    if let Ok(mut g) = PENDING_MAIN_VIEW.lock() {
-        *g = Some(view.to_string());
-    }
     // 已有窗口时页面已加载，预选不会自动生效——发个通知让前端自己切。
+    // 只在「要新建窗口」时登记预选，否则这个值会残留到下一次建窗。
     if let Some(w) = app.get_webview_window(MAIN_LABEL) {
         let _ = w.show();
         let _ = w.unminimize();
@@ -770,61 +801,20 @@ pub fn open_main_window_with_view(app: &AppHandle, view: &str) {
         let _ = w.emit("main:switch-view", view);
         return;
     }
+    if let Ok(mut g) = PENDING_MAIN_VIEW.lock() {
+        *g = Some(view.to_string());
+    }
     open_main_window(app);
 }
 
-/// 打开「收到传输请求」确认小窗（§S4.7.2）。已存在则刷新内容并聚焦。
+/// 打开「收到传输请求」的确认界面。
 ///
-/// 可以抢焦点（用户需要点按钮），但不阻塞主程序。数据由前端加载时调
-/// `transfer_take_confirm` 拉（事件只是叫醒）。
+/// 会话 80：确认框不再是独立窗口，而是互传窗口里的遮罩对话框
+/// （用户要求「互传窗口的子窗口 + 遮罩层」）。这里只负责把主窗口叫起来并
+/// 切到互传视图；对话框由 `ui/main.js` 的 `transfer:event` 渲染。
+/// **必须在主线程调用。**
 pub fn open_transfer_confirm(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(CONFIRM_LABEL) {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-        // 页面已加载时重拉一遍数据（可能有多条待确认）。
-        let _ = w.eval("window.__confirmReload && window.__confirmReload()");
-        return;
-    }
-
-    let r = WebviewWindowBuilder::new(
-        app,
-        CONFIRM_LABEL,
-        WebviewUrl::App("transfer_confirm.html".into()),
-    )
-    .title("收到传输请求")
-    .decorations(false)
-    // 透明窗口不能开系统阴影：DWM 会按整个窗口矩形投影，桌面上会看到
-    // 一圈比卡片大得多的暗色方块。阴影交给卡片自己的 CSS box-shadow
-    // （与翻译弹窗同一口径，见 popup.css #card）。
-    .shadow(false)
-    // 模态对话框形态（用户参考稿）：透明窗口只画居中卡片，无系统边框。
-    // 窗口自己盖在其他窗口之上，用户处理完（接受 / 拒绝）才消失。
-    .transparent(true)
-    .always_on_top(true)
-    .inner_size(400.0, 560.0)
-    .min_inner_size(400.0, 480.0)
-    .resizable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .skip_taskbar(true)
-    .center()
-    // 会话 32 同款防白屏：先藏，前端 window_ready 再显示。
-    .visible(false)
-    .additional_browser_args(WEBVIEW_ARGS)
-    .build();
-
-    match r {
-        Ok(win) => {
-            let _ = win.set_focus();
-            win.on_window_event(|ev| {
-                if matches!(ev, tauri::WindowEvent::Destroyed) {
-                    crate::dlog::dlog("popup: 传输确认窗已销毁");
-                }
-            });
-        }
-        Err(e) => crate::dlog::dlog(&format!("create transfer confirm failed: {e}")),
-    }
+    open_main_window_with_view(app, "transfer");
 }
 
 /// 打开 S5 OCR 框选 overlay。实现已抽到 `region_select`，OCR 的事件名与
@@ -1154,6 +1144,17 @@ pub fn close_new_task_and_show_list(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn popup_physical_size_follows_scale_factor() {
+        // 420 CSS px 的卡片在 100% / 125% / 150% / 200% 缩放下对应的物理宽度。
+        assert_eq!(to_physical(POPUP_W, 1.0), 444.0);
+        assert_eq!(to_physical(POPUP_W, 1.25), 555.0);
+        assert_eq!(to_physical(POPUP_W, 1.5), 666.0);
+        assert_eq!(to_physical(POPUP_W, 2.0), 888.0);
+        // 卡片边距也要同比例放大，否则“点外部关闭”会把可见卡片边缘算进去。
+        assert_eq!(to_physical(CARD_PAD_X as f64, 1.5), 18.0);
+    }
 
     /// 开回极轻模式时只回收「别人」：设置窗口必须留着，用户正在里面点保存。
     #[test]
