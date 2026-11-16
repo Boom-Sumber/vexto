@@ -3,6 +3,13 @@
 
 use super::{Field, Section, Tool};
 
+/// 更新下载线路。`auto` 对国内网络最友好（先走 gh-proxy，最后才直连）。
+const UPDATE_SOURCES: &[(&str, &str)] = &[
+    ("auto", "自动（代理优先）"),
+    ("direct", "直连 GitHub"),
+    ("custom", "自定义代理"),
+];
+
 pub struct About;
 
 impl Tool for About {
@@ -36,7 +43,11 @@ impl Tool for About {
     }
 
     fn status_line(&self) -> String {
-        format!("Vexto {}", env!("CARGO_PKG_VERSION"))
+        format!(
+            "Vexto {}{}",
+            env!("CARGO_PKG_VERSION"),
+            crate::update::status_suffix()
+        )
     }
 
     fn sections(&self) -> Vec<Section> {
@@ -52,6 +63,28 @@ impl Tool for About {
                      未拷贝其源代码；相关版权与商标归各自作者所有。",
                 ),
                 Field::note("本程序按「现状」提供，不对使用后果作任何担保。"),
+                Field::group("更新"),
+                Field::note(
+                    "自动检查每 24 小时最多一次；发现新版本不会弹窗。\
+                     安装会关闭 Vexto 并原地覆盖，配置与安装目录保留。",
+                ),
+                Field::select(
+                    "update_download_source",
+                    "下载线路",
+                    UPDATE_SOURCES,
+                )
+                .help(
+                    "自动：依次尝试 v4.gh-proxy.org、gh-proxy.org、直连 GitHub。\
+                     下载后用 GitHub 给出的 sha256 校验安装包。",
+                ),
+                Field::text_hint(
+                    "update_custom_proxy",
+                    "自定义代理",
+                    "例如 https://gh-proxy.org/",
+                )
+                .show_if("update_download_source", "custom")
+                .help("作为下载地址前缀使用，必须以 http:// 或 https:// 开头。"),
+                Field::update("update", "更新"),
             ],
         )]
     }

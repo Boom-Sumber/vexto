@@ -21,6 +21,8 @@ use tauri::AppHandle;
 /// 翻译 / 输入翻译两项在工具停用时置灰。
 static TRANSLATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
 static INPUT_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
+/// 「检查更新」项：发现新版本时改文字，给用户一个不打开设置页也能看到的提示。
+static UPDATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
 
 /// 20×20 全透明占位图：只为撑出菜单的文字缩进。
 fn spacer() -> Option<tauri::image::Image<'static>> {
@@ -61,6 +63,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let task_menu = Submenu::with_items(app, "任务窗口", true, &[&downloads, &transfer])?;
 
     let settings = item(app, "settings", "设置", true)?;
+    let check_update = item(app, "check-update", "检查更新", true)?;
+    *UPDATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(check_update.clone());
     let restart = item(app, "restart", "重启应用", true)?;
     let quit = item(app, "quit", "退出程序", true)?;
 
@@ -72,6 +76,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         &task_menu,
         &separator,
         &settings,
+        &check_update,
         &restart,
         &quit,
     ];
@@ -104,6 +109,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                 "downloads" => crate::open_download_window(app),
                 "transfer" => crate::open_transfer_window(app),
                 "settings" => crate::open_settings(app),
+                "check-update" => {
+                    // 打开关于页再 spawn 检查：回调里不做网络 IO。
+                    crate::open_settings_at(app, "about");
+                    crate::update::spawn_check(app.clone());
+                }
                 "restart" => restart_app(app),
                 "quit" => {
                     // 顺序不能反：先置位、再 exit，否则 prevent_exit 会把这次退出也挡掉。
@@ -199,6 +209,27 @@ pub fn set_translate_enabled(app: &AppHandle, on: bool) {
         }
     }
     let _ = app;
+}
+
+/// 发现新版本时把托盘菜单项改成「检查更新（x.y.z 可用）」；没有则还原。
+///
+/// 工作线程会调用它，菜单操作统一丢回主线程。
+pub fn set_update_hint(app: &AppHandle, version: Option<&str>) {
+    let text = match version {
+        Some(v) => format!("检查更新（{v} 可用）"),
+        None => "检查更新".to_string(),
+    };
+    if let Err(e) = app.run_on_main_thread(move || {
+        let guard = UPDATE_ITEM.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(item) = guard.as_ref() else {
+            return;
+        };
+        if let Err(e) = item.set_text(text) {
+            crate::dlog::warn(&format!("tray: 更新「检查更新」文案失败：{e}"));
+        }
+    }) {
+        crate::dlog::warn(&format!("tray: 切主线程更新菜单失败：{e}"));
+    }
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 //! 工具注册表的数据类型：`Field`（一个设置项）+ `Section`（一组设置项）+ `Tool`（一个工具）。
 //!
-//! **这里是 ADR-015 的落点**：设置页不允许为具体工具写分支。前端只认识
-//! `Field` 的 10 种类型，具体有哪些工具、每个工具长什么样，全部从 `Tool::sections()`
+//! **这里是 ADR-015 的落点**：设置页不允许为具体工具写分支。前端只认
+//! `Field` 的若干类型，具体有哪些工具、每个工具长什么样，全部从 `Tool::sections()`
 //! 读出来。加一个工具时改的是「这个工具自己的文件 + registry 一行」，前端零改动。
 //!
 //! S2 相比 S0 的两个变化：
@@ -40,7 +40,7 @@ pub struct ShowIf {
     pub also: Option<Box<ShowIf>>,
 }
 
-/// 10 种字段类型。JSON 里以 `"type": "text" | "password" | ...` 区分。
+/// 15 种字段类型。JSON 里以 `"type": "text" | "password" | ...` 区分。
 ///
 /// 第 10 种 `Group` 是会话 25 加的：下载设置要在**一个页签里**再分组
 /// （下载路径 / 速度与并发 / 通知…）。它不是「值」，只是一个分组标题，
@@ -137,6 +137,16 @@ pub enum FieldKind {
         /// 只有「这套配置到底能不能用」需要验证的列表才给：厂商与模型。
         #[serde(skip_serializing_if = "Option::is_none")]
         test_action: Option<&'static str>,
+    },
+    /// 应用更新面板（会话 82）。不存配置值；六条命令名由后端给出，
+    /// 前端只按后端推送的 phase 渲染，不认识「更新」这件事的业务细节。
+    Update {
+        status_command: &'static str,
+        check_command: &'static str,
+        download_command: &'static str,
+        cancel_command: &'static str,
+        install_command: &'static str,
+        open_command: &'static str,
     },
 }
 
@@ -327,6 +337,22 @@ impl Field {
     /// 纯说明文字。没有 key（用文案本身当 DOM id），文案放在 `kind.text` 里。
     pub fn note(text: &'static str) -> Self {
         Self::new(text, "", FieldKind::Note { text })
+    }
+
+    /// 应用更新面板。命令名集中在这里，前端不写死。
+    pub fn update(key: &'static str, label: &'static str) -> Self {
+        Self::new(
+            key,
+            label,
+            FieldKind::Update {
+                status_command: "update_state",
+                check_command: "update_check",
+                download_command: "update_download",
+                cancel_command: "update_cancel",
+                install_command: "update_install",
+                open_command: "update_open_release",
+            },
+        )
     }
 
     /// 分组标题。没有 key（用标题当 DOM id），也不带 label。

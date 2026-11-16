@@ -28,6 +28,7 @@ mod tools;
 mod transfer;
 mod tray;
 mod translate;
+mod update;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -437,6 +438,7 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
                     | tools::FieldKind::Button
                     | tools::FieldKind::ButtonRow { .. }
                     | tools::FieldKind::Group { .. }
+                    | tools::FieldKind::Update { .. }
             ) {
                 continue;
             }
@@ -2712,6 +2714,13 @@ fn main() {
             new_task_done,
             close_new_task,
             open_new_task,
+            // 应用内更新（ADR-061）
+            update::update_state,
+            update::update_check,
+            update::update_download,
+            update::update_cancel,
+            update::update_install,
+            update::update_open_release,
             // 自绘标题栏通用操作（所有无边框窗口共用）
             window_action
         ])
@@ -2730,6 +2739,9 @@ fn main() {
             crate::download::notify::register_click(&handle);
 
             tray::build(&handle)?;
+
+            // 静默日检：延迟 15 秒再联网，不拖慢启动；失败只记日志。
+            update::spawn_startup(handle.clone());
 
             // 热键注册失败不阻断启动：托盘菜单仍然可用，设置页会显示红字原因。
             // 必须一次注册全部（划词 + 输入翻译）：register_hotkey 开头会
@@ -2972,6 +2984,7 @@ mod tests {
                             | crate::tools::FieldKind::Button
                             | crate::tools::FieldKind::ButtonRow { .. }
                             | crate::tools::FieldKind::Group { .. }
+                            | crate::tools::FieldKind::Update { .. }
                     ) {
                         continue;
                     }

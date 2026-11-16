@@ -891,3 +891,60 @@ input.capturing {
 #toast .ico-svg { color: var(--text-secondary); flex: none; }
 #toast.bad { border-color: var(--danger-border); color: var(--danger); }
 #toast.bad .ico-svg { color: var(--danger); }
+
+/* ── 应用更新面板（会话 82）──────────────────────────────────────────────
+ * 面板自带标题信息，不再走「左侧标题 + 右侧控件」的卡片行；整行铺满。 */
+.field.update { display: block; }
+.field.update .upd-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0;
+}
+.upd-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.upd-state {
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+.upd-state.bad { color: var(--danger); }
+.upd-notes {
+  max-height: 180px;
+  overflow: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+}
+.upd-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+.upd-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width .2s linear;
+}
+.upd-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}

@@ -1,0 +1,623 @@
+//! 应用内检查更新。
+//!
+//! 链路：GitHub Releases 元数据 → 下载 NSIS 安装包（可走 gh-proxy）→ sha256 校验
+//! → 用户点「立即安装」→ 以 `/UPDATE /P /R` 原地升级并重启。见 ADR-061。
+//!
+//! 线程边界：命令与托盘回调只负责改状态 + `spawn`；网络与写盘都在工作线程，
+//! 完成后用 `update:state` 事件把整份快照推给设置页。
+
+pub mod download;
+pub mod github;
+pub mod install;
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
+
+use crate::dlog;
+
+const EVENT: &str = "update:state";
+const DAY_SECS: i64 = 24 * 60 * 60;
+/// 下载进度事件的节流间隔。
+const PROGRESS_MS: u128 = 300;
+
+static STATE: OnceLock<Mutex<Inner>> = OnceLock::new();
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Idle,
+    Checking,
+    Available,
+    UpToDate,
+    Downloading,
+    Ready,
+    Installing,
+    Error,
+}
+
+/// 给前端的完整快照；命令返回值和事件 payload 用同一个形状。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateView {
+    pub phase: Phase,
+    pub current: String,
+    pub latest: Option<String>,
+    pub notes: Option<String>,
+    pub url: Option<String>,
+    pub asset_name: Option<String>,
+    pub asset_size: u64,
+    pub downloaded: u64,
+    pub via: Option<String>,
+    pub error: Option<String>,
+    pub last_check: Option<i64>,
+}
+
+struct Inner {
+    view: UpdateView,
+    /// 不直接暴露给前端内部字段
+    asset_url: Option<String>,
+    digest: Option<String>,
+    ready_path: Option<PathBuf>,
+}
+
+impl Inner {
+    fn new() -> Self {
+        Self {
+            view: UpdateView {
+                phase: Phase::Idle,
+                current: env!("CARGO_PKG_VERSION").to_string(),
+                latest: None,
+                notes: None,
+                url: None,
+                asset_name: None,
+                asset_size: 0,
+                downloaded: 0,
+                via: None,
+                error: None,
+                last_check: None,
+            },
+            asset_url: None,
+            digest: None,
+            ready_path: None,
+        }
+    }
+
+    fn reset_release(&mut self) {
+        self.asset_url = None;
+        self.digest = None;
+        self.ready_path = None;
+        self.view.asset_name = None;
+        self.view.asset_size = 0;
+        self.view.downloaded = 0;
+        self.view.via = None;
+    }
+}
+
+fn state() -> MutexGuard<'static, Inner> {
+    STATE
+        .get_or_init(|| Mutex::new(Inner::new()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn snapshot() -> UpdateView {
+    state().view.clone()
+}
+
+/// 改状态后广播。锁必须在 emit 前释放：事件处理器可能反过来调命令。
+fn publish(app: Option<&AppHandle>) {
+    let view = snapshot();
+    if let Some(app) = app {
+        if let Err(e) = app.emit(EVENT, &view) {
+            dlog::warn(&format!("update: 推送状态失败：{e}"));
+        }
+    }
+}
+
+fn set(app: Option<&AppHandle>, f: impl FnOnce(&mut Inner)) {
+    {
+        let mut g = state();
+        f(&mut g);
+    }
+    publish(app);
+}
+
+// ── 命令 ────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn update_state() -> UpdateView {
+    snapshot()
+}
+
+#[tauri::command]
+pub fn update_check(app: AppHandle) -> Result<UpdateView, String> {
+    if matches!(
+        state().view.phase,
+        Phase::Checking | Phase::Downloading | Phase::Installing
+    ) {
+        return Ok(snapshot());
+    }
+    set(Some(&app), |s| {
+        s.view.phase = Phase::Checking;
+        s.view.error = None;
+    });
+    let worker = app.clone();
+    std::thread::spawn(move || run_check(worker, true));
+    Ok(snapshot())
+}
+
+/// 托盘 / 启动日检共用入口：不返回快照，失败只走日志。
+pub fn spawn_check(app: AppHandle) {
+    if let Err(e) = update_check(app) {
+        dlog::warn(&format!("update: 启动检查失败：{e}"));
+    }
+}
+
+#[tauri::command]
+pub fn update_download(app: AppHandle) -> Result<UpdateView, String> {
+    let (asset_url, name, size, digest) = {
+        let g = state();
+        if g.view.phase != Phase::Available {
+            return Err("当前没有可下载的新版本".to_string());
+        }
+        let url = g
+            .asset_url
+            .clone()
+            .ok_or_else(|| "缺少安装包地址，请重新检查更新".to_string())?;
+        let name = g
+            .view
+            .asset_name
+            .clone()
+            .ok_or_else(|| "缺少安装包文件名，请重新检查更新".to_string())?;
+        (url, name, g.view.asset_size, g.digest.clone())
+    };
+    let cfg = crate::config::load();
+    let lines = download::candidates(
+        &cfg.update_download_source,
+        &cfg.update_custom_proxy,
+        &asset_url,
+    )?;
+
+    CANCEL.store(false, Ordering::SeqCst);
+    set(Some(&app), |s| {
+        s.view.phase = Phase::Downloading;
+        s.view.downloaded = 0;
+        s.view.via = None;
+        s.view.error = None;
+    });
+    let worker = app.clone();
+    std::thread::spawn(move || run_download(worker, name, size, digest, lines));
+    Ok(snapshot())
+}
+
+#[tauri::command]
+pub fn update_cancel() -> UpdateView {
+    CANCEL.store(true, Ordering::SeqCst);
+    snapshot()
+}
+
+#[tauri::command]
+pub fn update_install(app: AppHandle) -> Result<UpdateView, String> {
+    let path = {
+        let g = state();
+        if g.view.phase != Phase::Ready {
+            return Err("安装包还没准备好".to_string());
+        }
+        g.ready_path
+            .clone()
+            .ok_or_else(|| "安装包路径丢失，请重新下载".to_string())?
+    };
+    if !path.is_file() {
+        set(Some(&app), |s| {
+            s.view.phase = Phase::Error;
+            s.view.error = Some("安装包不存在，请重新下载".to_string());
+            s.ready_path = None;
+        });
+        return Err("安装包不存在，请重新下载".to_string());
+    }
+    set(Some(&app), |s| s.view.phase = Phase::Installing);
+    if let Err(e) = install::launch(&app, &path) {
+        set(Some(&app), |s| {
+            s.view.phase = Phase::Ready;
+            s.view.error = Some(e.clone());
+        });
+        return Err(e);
+    }
+    Ok(snapshot())
+}
+
+#[tauri::command]
+pub fn update_open_release() -> Result<(), String> {
+    let url = state()
+        .view
+        .url
+        .clone()
+        .ok_or_else(|| "还没有可打开的发布页".to_string())?;
+    if !url.starts_with("https://") {
+        return Err("发布页地址无效".to_string());
+    }
+    open_url(&url)
+}
+
+fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let cmdline = format!("start \"\" \"{}\"", url.replace('"', ""));
+        std::process::Command::new("cmd")
+            .args(["/C", cmdline.as_str()])
+            .creation_flags(0x0800_0000)
+            .spawn()
+            .map_err(|e| {
+                dlog::warn(&format!("update: 打开浏览器失败：{e}"));
+                "无法打开浏览器".to_string()
+            })?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = url;
+        Err("仅支持 Windows".to_string())
+    }
+}
+
+// ── 工作线程 ────────────────────────────────────────────────────────────
+
+fn run_check(app: AppHandle, manual: bool) {
+    let result = github::fetch_latest();
+    let now = now_secs();
+    match result {
+        Ok(info) => {
+            let current = env!("CARGO_PKG_VERSION");
+            let newer = github::is_newer(&info.version, current).unwrap_or(false);
+            {
+                let mut g = state();
+                g.view.phase = if newer { Phase::Available } else { Phase::UpToDate };
+                g.view.latest = Some(info.version.clone());
+                g.view.notes = Some(info.notes);
+                g.view.url = if info.url.starts_with("https://") {
+                    Some(info.url)
+                } else {
+                    None
+                };
+                g.reset_release();
+                g.view.asset_name = Some(info.asset_name);
+                g.view.asset_size = info.asset_size;
+                g.asset_url = Some(info.asset_url);
+                g.digest = info.digest;
+                g.view.error = None;
+                g.view.last_check = Some(now);
+            }
+            publish(Some(&app));
+            crate::tray::set_update_hint(
+                &app,
+                if newer {
+                    Some(info.version.as_str())
+                } else {
+                    None
+                },
+            );
+            persist(now, Some(if newer { info.version.as_str() } else { "" }));
+            dlog::dlog(&format!(
+                "update: 检查完成，当前 {current}，最新 {}，{}",
+                info.version,
+                if newer { "有新版本" } else { "已是最新" }
+            ));
+        }
+        Err(e) => {
+            dlog::warn(&format!("update: 检查更新失败：{e}"));
+            // 失败也要记时间，避免启动崩溃循环反复打 GitHub。
+            persist(now, None);
+            if manual {
+                let mut g = state();
+                if !matches!(g.view.phase, Phase::Available | Phase::Ready | Phase::Downloading) {
+                    g.view.phase = Phase::Error;
+                }
+                g.view.error = Some(e);
+                g.view.last_check = Some(now);
+                drop(g);
+                publish(Some(&app));
+            }
+        }
+    }
+}
+
+fn run_download(
+    app: AppHandle,
+    name: String,
+    size: u64,
+    digest: Option<String>,
+    lines: Vec<download::Candidate>,
+) {
+    let dir = download::updates_dir();
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        dlog::warn(&format!("update: 创建更新目录失败：{e}"));
+        fail(&app, "无法创建更新目录");
+        return;
+    }
+    let final_path = dir.join(&name);
+    let part = dir.join(format!("{name}.part"));
+    let expected = digest.as_deref().and_then(download::parse_digest);
+
+    if final_path.is_file() && download::verify_file(&final_path, expected.as_ref(), size).is_ok() {
+        dlog::dlog("update: 已有校验通过的安装包，跳过下载");
+        finish_ready(&app, final_path, Some("已下载".to_string()), size);
+        return;
+    }
+    let _ = std::fs::remove_file(&final_path);
+
+    let mut errors: Vec<String> = Vec::new();
+    for cand in lines {
+        if CANCEL.load(Ordering::SeqCst) {
+            let _ = std::fs::remove_file(&part);
+            cancel_done(&app);
+            return;
+        }
+        let mut last_emit = Instant::now();
+        let label = cand.label.clone();
+        let res = download::download_one(
+            &cand.url,
+            &part,
+            size,
+            expected.as_ref(),
+            &mut |got, total| {
+                if last_emit.elapsed().as_millis() >= PROGRESS_MS {
+                    last_emit = Instant::now();
+                    set(Some(&app), |s| {
+                        s.view.downloaded = got;
+                        if total > 0 {
+                            s.view.asset_size = total;
+                        }
+                    });
+                }
+            },
+            &CANCEL,
+        );
+        match res {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&final_path);
+                if let Err(e) = std::fs::rename(&part, &final_path) {
+                    dlog::warn(&format!("update: 保存安装包失败：{e}"));
+                    let _ = std::fs::remove_file(&part);
+                    errors.push("无法保存安装包".to_string());
+                    continue;
+                }
+                dlog::dlog(&format!("update: 已通过「{label}」下载安装包"));
+                finish_ready(&app, final_path, Some(label), size);
+                return;
+            }
+            Err(e) if e == download::CANCELLED => {
+                let _ = std::fs::remove_file(&part);
+                cancel_done(&app);
+                return;
+            }
+            Err(e) => {
+                dlog::warn(&format!("update: 线路「{label}」下载失败：{e}"));
+                let _ = std::fs::remove_file(&part);
+                errors.push(e);
+            }
+        }
+    }
+    let msg = match errors.last() {
+        Some(last) => format!("下载失败：{last}"),
+        None => "下载失败".to_string(),
+    };
+    fail(&app, &msg);
+}
+
+fn finish_ready(app: &AppHandle, path: PathBuf, via: Option<String>, size: u64) {
+    set(Some(app), |s| {
+        s.ready_path = Some(path);
+        s.view.phase = Phase::Ready;
+        s.view.downloaded = size;
+        s.view.via = via;
+        s.view.error = None;
+    });
+}
+
+fn cancel_done(app: &AppHandle) {
+    set(Some(app), |s| {
+        s.view.phase = Phase::Idle;
+        s.view.downloaded = 0;
+        s.view.via = None;
+        s.view.error = None;
+    });
+}
+
+fn fail(app: &AppHandle, msg: &str) {
+    set(Some(app), |s| {
+        s.view.phase = Phase::Error;
+        s.view.downloaded = 0;
+        s.view.error = Some(msg.to_string());
+    });
+}
+
+// ── 启动日检 + 状态文件 ─────────────────────────────────────────────────
+
+#[derive(Default, Serialize, Deserialize)]
+struct Persist {
+    #[serde(default)]
+    last_check_at: i64,
+    #[serde(default)]
+    latest_seen: String,
+}
+
+fn persist_path() -> PathBuf {
+    crate::config::data_dir().join("update-state.json")
+}
+
+fn read_persist() -> Persist {
+    std::fs::read_to_string(persist_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_persist(p: &Persist) {
+    let path = persist_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match serde_json::to_string_pretty(p) {
+        Ok(text) => {
+            if let Err(e) = std::fs::write(&path, text) {
+                dlog::warn(&format!("update: 写状态文件失败：{e}"));
+            }
+        }
+        Err(e) => dlog::warn(&format!("update: 序列化状态失败：{e}")),
+    }
+}
+
+/// `seen = Some("")` = 清掉「有新版本」提示；`None` = 保持原值。
+fn persist(now: i64, seen: Option<&str>) {
+    let mut p = read_persist();
+    p.last_check_at = now;
+    if let Some(v) = seen {
+        p.latest_seen = v.to_string();
+    }
+    write_persist(&p);
+}
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// 距上次检查满 24 小时才自动查；时钟回拨也视为「该查了」。
+fn should_auto_check(last: i64, now: i64) -> bool {
+    if last <= 0 {
+        return true;
+    }
+    if now < last {
+        return true;
+    }
+    now - last >= DAY_SECS
+}
+
+/// 启动后延迟检查（静默），并顺带清理过期安装包。
+pub fn spawn_startup(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(15));
+        let p = read_persist();
+        if p.last_check_at > 0 {
+            set(Some(&app), |s| s.view.last_check = Some(p.last_check_at));
+        }
+        if !p.latest_seen.is_empty()
+            && github::is_newer(&p.latest_seen, env!("CARGO_PKG_VERSION")).unwrap_or(false)
+        {
+            crate::tray::set_update_hint(&app, Some(p.latest_seen.as_str()));
+        }
+        if !should_auto_check(p.last_check_at, now_secs()) {
+            dlog::dlog("update: 距上次检查不足 24 小时，跳过自动检查");
+            return;
+        }
+        run_check(app, false);
+    });
+
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(30));
+        cleanup_stale();
+    });
+}
+
+/// 删掉 7 天前的半成品 / 旧安装包；当前 Ready 的文件不动。
+fn cleanup_stale() {
+    let dir = download::updates_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    let now = SystemTime::now();
+    let ready = state().ready_path.clone();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if Some(&path) == ready.as_ref() {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let old = meta
+            .modified()
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .map(|d| d.as_secs() > 7 * 24 * 60 * 60)
+            .unwrap_or(false);
+        if old {
+            if let Err(e) = std::fs::remove_file(&path) {
+                dlog::warn(&format!("update: 清理旧安装包失败：{e}"));
+            }
+        }
+    }
+}
+
+/// 关于页状态行后缀。
+pub fn status_suffix() -> String {
+    let g = state();
+    if g.view.phase == Phase::Available {
+        if let Some(v) = &g.view.latest {
+            return format!(" · 可更新到 {v}");
+        }
+    }
+    String::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auto_check_respects_day_boundary() {
+        let now = 2_000_000_000;
+        assert!(should_auto_check(0, now));
+        assert!(!should_auto_check(now - 60, now));
+        assert!(should_auto_check(now - DAY_SECS, now));
+        assert!(should_auto_check(now - DAY_SECS - 1, now));
+        // 时钟回拨：该查
+        assert!(should_auto_check(now + 3600, now));
+    }
+
+    #[test]
+    fn initial_state_is_idle_with_package_version() {
+        let v = UpdateView {
+            phase: Phase::Idle,
+            current: env!("CARGO_PKG_VERSION").to_string(),
+            latest: None,
+            notes: None,
+            url: None,
+            asset_name: None,
+            asset_size: 0,
+            downloaded: 0,
+            via: None,
+            error: None,
+            last_check: None,
+        };
+        assert_eq!(v.current, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            serde_json::to_value(v).unwrap()["phase"],
+            serde_json::json!("idle")
+        );
+    }
+
+    /// 版本号两处维护，漏改一处会让安装包文件名和检查逻辑对不上。
+    #[test]
+    fn package_version_matches_tauri_conf() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+        assert_eq!(
+            conf["version"].as_str(),
+            Some(env!("CARGO_PKG_VERSION")),
+            "tauri.conf.json 与 Cargo.toml 的版本号不一致"
+        );
+    }
+}

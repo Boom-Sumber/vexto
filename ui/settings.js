@@ -43,6 +43,11 @@ const state = {
 // 候选来自同页的两张列表，改名 / 增删后要原地刷新，不能整页重画（会丢焦点）。
 let engineSelectNodes = [];
 
+// 应用更新面板：后端推整份快照（update:state），这里只按 phase 渲染。
+// 命令名由 schema 给出，前端不认识「更新」的业务细节。
+let updateState = null;
+let updatePanel = null;
+
 // ── 小工具 ────────────────────────────────────────────────────────────────
 
 function setStatus(msg, kind) {
@@ -254,7 +259,7 @@ function renderTabs() {
   }
 }
 
-// ── 字段渲染（9 种类型）──────────────────────────────────────────────────
+// ── 字段渲染 ─────────────────────────────────────────────────────────────
 
 function currentSection() {
   return state.sections.find((s) => s.id === state.tabId) || state.sections[0] || null;
@@ -350,6 +355,8 @@ function renderField(f) {
       return fieldGroup(f);
     case "list":
       return fieldList(f);
+    case "update":
+      return fieldUpdate(f);
     default:
       // 后端加了新类型而前端还没跟上：明确报出来，不要静默吞掉
       return noteNode("未知字段类型「" + f.type + "」，请更新设置页");
@@ -1660,9 +1667,16 @@ function showDirtyModal(intent) {
   const n = pendingCount();
   const what = el("tool-name").textContent || "当前工具";
   el("modal-title").textContent = "有未保存的修改";
-  el("modal-text").textContent = intent.kind === "close"
-    ? `「${what}」有 ${n} 项改动还没保存，直接关闭会丢掉它们。`
-    : `「${what}」有 ${n} 项改动还没保存，切换工具会丢掉它们。`;
+  if (intent.kind === "close") {
+    el("modal-text").textContent =
+      `「${what}」有 ${n} 项改动还没保存，直接关闭会丢掉它们。`;
+  } else if (intent.kind === "update") {
+    el("modal-text").textContent =
+      `安装更新会关闭 Vexto。「${what}」有 ${n} 项改动还没保存；先保存再安装就不会丢。`;
+  } else {
+    el("modal-text").textContent =
+      `「${what}」有 ${n} 项改动还没保存，切换工具会丢掉它们。`;
+  }
   el("dirty-modal").classList.remove("hidden");
   el("mSave").focus();
 }
@@ -1679,7 +1693,187 @@ function runIntent(intent) {
     invoke("window_action", { action: "close" }).catch(() => {});
   } else if (intent.kind === "switch") {
     selectTool(intent.toolId, { skipGuard: true });
+  } else if (intent.kind === "update") {
+    updateInvoke(null, intent.cmd);
   }
+}
+
+// ── 应用更新面板 ────────────────────────────────────────────────────────
+//
+// 状态是后端推来的整份快照；切换工具重绘 DOM 后只需要重新挂一次节点，
+// 事件监听在 boot() 里只注册一次（页面销毁即解绑）。
+
+function fieldUpdate(f) {
+  const w = wrapField(f, "update");
+  const box = document.createElement("div");
+  box.className = "upd-box";
+  w.append(box);
+  updatePanel = { box, field: f };
+  // 面板可能是检查完成后才打开的：先拉一次当前快照，别只等事件。
+  invoke(f.status_command)
+    .then((s) => {
+      updateState = s;
+      renderUpdatePanel();
+    })
+    .catch(() => {});
+  renderUpdatePanel();
+  return w;
+}
+
+function renderUpdatePanel() {
+  if (!updatePanel || !updatePanel.box.isConnected) return;
+  const box = updatePanel.box;
+  const f = updatePanel.field;
+  box.textContent = "";
+
+  const s = updateState;
+  if (!s) {
+    const loading = document.createElement("div");
+    loading.className = "upd-head";
+    loading.textContent = "正在读取更新状态…";
+    box.append(loading);
+    return;
+  }
+
+  const head = document.createElement("div");
+  head.className = "upd-head";
+  const cur = document.createElement("span");
+  cur.textContent = "当前版本 Vexto " + s.current;
+  const last = document.createElement("span");
+  last.textContent = s.lastCheck
+    ? "上次检查：" + new Date(s.lastCheck * 1000).toLocaleString()
+    : "尚未检查过";
+  head.append(cur, last);
+  box.append(head);
+
+  const line = document.createElement("div");
+  line.className = "upd-state" + (s.phase === "error" ? " bad" : "");
+  line.textContent = updateStateText(s);
+  box.append(line);
+
+  if (s.notes && (s.phase === "available" || s.phase === "downloading" || s.phase === "ready")) {
+    const notes = document.createElement("div");
+    notes.className = "upd-notes";
+    notes.textContent = s.notes;
+    box.append(notes);
+  }
+
+  if (s.phase === "downloading") {
+    const total = s.assetSize || 0;
+    const got = s.downloaded || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((got / total) * 100)) : 0;
+    const bar = document.createElement("div");
+    bar.className = "upd-bar";
+    const fill = document.createElement("i");
+    fill.style.width = pct + "%";
+    bar.append(fill);
+    box.append(bar);
+  }
+
+  const acts = document.createElement("div");
+  acts.className = "upd-acts";
+  const add = (label, primary, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn" + (primary ? " btn-primary" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => fn(b));
+    acts.append(b);
+  };
+  switch (s.phase) {
+    case "idle":
+    case "up_to_date":
+      add("检查更新", true, (b) => updateInvoke(b, f.check_command));
+      break;
+    case "checking":
+    case "installing":
+      break;
+    case "available":
+      if (s.url) add("打开发布页", false, (b) => updateInvoke(b, f.open_command));
+      add("下载并安装", true, (b) => updateInvoke(b, f.download_command));
+      break;
+    case "downloading":
+      add("取消下载", false, (b) => updateInvoke(b, f.cancel_command));
+      break;
+    case "ready":
+      if (s.url) add("打开发布页", false, (b) => updateInvoke(b, f.open_command));
+      add("立即安装", true, (b) => requestInstall(b, f));
+      break;
+    case "error":
+      if (s.url) add("打开发布页", false, (b) => updateInvoke(b, f.open_command));
+      add("重试", true, (b) => updateInvoke(b, f.check_command));
+      break;
+    default:
+      break;
+  }
+  if (acts.childNodes.length) box.append(acts);
+}
+
+function updateStateText(s) {
+  switch (s.phase) {
+    case "idle":
+      return "还没有检查过更新。";
+    case "checking":
+      return "正在检查新版本…";
+    case "available":
+      return "发现新版本 " + (s.latest || "");
+    case "up_to_date":
+      return "已是最新版本。";
+    case "downloading": {
+      const total = s.assetSize || 0;
+      const got = s.downloaded || 0;
+      const pct = total > 0 ? Math.floor((got / total) * 100) : 0;
+      return "正在下载安装包 " + fmtSize(got) +
+        (total > 0 ? " / " + fmtSize(total) + "（" + pct + "%）" : "");
+    }
+    case "ready":
+      return "安装包已就绪" + (s.via ? "（" + s.via + "）" : "") + "。";
+    case "installing":
+      return "正在启动安装程序…";
+    case "error":
+      return s.error || "更新失败，请重试。";
+    default:
+      return "";
+  }
+}
+
+function fmtSize(n) {
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  if (n >= 1024) return Math.round(n / 1024) + " KB";
+  return n + " B";
+}
+
+async function updateInvoke(btn, cmd) {
+  if (btn) btn.disabled = true;
+  try {
+    const s = await invoke(cmd);
+    if (s && s.phase) {
+      updateState = s;
+      renderUpdatePanel();
+    }
+  } catch (e) {
+    showToast(errText(e), "bad");
+    // 失败后拉一次真实状态，避免按钮停在旧 phase。
+    try {
+      if (updatePanel) {
+        updateState = await invoke(updatePanel.field.status_command);
+        renderUpdatePanel();
+      }
+    } catch {
+      /* 拉不到就保持原样 */
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/// 安装会关闭 Vexto；有未保存改动时先走既有的三出口确认框。
+function requestInstall(btn, f) {
+  if (pendingCount() > 0) {
+    showDirtyModal({ kind: "update", cmd: f.install_command });
+    return;
+  }
+  updateInvoke(btn, f.install_command);
 }
 
 // ── 启动 ─────────────────────────────────────────────────────────────────
@@ -1742,6 +1936,12 @@ async function boot() {
     if (id && state.tools.some((t) => t.id === id)) {
       await selectTool(id, { keepBanner: true });
     }
+  });
+
+  // 更新状态由后端推整份快照；页面生命周期内只注册一次。
+  await listen("update:state", (ev) => {
+    updateState = ev && ev.payload;
+    renderUpdatePanel();
   });
 
   // 标题栏的明暗切换会直接写配置并广播：当前停在通用页且没有未保存改动时，

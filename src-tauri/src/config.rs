@@ -422,6 +422,16 @@ pub struct Config {
     #[serde(default = "d_tray_left_click")]
     pub tray_left_click: String,
 
+    /// 更新下载线路：`auto` / `direct` / `custom`。
+    /// `auto` 依次尝试 v4.gh-proxy.org → gh-proxy.org → 直连（国内直连发布资产
+    /// 经常失败，见 ADR-061）。
+    #[serde(default = "d_update_download_source")]
+    pub update_download_source: String,
+    /// 自定义代理前缀，只在 `update_download_source = custom` 时使用。
+    /// 必须以 `http://` 或 `https://` 开头；程序会自动补结尾 `/`。
+    #[serde(default)]
+    pub update_custom_proxy: String,
+
     /// 极轻模式：关闭窗口时销毁 WebView，把内存还给系统。
     /// **默认开**（`d_true`，老配置没有这个字段时按开处理，ADR-013 只增字段）。
     /// 关掉后窗口只 `hide()`、WebView 常驻，下次打开更快但会一直占内存。
@@ -490,6 +500,10 @@ fn d_screenshot_name_rule() -> String {
 }
 fn d_tray_left_click() -> String {
     "settings".to_string()
+}
+
+fn d_update_download_source() -> String {
+    "auto".to_string()
 }
 fn d_scroll_mode() -> String {
     "auto".to_string()
@@ -672,6 +686,8 @@ impl Default for Config {
             extension_bridge_secret: String::new(),
             autostart: false,
             tray_left_click: d_tray_left_click(),
+            update_download_source: d_update_download_source(),
+            update_custom_proxy: String::new(),
             lite_mode: true,
             appearance_theme: d_appearance_theme(),
             accent_color: String::new(),
