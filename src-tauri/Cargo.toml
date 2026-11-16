@@ -1,6 +1,6 @@
 [package]
 name = "lightbox"
-version = "0.1.0"
+version = "0.2.0"
 description = "轻量工具集：划词翻译 / 截图翻译 / 下载 / 局域网传文件"
 edition = "2021"
 

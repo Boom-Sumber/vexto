@@ -820,7 +820,7 @@ function fieldList(f) {
         ? "vendor:" + vendors[0].id
         : models[0]
         ? "openai:" + models[0].id
-        : "";
+        : "microsoft";
       commit("active_engine", pick);
     }
     renderFields();
@@ -1098,6 +1098,8 @@ function engineChoices() {
     return Array.isArray(v) ? v : [];
   };
   const out = [];
+  // 内置免配置引擎永远排在第一个；它不是「厂商管理」里的实例（ADR-058）。
+  out.push(["microsoft", "微软翻译（免配置）"]);
   for (const p of listOf("vendor_profiles")) {
     if (p.enabled === false) continue;
     const name = String(p.name || "").trim() || "未命名";

@@ -20,6 +20,7 @@
 //! 组合出五个实现：`baidu` / `baidu-llm` / `youdao` / `youdao-llm` / `openai`。
 
 pub mod baidu;
+pub mod microsoft;
 pub mod openai;
 pub mod youdao;
 
@@ -87,6 +88,7 @@ pub trait Engine: Send + Sync {
 /// 引擎 id → 实例。未知 id 返回 `None`，由调用方给出中文错误。
 pub fn engine_by_id(id: &str) -> Option<Box<dyn Engine>> {
     match id.trim().to_ascii_lowercase().as_str() {
+        "microsoft" => Some(Box::new(microsoft::Microsoft)),
         "baidu" | "" => Some(Box::new(baidu::Baidu)),
         "baidu-llm" => Some(Box::new(baidu::BaiduLlm)),
         "youdao" => Some(Box::new(youdao::YoudaoMt)),
@@ -101,6 +103,13 @@ pub fn engine_by_id(id: &str) -> Option<Box<dyn Engine>> {
 /// 空串表示「一个可用实例都没有」：调用方据此给出「先去添加一个」的中文提示，
 /// 而不是让引擎报一句看不懂的错误。
 pub fn engine_id_of(cfg: &Config) -> String {
+    if cfg
+        .active_engine
+        .trim()
+        .eq_ignore_ascii_case(config::MICROSOFT_ENGINE)
+    {
+        return "microsoft".to_string();
+    }
     if let Some(p) = cfg.active_vendor_profile() {
         let base = if p.vendor == config::VENDOR_YOUDAO {
             "youdao"
@@ -527,6 +536,7 @@ mod tests {
     #[test]
     fn engine_by_id_routes_known_ids() {
         for (id, name) in [
+            ("microsoft", "微软翻译"),
             ("baidu", "百度翻译"),
             ("baidu-llm", "百度大模型翻译"),
             ("youdao", "有道翻译"),
@@ -620,6 +630,18 @@ mod tests {
             ..Config::default()
         };
         assert_eq!(engine_id_of(&cfg), "");
+    }
+
+    /// 内置微软翻译不需要任何配置，active_engine 直接指向它。
+    #[test]
+    fn microsoft_engine_routes_and_is_ready_by_default() {
+        let cfg = Config {
+            active_engine: config::MICROSOFT_ENGINE.into(),
+            ..Config::default()
+        };
+        assert_eq!(engine_id_of(&cfg), "microsoft");
+        assert!(engine_ready(&cfg));
+        assert_eq!(cfg.active_engine_label(), "微软翻译");
     }
 
     /// 未知厂商代码当百度处理（配置被手改坏也要能用）。

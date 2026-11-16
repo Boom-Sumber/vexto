@@ -34,6 +34,8 @@ pub struct Lang {
     /// 韩语是 `ko` 不是 `kor`，中文分 `zh-CHS` / `zh-CHT`。直接拿百度码发过去
     /// 会得到 102「不支持的语言类型」，这正是 S1 那个老 bug 的另一种复发方式。
     pub youdao: &'static str,
+    /// 微软 Edge 翻译的 BCP-47 代码：`ja` / `ko` / `zh-Hans` / `zh-Hant`。
+    pub microsoft: &'static str,
     /// whatlang 的 ISO 639-3 代码
     pub whatlang: &'static str,
     /// 设置页下拉框和提示语里的名字
@@ -46,96 +48,112 @@ pub const LANGS: &[Lang] = &[
     Lang {
         baidu: "zh",
         youdao: "zh-CHS",
+        microsoft: "zh-Hans",
         whatlang: "cmn",
         name: "中文",
     },
     Lang {
         baidu: "cht",
         youdao: "zh-CHT",
+        microsoft: "zh-Hant",
         whatlang: "cmn",
         name: "繁体中文",
     },
     Lang {
         baidu: "en",
         youdao: "en",
+        microsoft: "en",
         whatlang: "eng",
         name: "英语",
     },
     Lang {
         baidu: "jp",
         youdao: "ja",
+        microsoft: "ja",
         whatlang: "jpn",
         name: "日语",
     },
     Lang {
         baidu: "kor",
         youdao: "ko",
+        microsoft: "ko",
         whatlang: "kor",
         name: "韩语",
     },
     Lang {
         baidu: "fra",
         youdao: "fr",
+        microsoft: "fr",
         whatlang: "fra",
         name: "法语",
     },
     Lang {
         baidu: "de",
         youdao: "de",
+        microsoft: "de",
         whatlang: "deu",
         name: "德语",
     },
     Lang {
         baidu: "spa",
         youdao: "es",
+        microsoft: "es",
         whatlang: "spa",
         name: "西班牙语",
     },
     Lang {
         baidu: "ru",
         youdao: "ru",
+        microsoft: "ru",
         whatlang: "rus",
         name: "俄语",
     },
     Lang {
         baidu: "pt",
         youdao: "pt",
+        microsoft: "pt",
         whatlang: "por",
         name: "葡萄牙语",
     },
     Lang {
         baidu: "it",
         youdao: "it",
+        microsoft: "it",
         whatlang: "ita",
         name: "意大利语",
     },
     Lang {
         baidu: "th",
         youdao: "th",
+        microsoft: "th",
         whatlang: "tha",
         name: "泰语",
     },
     Lang {
         baidu: "vie",
         youdao: "vi",
+        microsoft: "vi",
         whatlang: "vie",
         name: "越南语",
     },
     Lang {
         baidu: "ara",
         youdao: "ar",
+        microsoft: "ar",
         whatlang: "ara",
         name: "阿拉伯语",
     },
     Lang {
         baidu: "nl",
         youdao: "nl",
+        microsoft: "nl",
         whatlang: "nld",
         name: "荷兰语",
     },
     Lang {
         baidu: "pl",
         youdao: "pl",
+        microsoft: "pl",
         whatlang: "pol",
         name: "波兰语",
     },
@@ -171,6 +189,39 @@ pub fn to_youdao(code: &str) -> Option<&'static str> {
         .iter()
         .find(|l| l.baidu.eq_ignore_ascii_case(c))
         .map(|l| l.youdao)
+}
+
+/// 本项目内部代码（= 百度码）→ 微软 BCP-47 码。
+///
+/// `auto` / 空串返回 `""`：微软的自动检测就是 `from` 留空，不能传 `auto`。
+pub fn to_microsoft(code: &str) -> Option<&'static str> {
+    let c = code.trim();
+    if c.is_empty() || c.eq_ignore_ascii_case("auto") {
+        return Some("");
+    }
+    LANGS
+        .iter()
+        .find(|l| l.baidu.eq_ignore_ascii_case(c))
+        .map(|l| l.microsoft)
+}
+
+/// 微软返回的检测语言 / 目标语言 → 本项目内部代码（百度码）。
+///
+/// 微软中文分 `zh-Hans` / `zh-Hant`，还可能在旧版本里返回 `zh-CN` / `zh-TW`；
+/// 其余语种用语言表里的 BCP-47 码反查。
+pub fn from_microsoft(code: &str) -> Option<&'static str> {
+    let c = code.trim();
+    let lower = c.to_ascii_lowercase();
+    if matches!(lower.as_str(), "zh-hans" | "zh-cn" | "zh") {
+        return Some("zh");
+    }
+    if matches!(lower.as_str(), "zh-hant" | "zh-tw" | "zh-hk") {
+        return Some("cht");
+    }
+    LANGS
+        .iter()
+        .find(|l| l.microsoft.eq_ignore_ascii_case(c))
+        .map(|l| l.baidu)
 }
 
 fn whatlang_to_baidu(code: &str) -> Option<&'static str> {
@@ -604,5 +655,33 @@ mod tests {
         }
         // 文言文按中文处理（否则会走「非中文 → 第一目标」那条路）
         assert_eq!(baidu_web_to_code("wyw"), Some("zh"));
+    }
+
+    /// 微软代码每行必须存在且唯一；中文简繁分开。
+    #[test]
+    fn every_lang_row_has_unique_microsoft_code() {
+        let mut seen = std::collections::HashSet::new();
+        for l in LANGS {
+            assert!(!l.microsoft.trim().is_empty(), "{} 没有微软代码", l.name);
+            assert!(
+                seen.insert(l.microsoft),
+                "微软代码 {:?} 重复了（{}）",
+                l.microsoft,
+                l.name
+            );
+        }
+        assert_eq!(to_microsoft("zh"), Some("zh-Hans"));
+        assert_eq!(to_microsoft("cht"), Some("zh-Hant"));
+        assert_eq!(to_microsoft("jp"), Some("ja"));
+        assert_eq!(to_microsoft("kor"), Some("ko"));
+        assert_eq!(to_microsoft("auto"), Some(""));
+        assert_eq!(to_microsoft(""), Some(""));
+        assert_eq!(to_microsoft("klingon"), None);
+        assert_eq!(from_microsoft("zh-Hans"), Some("zh"));
+        assert_eq!(from_microsoft("zh-Hant"), Some("cht"));
+        assert_eq!(from_microsoft("ja"), Some("jp"));
+        assert_eq!(from_microsoft("ko"), Some("kor"));
+        assert_eq!(from_microsoft("en"), Some("en"));
+        assert_eq!(from_microsoft("xx"), None);
     }
 }

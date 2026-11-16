@@ -18,6 +18,10 @@ pub const MODE_OPENAI: &str = "openai";
 pub const VENDOR_BAIDU: &str = "baidu";
 pub const VENDOR_YOUDAO: &str = "youdao";
 
+/// 内置免配置引擎的 `active_engine` 值。不是 `vendor_profiles` 里的一项：
+/// 微软 Edge 端点不需要任何凭据，永远可用（ADR-058）。
+pub const MICROSOFT_ENGINE: &str = "microsoft";
+
 /// 一套 OpenAI 兼容接口的配置。用户可以在设置里建多套、各起名字，
 /// 用哪套由 `openai_active` 指向它的 `id`。
 ///
@@ -896,7 +900,11 @@ pub fn migrate_vendors(cfg: &mut Config) {
     //    顺序：厂商在前、OpenAI 在后，和界面上的分组顺序一致。
     let vendor_active_ok = cfg.active_vendor_profile().is_some_and(|p| p.enabled);
     let openai_active_ok = cfg.active_openai_profile().is_some_and(|p| p.enabled);
-    if !vendor_active_ok && !openai_active_ok {
+    let microsoft_active = cfg
+        .active_engine
+        .trim()
+        .eq_ignore_ascii_case(MICROSOFT_ENGINE);
+    if !microsoft_active && !vendor_active_ok && !openai_active_ok {
         cfg.active_engine = cfg
             .vendor_profiles
             .iter()
@@ -911,7 +919,7 @@ pub fn migrate_vendors(cfg: &mut Config) {
                     .find(|p| p.enabled)
                     .map(|p| format!("openai:{}", p.id))
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| MICROSOFT_ENGINE.to_string());
     }
 
     // 5) 老字段清空 → 不再序列化
@@ -957,7 +965,10 @@ impl Config {
     /// 没开就只有机翻一项。`enabled=false` 的实例整条不出现（会话 53）。
     /// 没配置任何实例时返回空——设置页据此显示「先去下面添加」。
     pub fn engine_choices(&self) -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = Vec::new();
+        let mut out: Vec<(String, String)> = vec![(
+            MICROSOFT_ENGINE.to_string(),
+            "微软翻译（免配置）".to_string(),
+        )];
         for p in self.vendor_profiles.iter().filter(|p| p.enabled) {
             let name = p.name.trim().to_string();
             out.push((
@@ -991,6 +1002,13 @@ impl Config {
 
     /// 当前实例的显示名（状态行、翻译弹窗用）。没有可用实例时给空串。
     pub fn active_engine_label(&self) -> String {
+        if self
+            .active_engine
+            .trim()
+            .eq_ignore_ascii_case(MICROSOFT_ENGINE)
+        {
+            return "微软翻译".to_string();
+        }
         if let Some(p) = self.active_vendor_profile() {
             // 用机翻还是大模型由 `active_engine` 的 `:llm` 后缀说了算，
             // `use_llm` 只决定下拉里要不要展示大模型选项。
@@ -1036,7 +1054,8 @@ mod tests {
     use super::{
         migrate_config_file, migrate_engine, migrate_openai, migrate_vendors, Config,
         ModelProfile, VendorProfile, DATA_DIR_NAME, LEGACY_DATA_DIR_NAME, LLM_ENGINE_SUFFIX,
-        MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, VENDOR_BAIDU, VENDOR_YOUDAO,
+        MODE_OPENAI, MODE_VENDOR_LLM, MODE_VENDOR_MT, MICROSOFT_ENGINE, VENDOR_BAIDU,
+        VENDOR_YOUDAO,
     };
 
     /// ADR-038：数据目录叫 `vexto`，老目录 `lightbox` 只作为迁移来源存在。
@@ -1383,6 +1402,7 @@ mod tests {
         assert_eq!(
             c.engine_choices(),
             vec![
+                ("microsoft".to_string(), "微软翻译（免配置）".to_string()),
                 ("vendor:v1".to_string(), "百度主账号".to_string()),
                 ("vendor:v2".to_string(), "有道大模型 · 机翻".to_string()),
                 (
@@ -1392,8 +1412,11 @@ mod tests {
                 ("openai:a".to_string(), "OpenAI 兼容 · DeepSeek".to_string()),
             ]
         );
-        // 什么都没配 → 空（设置页据此显示「先去添加」）
-        assert!(Config::default().engine_choices().is_empty());
+        // 什么都没配 → 只有内置微软翻译
+        assert_eq!(
+            Config::default().engine_choices(),
+            vec![("microsoft".to_string(), "微软翻译（免配置）".to_string())]
+        );
     }
 
     /// 会话 52：`:llm` 后缀指向同一实例；机翻/大模型由后缀决定，
@@ -1412,6 +1435,23 @@ mod tests {
         c.active_engine = format!("vendor:v1{LLM_ENGINE_SUFFIX}");
         assert_eq!(c.active_vendor_profile().unwrap().id, "v1");
         assert_eq!(c.active_engine_label(), "百度 · 大模型");
+    }
+
+    /// 内置微软翻译是空配置的默认引擎；已有可用 profile 时迁移不覆盖它。
+    #[test]
+    fn microsoft_is_default_and_migration_preserves_it() {
+        let mut empty = Config::default();
+        migrate_vendors(&mut empty);
+        assert_eq!(empty.active_engine, MICROSOFT_ENGINE);
+
+        let mut explicit = Config {
+            active_engine: MICROSOFT_ENGINE.into(),
+            vendor_profiles: vec![vendor("v1", "百度", VENDOR_BAIDU, false)],
+            ..Config::default()
+        };
+        migrate_vendors(&mut explicit);
+        assert_eq!(explicit.active_engine, MICROSOFT_ENGINE);
+        assert_eq!(explicit.active_engine_label(), "微软翻译");
     }
 
     /// 会话 53：卡片开关关掉的实例不出现在下拉里；active 指向它时
