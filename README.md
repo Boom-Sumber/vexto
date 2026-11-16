@@ -86,14 +86,12 @@ powershell -File scripts\measure-mem.ps1     # 内存实测（进程需在跑）
 ## 目录
 
 ```
-AGENTS.md          Agent 工具进入本仓库的第一个文件（六条铁律）
-docs/              全套开发文档，索引 docs/00-INDEX.md；进度台账 docs/11-DEV-PROGRESS.md
 scripts/           build.ps1 / measure-mem.ps1 / gen-icons.ps1
 src-tauri/         Rust 源码、模型、aria2c、第三方许可
 ui/                纯静态前端
 ```
 
-开发约定与完整规则见 `AGENTS.md`、`docs/03-ENGINEERING-STANDARDS.md`。
+开发与构建约定见 `src-tauri/` 与 `ui/` 内的模块注释。
 
 ## 许可
 
@@ -103,4 +101,4 @@ ui/                纯静态前端
 - PaddleOCR PP-OCRv4 模型：Apache-2.0（`paddleocr-models-NOTICE.txt`）
 - pure-onnx-ocr：Apache-2.0（`pure-onnx-ocr-Apache-2.0.txt`）
 
-本程序以 **GNU GPL-3.0** 协议开源，全文见仓库根 `LICENSE`。第三方组件仍按各自许可分发；详见 `docs/07-LICENSING.md`。
+本程序以 **GNU GPL-3.0** 协议开源，全文见仓库根 `LICENSE`。第三方组件仍按各自许可分发。
