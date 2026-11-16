@@ -16,9 +16,9 @@
 
 ## 安装
 
-运行 [Vexto_0.2.2_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.2.2/Vexto_0.2.2_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.3.4_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.4/Vexto_0.3.4_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
-当前安装包 **21.13 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
+当前安装包 **21.16 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
 ## 更新
 
@@ -57,7 +57,7 @@
 | 托盘空闲 | **17.2 MB / WebView2=0** |
 | 设置页打开 | 约 **346.8 MB / 5 个 WebView2** |
 | 全部关闭后 | 约 **3.2 MB / 0** |
-| 安装包 | **21.13 MiB** |
+| 安装包 | **21.16 MiB** |
 
 空闲数值线按 ADR-037 作为「尽量优化」的监控指引；结构性红线是**无窗口时 WebView2=0**、关窗即销毁。
 
