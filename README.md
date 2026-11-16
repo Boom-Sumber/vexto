@@ -83,11 +83,14 @@ powershell -File scripts\measure-mem.ps1     # 内存实测（进程需在跑）
 
 技术栈：Rust + Tauri 2，前端纯静态 HTML/CSS/JS —— 没有 npm、Vite、TypeScript 或前端框架。
 
+> 下载功能依赖 aria2c sidecar，仓库不提交该二进制。构建前把 aria2c 放到
+> `src-tauri/binaries/aria2c-x86_64-pc-windows-msvc.exe`（版本见 `src-tauri/licenses/aria2-VERSION.txt`）。
+
 ## 目录
 
 ```
 scripts/           build.ps1 / measure-mem.ps1 / gen-icons.ps1
-src-tauri/         Rust 源码、模型、aria2c、第三方许可
+src-tauri/         Rust 源码、模型、第三方许可（aria2c 需手动放置）
 ui/                纯静态前端
 ```
 
