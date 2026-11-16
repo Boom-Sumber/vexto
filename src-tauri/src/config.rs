@@ -413,8 +413,9 @@ pub struct Config {
 
     // ---- 系统集成 ----
     /// 开机自启（写 `HKCU\...\CurrentVersion\Run`）。
-    /// 默认关：没经用户同意不往系统里加东西。
-    #[serde(default)]
+    /// **默认开**（会话 86 用户要求）：Vexto 是常驻托盘工具，默认开机就在；
+    /// 老配置里显式写了 `false` 的保持关闭，只给缺字段的配置补默认值。
+    #[serde(default = "d_true")]
     pub autostart: bool,
 
     /// 托盘图标左键功能：`settings` / `tasks` / `input` / `screenshot`。
@@ -684,7 +685,7 @@ impl Default for Config {
             extension_bridge_enabled: true,
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),
-            autostart: false,
+            autostart: true,
             tray_left_click: d_tray_left_click(),
             update_download_source: d_update_download_source(),
             update_custom_proxy: String::new(),
@@ -1267,7 +1268,10 @@ mod tests {
     #[test]
     fn integration_defaults_for_old_config() {
         let c: Config = serde_json::from_str("{}").unwrap();
-        assert!(!c.autostart, "没经同意不该写注册表");
+        assert!(c.autostart, "会话 86 起默认开机自启");
+        // 老配置里显式关掉的仍然保持关闭
+        let c: Config = serde_json::from_str(r#"{"autostart":false}"#).unwrap();
+        assert!(!c.autostart);
         assert_eq!(c.dns_servers, "", "默认用系统 DNS");
         assert!(c.check_certificate, "默认必须校验证书");
         assert!(c.notify_on_done);

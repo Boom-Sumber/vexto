@@ -92,7 +92,16 @@ pub fn register_click(app: &tauri::AppHandle) {
             .and_then(|n| n.body())
             .unwrap_or_default()
             .to_string();
-        crate::dlog::dlog(&format!("notify: 点击通知 body={body}"));
+        let title = e
+            .notification()
+            .and_then(|n| n.title())
+            .unwrap_or_default()
+            .to_string();
+        crate::dlog::dlog(&format!("notify: 点击通知 title={title} body={body}"));
+        // 更新通知（强制更新下载完成）走设置页，不打开下载列表。
+        if crate::update::handle_notification_click(&handle, &title, &body) {
+            return;
+        }
         let cfg = crate::config::load();
         if cfg.notify_click_action == "folder" {
             if let Some(path) = lookup(&body) {

@@ -71,6 +71,15 @@
   background: var(--accent);
   box-shadow: 0 0 6px 1px var(--accent-soft);
 }
+.update-badge.required {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.update-badge.required .ub-dot {
+  background: var(--danger);
+  box-shadow: 0 0 6px 1px var(--danger-bg);
+}
 
 /* 工具项：图标 + 文字；选中 = 主题色淡底 + 左侧渐变指示条（demo 口径）。
  * 会话 53：字号放大一档 + 加粗 + 字距加宽（用户对菜单文字的要求）。 */
@@ -944,6 +953,17 @@ input.capturing {
   overflow-wrap: anywhere;
 }
 .upd-state.bad { color: var(--danger); }
+/* 低于最低版本时的红色提示 */
+.upd-required {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--r-md);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
 /* 「检查更新」和状态文案同一行 */
 .upd-line {
   display: flex;

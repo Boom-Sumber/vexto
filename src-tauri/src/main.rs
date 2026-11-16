@@ -2375,6 +2375,12 @@ fn window_action(window: tauri::WebviewWindow, action: String) -> Result<(), Str
         // 关掉后只隐藏：窗口还在，`open_*()` 直接 show() 复用现成的 WebView，
         // 下次打开不再重新加载页面，代价是内存常驻。
         "close" => {
+            // 安装包已下载：关闭设置窗口等同于「立即更新」，由更新模块接管。
+            if window.label() == popup::SETTINGS_LABEL
+                && crate::update::install_if_ready(window.app_handle())
+            {
+                return Ok(());
+            }
             if config::load().lite_mode {
                 window.destroy().map_err(|e| format!("关闭窗口失败：{e}"))
             } else {

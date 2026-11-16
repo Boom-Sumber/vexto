@@ -56,6 +56,10 @@ pub struct UpdateView {
     pub via: Option<String>,
     pub error: Option<String>,
     pub last_check: Option<i64>,
+    /// Release 说明里声明的最低版本；None = 不做强制更新
+    pub min_version: Option<String>,
+    /// 当前版本是否低于最低版本
+    pub required: bool,
 }
 
 struct Inner {
@@ -81,6 +85,8 @@ impl Inner {
                 via: None,
                 error: None,
                 last_check: None,
+                min_version: None,
+                required: false,
             },
             asset_url: None,
             digest: None,
@@ -269,6 +275,12 @@ fn open_url(url: &str) -> Result<(), String> {
 
 // ── 工作线程 ────────────────────────────────────────────────────────────
 
+/// 当前版本是否低于 Release 声明的最低版本。解析失败时不强制。
+fn is_required(min: Option<&str>, current: &str) -> bool {
+    min.and_then(|m| github::is_newer(m, current).ok())
+        .unwrap_or(false)
+}
+
 fn run_check(app: AppHandle, manual: bool) {
     let result = github::fetch_latest();
     let now = now_secs();
@@ -276,6 +288,11 @@ fn run_check(app: AppHandle, manual: bool) {
         Ok(info) => {
             let current = env!("CARGO_PKG_VERSION");
             let newer = github::is_newer(&info.version, current).unwrap_or(false);
+            // 最低版本不可能高于线上最新版；写错时忽略标记，避免永远强制。
+            let min_opt = info.min_version.clone().filter(|m| {
+                !github::is_newer(m, &info.version).unwrap_or(false)
+            });
+            let required = is_required(min_opt.as_deref(), current);
             {
                 let mut g = state();
                 g.view.phase = if newer { Phase::Available } else { Phase::UpToDate };
@@ -289,6 +306,8 @@ fn run_check(app: AppHandle, manual: bool) {
                 g.reset_release();
                 g.view.asset_name = Some(info.asset_name);
                 g.view.asset_size = info.asset_size;
+                g.view.min_version = min_opt.clone();
+                g.view.required = required;
                 g.asset_url = Some(info.asset_url);
                 g.digest = info.digest;
                 g.view.error = None;
@@ -302,18 +321,33 @@ fn run_check(app: AppHandle, manual: bool) {
                 } else {
                     None
                 },
+                required,
             );
-            persist(now, Some(if newer { info.version.as_str() } else { "" }));
+            persist(
+                now,
+                Some(if newer { info.version.as_str() } else { "" }),
+                Some(min_opt.as_deref().unwrap_or("")),
+            );
             dlog::dlog(&format!(
-                "update: 检查完成，当前 {current}，最新 {}，{}",
+                "update: 检查完成，当前 {current}，最新 {}，{}，最低版本 {}",
                 info.version,
-                if newer { "有新版本" } else { "已是最新" }
+                if newer { "有新版本" } else { "已是最新" },
+                min_opt.as_deref().unwrap_or("未设置")
             ));
+            // 低于最低版本：不等用户点「下载并安装」，直接后台开始下载。
+            // 安装仍然要用户点「立即安装」（ADR-062）。
+            if required && newer {
+                dlog::dlog("update: 低于最低版本，自动开始下载");
+                if let Err(e) = update_download(app.clone()) {
+                    dlog::warn(&format!("update: 自动下载失败：{e}"));
+                    set(Some(&app), |s| s.view.error = Some(e));
+                }
+            }
         }
         Err(e) => {
             dlog::warn(&format!("update: 检查更新失败：{e}"));
             // 失败也要记时间，避免启动崩溃循环反复打 GitHub。
-            persist(now, None);
+            persist(now, None, None);
             if manual {
                 let mut g = state();
                 if !matches!(g.view.phase, Phase::Available | Phase::Ready | Phase::Downloading) {
@@ -430,6 +464,42 @@ fn promote(part: &Path, final_path: &Path) -> Result<(), String> {
     }
 }
 
+/// 安装包已就绪时，关闭设置窗口 / 退出 / 重启都改为启动安装器。
+/// 返回 true 表示已接管，调用方不要再执行原动作。
+pub fn install_if_ready(app: &AppHandle) -> bool {
+    let path = {
+        let g = state();
+        if g.view.phase != Phase::Ready {
+            return false;
+        }
+        g.ready_path.clone()
+    };
+    let Some(path) = path else {
+        return false;
+    };
+    if !path.is_file() {
+        dlog::warn("update: 就绪的安装包不存在，取消事件触发的安装");
+        set(Some(app), |s| {
+            s.view.phase = Phase::Error;
+            s.view.error = Some("安装包不存在，请重新下载".to_string());
+            s.ready_path = None;
+        });
+        return false;
+    }
+    set(Some(app), |s| s.view.phase = Phase::Installing);
+    match install::launch(app, &path) {
+        Ok(()) => true,
+        Err(e) => {
+            dlog::warn(&format!("update: 事件触发安装失败：{e}"));
+            set(Some(app), |s| {
+                s.view.phase = Phase::Ready;
+                s.view.error = Some(e);
+            });
+            false
+        }
+    }
+}
+
 fn finish_ready(app: &AppHandle, path: PathBuf, via: Option<String>, size: u64) {    set(Some(app), |s| {
         s.ready_path = Some(path);
         s.view.phase = Phase::Ready;
@@ -437,6 +507,32 @@ fn finish_ready(app: &AppHandle, path: PathBuf, via: Option<String>, size: u64) 
         s.view.via = via;
         s.view.error = None;
     });
+    // 强制更新的安装包下载完只发一次通知；普通更新不打扰。
+    if state().view.required {
+        notify_ready(app);
+    }
+}
+
+fn notify_ready(app: &AppHandle) {
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title("Vexto 需要更新")
+        .body("新版本已下载，点击立即安装。")
+        .show()
+    {
+        dlog::warn(&format!("update: 发送更新通知失败：{e}"));
+    }
+}
+
+/// 下载通知的点击回调先问这里：更新通知要打开设置页，而不是下载列表。
+pub fn handle_notification_click(app: &AppHandle, title: &str, _body: &str) -> bool {
+    if title == "Vexto 需要更新" {
+        crate::open_settings_at(app, "about");
+        return true;
+    }
+    false
 }
 
 fn cancel_done(app: &AppHandle) {
@@ -464,6 +560,9 @@ struct Persist {
     last_check_at: i64,
     #[serde(default)]
     latest_seen: String,
+    /// 上次检查拿到的「最低版本」标记；启动时低于它就直接检查 + 自动下载。
+    #[serde(default)]
+    min_version: String,
 }
 
 fn persist_path() -> PathBuf {
@@ -493,11 +592,15 @@ fn write_persist(p: &Persist) {
 }
 
 /// `seen = Some("")` = 清掉「有新版本」提示；`None` = 保持原值。
-fn persist(now: i64, seen: Option<&str>) {
+/// `min = Some("")` = 清掉最低版本；`None` = 保持原值。
+fn persist(now: i64, seen: Option<&str>, min: Option<&str>) {
     let mut p = read_persist();
     p.last_check_at = now;
     if let Some(v) = seen {
         p.latest_seen = v.to_string();
+    }
+    if let Some(v) = min {
+        p.min_version = v.to_string();
     }
     write_persist(&p);
 }
@@ -525,19 +628,34 @@ pub fn spawn_startup(app: AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(15));
         let p = read_persist();
+        let current = env!("CARGO_PKG_VERSION");
         if p.last_check_at > 0 {
             set(Some(&app), |s| s.view.last_check = Some(p.last_check_at));
         }
-        if !p.latest_seen.is_empty()
-            && github::is_newer(&p.latest_seen, env!("CARGO_PKG_VERSION")).unwrap_or(false)
-        {
-            crate::tray::set_update_hint(&app, Some(p.latest_seen.as_str()));
+        // 上次已知的最低版本已经高于当前版本：这一次启动就绕过 24h 节流，
+        // 立刻检查并自动下载（用户仍要自己点「立即安装」）。
+        let forced = is_required(
+            Some(p.min_version.as_str()).filter(|m| !m.is_empty()),
+            current,
+        );
+        if forced {
+            set(Some(&app), |s| {
+                s.view.required = true;
+                s.view.min_version = Some(p.min_version.clone());
+            });
+            dlog::dlog("update: 低于最低版本，启动检查并自动下载");
         }
-        if !should_auto_check(p.last_check_at, now_secs()) {
+        if !p.latest_seen.is_empty()
+            && github::is_newer(&p.latest_seen, current).unwrap_or(false)
+        {
+            crate::tray::set_update_hint(&app, Some(p.latest_seen.as_str()), forced);
+        }
+        if !forced && !should_auto_check(p.last_check_at, now_secs()) {
             dlog::dlog("update: 距上次检查不足 24 小时，跳过自动检查");
             return;
         }
-        run_check(app, false);
+        // 强制更新场景下检查失败也要在面板里显示原因（manual=true 只影响错误展示）。
+        run_check(app, forced);
     });
 
     std::thread::spawn(|| {
@@ -582,6 +700,11 @@ fn cleanup_stale() {
 /// 关于页状态行后缀。
 pub fn status_suffix() -> String {
     let g = state();
+    if g.view.required {
+        if let Some(v) = &g.view.latest {
+            return format!(" · 立即更新到 {v}");
+        }
+    }
     if g.view.phase == Phase::Available {
         if let Some(v) = &g.view.latest {
             return format!(" · 可更新到 {v}");
@@ -619,12 +742,23 @@ mod tests {
             via: None,
             error: None,
             last_check: None,
+            min_version: None,
+            required: false,
         };
         assert_eq!(v.current, env!("CARGO_PKG_VERSION"));
         assert_eq!(
             serde_json::to_value(v).unwrap()["phase"],
             serde_json::json!("idle")
         );
+    }
+
+    #[test]
+    fn required_only_when_below_min_version() {
+        assert!(is_required(Some("0.3.2"), "0.3.1"));
+        assert!(!is_required(Some("0.3.1"), "0.3.1"));
+        assert!(!is_required(Some("0.3.0"), "0.3.1"));
+        assert!(!is_required(None, "0.3.1"));
+        assert!(!is_required(Some("banana"), "0.3.1"));
     }
 
     /// 版本号两处维护，漏改一处会让安装包文件名和检查逻辑对不上。

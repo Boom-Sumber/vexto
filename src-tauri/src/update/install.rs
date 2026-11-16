@@ -16,9 +16,11 @@ use crate::dlog;
 use crate::QUITTING;
 
 /// 延迟约 3 秒，留给 ExitRequested 里的 aria2 / 互传服务清理。
+///
+/// 不经过 `start`：`cmd` 直接把引号里的安装器当成命令执行，少一层标题/参数解析。
 pub fn installer_cmdline(path: &str) -> String {
     format!(
-        "ping -n 4 127.0.0.1 >NUL & start \"\" \"{}\" /UPDATE /P /R",
+        "ping -n 4 127.0.0.1 >NUL & \"{}\" /UPDATE /P /R",
         path.replace('"', "")
     )
 }
@@ -30,22 +32,32 @@ pub fn launch(app: &AppHandle, path: &Path) -> Result<(), String> {
         return Err("安装包路径为空".to_string());
     }
     let cmdline = installer_cmdline(&raw);
+    dlog::dlog(&format!("update: 启动安装器 path={raw}"));
+    dlog::dlog(&format!("update: 安装器命令行 {cmdline}"));
 
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        match std::process::Command::new("cmd")
-            .args(["/C", cmdline.as_str()])
-            // CREATE_NO_WINDOW：别让 cmd 闪一个黑框
-            .creation_flags(0x0800_0000)
-            .spawn()
-        {
-            Ok(_) => {}
-            Err(e) => {
-                dlog::warn(&format!("update: 启动安装器失败：{e}"));
-                return Err("无法启动安装程序，请稍后重试".to_string());
-            }
+        // 经系统 shell 启动：`Command::spawn` 的子进程会继承调用方的作业对象，
+        // 应用一退出就被一起回收（测试环境实测）。ShellExecuteW 交给 explorer
+        // 启动，安装器就能活过父进程。
+        use windows::core::{HSTRING, PCWSTR};
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+        let op = HSTRING::from("open");
+        let file = HSTRING::from("cmd.exe");
+        let params = HSTRING::from(format!("/C {cmdline}"));
+        let h = unsafe {
+            ShellExecuteW(None, &op, &file, &params, PCWSTR::null(), SW_HIDE)
+        };
+        if h.0 as isize <= 32 {
+            dlog::warn(&format!(
+                "update: ShellExecuteW 启动安装器失败，code={}",
+                h.0 as isize
+            ));
+            return Err("无法启动安装程序，请稍后重试".to_string());
         }
+        dlog::dlog("update: 已通过系统 shell 启动安装器");
     }
     #[cfg(not(windows))]
     {
@@ -71,6 +83,7 @@ mod tests {
         assert!(line.contains("/P"));
         assert!(line.contains("/R"));
         assert!(line.starts_with("ping -n 4"));
+        assert!(!line.contains("start"), "不再经过 start：{line}");
     }
 
     #[test]

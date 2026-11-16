@@ -114,8 +114,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                     crate::open_settings_at(app, "about");
                     crate::update::spawn_check(app.clone());
                 }
-                "restart" => restart_app(app),
-                "quit" => {
+                // 更新包已下载：重启 / 退出都先启动安装器（装完会自动重启）。
+                "restart" if !crate::update::install_if_ready(app) => restart_app(app),
+                "quit" if !crate::update::install_if_ready(app) => {
                     // 顺序不能反：先置位、再 exit，否则 prevent_exit 会把这次退出也挡掉。
                     QUITTING.store(true, Ordering::SeqCst);
                     app.exit(0);
@@ -214,10 +215,11 @@ pub fn set_translate_enabled(app: &AppHandle, on: bool) {
 /// 发现新版本时把托盘菜单项改成「检查更新（x.y.z 可用）」；没有则还原。
 ///
 /// 工作线程会调用它，菜单操作统一丢回主线程。
-pub fn set_update_hint(app: &AppHandle, version: Option<&str>) {
-    let text = match version {
-        Some(v) => format!("检查更新（{v} 可用）"),
-        None => "检查更新".to_string(),
+pub fn set_update_hint(app: &AppHandle, version: Option<&str>, required: bool) {
+    let text = match (version, required) {
+        (Some(v), true) => format!("立即更新（{v}）"),
+        (Some(v), false) => format!("检查更新（{v} 可用）"),
+        (None, _) => "检查更新".to_string(),
     };
     if let Err(e) = app.run_on_main_thread(move || {
         let guard = UPDATE_ITEM.lock().unwrap_or_else(|e| e.into_inner());

@@ -27,6 +27,8 @@ pub struct ReleaseInfo {
     pub asset_size: u64,
     /// GitHub 给的 `sha256:...`，老版本发布可能没有
     pub digest: Option<String>,
+    /// Release 说明里的最低版本标记；没有则不做强制更新
+    pub min_version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -136,15 +138,45 @@ pub(crate) fn parse_release(body: &str) -> Result<ReleaseInfo, String> {
     }
     let asset_name =
         safe_file_name(&asset.name).ok_or_else(|| "安装包文件名异常".to_string())?;
+    let body = r.body.unwrap_or_default();
     Ok(ReleaseInfo {
         version,
-        notes: truncate_notes(r.body.as_deref().unwrap_or(""), 8 * 1024),
+        notes: truncate_notes(&strip_min_marker(&body), 8 * 1024),
         url: r.html_url,
         asset_name,
         asset_url: asset.browser_download_url.clone(),
         asset_size: asset.size,
         digest: asset.digest.clone().filter(|d| !d.trim().is_empty()),
+        min_version: parse_min_version(&body),
     })
+}
+
+/// 最低版本标记是给程序看的，不能出现在更新说明里。
+fn strip_min_marker(body: &str) -> String {
+    const MARK: &str = "vexto-min-version:";
+    body.lines()
+        .filter(|line| !line.to_ascii_lowercase().contains(MARK))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 从 Release 说明里读 `<!-- vexto-min-version: x.y.z -->`。
+///
+/// 用隐藏标记而不是单独文件：发布时只多写一行，读取仍走同一个 releases/latest。
+fn parse_min_version(body: &str) -> Option<String> {
+    const MARK: &str = "vexto-min-version:";
+    for line in body.lines() {
+        let lower = line.to_ascii_lowercase();
+        let Some(pos) = lower.find(MARK) else {
+            continue;
+        };
+        let rest = &line[pos + MARK.len()..];
+        let rest = rest.split("-->").next().unwrap_or(rest).trim();
+        if let Some(v) = normalize_version(rest) {
+            return Some(v);
+        }
+    }
+    None
 }
 
 fn pick_asset(assets: &[AssetJson]) -> Option<&AssetJson> {
@@ -379,6 +411,31 @@ mod tests {
             {"name":"Vexto_0.3.0_x64-setup.exe","size":1,"browser_download_url":"https://github.com/x/y.exe"}
         ]}"#;
         assert!(parse_release(body).unwrap().digest.is_none());
+        assert!(parse_release(body).unwrap().min_version.is_none());
+    }
+
+    #[test]
+    fn min_version_marker_is_parsed() {
+        assert_eq!(
+            parse_min_version("说明\n<!-- vexto-min-version: 0.4.0 -->\n更多说明").as_deref(),
+            Some("0.4.0")
+        );
+        assert_eq!(
+            parse_min_version("<!-- VEXTO-MIN-VERSION: v0.4 -->").as_deref(),
+            Some("0.4.0")
+        );
+        assert_eq!(
+            parse_min_version("最低版本 <!-- vexto-min-version: 0.4.0 --> 请升级").as_deref(),
+            Some("0.4.0")
+        );
+        assert!(parse_min_version("没有标记").is_none());
+        assert!(parse_min_version("<!-- vexto-min-version: banana -->").is_none());
+    }
+
+    #[test]
+    fn min_version_marker_is_hidden_from_notes() {
+        let body = "<!-- vexto-min-version: 0.4.0 -->\n\n## 变更\n- 一些说明";
+        assert_eq!(strip_min_marker(body), "\n## 变更\n- 一些说明");
     }
 
     #[test]

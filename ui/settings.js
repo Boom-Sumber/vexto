@@ -47,6 +47,8 @@ let engineSelectNodes = [];
 // 命令名由 schema 给出，前端不认识「更新」的业务细节。
 let updateState = null;
 let updatePanel = null;
+// list_tools 里的 update 字段 schema：侧栏按钮在还没打开关于页时也要拿到安装命令。
+let updateFieldSchema = null;
 
 // ── 小工具 ────────────────────────────────────────────────────────────────
 
@@ -1640,6 +1642,14 @@ async function refreshAfterSave() {
 async function reloadTools() {
   try {
     state.tools = await invoke("list_tools");
+    updateFieldSchema = null;
+    for (const t of state.tools) {
+      for (const sec of t.sections || []) {
+        for (const f of sec.fields || []) {
+          if (f.type === "update") updateFieldSchema = f;
+        }
+      }
+    }
   } catch (e) {
     setStatus("读取工具列表失败：" + errText(e), true);
   }
@@ -1750,6 +1760,14 @@ function renderUpdatePanel() {
   head.append(cur, last);
   box.append(head);
 
+  if (s.required) {
+    const need = document.createElement("div");
+    need.className = "upd-required";
+    need.textContent =
+      "立即更新：最低版本 " + (s.minVersion || s.latest || "");
+    box.append(need);
+  }
+
   const line = document.createElement("div");
   line.className = "upd-state" + (s.phase === "error" ? " bad" : "");
   line.textContent = updateStateText(s);
@@ -1773,6 +1791,13 @@ function renderUpdatePanel() {
     bar.append(fill);
   }
 
+  let errLine = null;
+  if (s.error && s.phase !== "error") {
+    errLine = document.createElement("div");
+    errLine.className = "upd-state bad";
+    errLine.textContent = s.error;
+  }
+
   const acts = document.createElement("div");
   acts.className = "upd-acts";
   const add = (label, primary, fn) => {
@@ -1782,6 +1807,7 @@ function renderUpdatePanel() {
     b.textContent = label;
     b.addEventListener("click", () => fn(b));
     acts.append(b);
+    return b;
   };
   switch (s.phase) {
     case "idle":
@@ -1789,6 +1815,8 @@ function renderUpdatePanel() {
       add("检查更新", true, (b) => updateInvoke(b, f.check_command));
       break;
     case "checking":
+      add("检测中…", true, () => {}).disabled = true;
+      break;
     case "installing":
       break;
     case "available":
@@ -1810,14 +1838,16 @@ function renderUpdatePanel() {
       break;
   }
 
-  // 「检查更新」和状态文案同一行；其它 phase 仍按纵向排列。
-  if (s.phase === "idle" || s.phase === "up_to_date") {
+  // 「检查更新」和状态文案同一行；检测中保持按钮可见，只换成「检测中…」并禁用。
+  if (s.phase === "idle" || s.phase === "up_to_date" || s.phase === "checking") {
     const row = document.createElement("div");
     row.className = "upd-line";
     row.append(line, acts);
     box.append(row);
+    if (errLine) box.append(errLine);
   } else {
     box.append(line);
+    if (errLine) box.append(errLine);
     if (notes) box.append(notes);
     if (bar) box.append(bar);
     if (acts.childNodes.length) box.append(acts);
@@ -1906,11 +1936,31 @@ function renderUpdateBadge() {
   const badge = el("update-badge");
   if (!badge) return;
   const s = updateState;
-  if (s && s.phase === "available" && s.latest) {
-    el("update-badge-text").textContent = "发现新版本 " + s.latest;
+  const required = !!(s && s.required);
+  const show = !!(s && s.latest) && (required
+    ? s.phase !== "up_to_date"
+    : s.phase === "available");
+  if (show) {
+    let text;
+    if (required) {
+      if (s.phase === "downloading") {
+        const total = s.assetSize || 0;
+        const got = s.downloaded || 0;
+        text = total > 0
+          ? "正在下载更新 " + Math.floor((got / total) * 100) + "%"
+          : "正在下载更新…";
+      } else {
+        text = "立即更新 V" + s.latest;
+      }
+    } else {
+      text = "发现新版本 " + s.latest;
+    }
+    el("update-badge-text").textContent = text;
+    badge.classList.toggle("required", required);
     badge.classList.remove("hidden");
   } else {
     badge.classList.add("hidden");
+    badge.classList.remove("required");
   }
 }
 
@@ -2012,7 +2062,20 @@ async function boot() {
       renderUpdatePanel();
     })
     .catch(() => {});
-  el("update-badge").addEventListener("click", jumpToUpdate);
+  el("update-badge").addEventListener("click", () => {
+    const s = updateState;
+    const cmd = updateFieldSchema && updateFieldSchema.install_command;
+    if (s && s.phase === "ready" && cmd) {
+      // 安装包已就绪：侧栏按钮直接启动安装；未保存改动先确认。
+      if (pendingCount() > 0) {
+        showDirtyModal({ kind: "update", cmd });
+        return;
+      }
+      updateInvoke(null, cmd);
+      return;
+    }
+    jumpToUpdate();
+  });
 
   // 标题栏的明暗切换会直接写配置并广播：当前停在通用页且没有未保存改动时，
   // 把下拉同步到新值，避免界面显示和磁盘不一致。
