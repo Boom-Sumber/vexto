@@ -54,6 +54,7 @@ body {
   width: 30px;
   height: 30px;
   flex: none;
+  border-radius: var(--r-md);
 }
 
 .pv-edit-bar .tb-btn.on {
@@ -79,9 +80,9 @@ body {
 .pv-colors {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 9px;
   flex: none;
-  padding: 0 2px;
+  padding: 0 4px;
 }
 
 .pv-color {
@@ -277,8 +278,8 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, .9);
-  background: rgba(124, 92, 255, .22);
+  border: 1px solid rgba(255, 255, 255, .8);
+  background: rgba(124, 92, 255, .55);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, .3);
   pointer-events: none;
   transform: translate(-50%, -50%);
@@ -293,7 +294,7 @@ body {
   position: absolute;
   z-index: 4;
   min-width: 24px;
-  padding: 0 2px;
+  padding: 0 6px;
   border: 1px dashed var(--accent);
   border-radius: 2px;
   background: rgba(0, 0, 0, .18);

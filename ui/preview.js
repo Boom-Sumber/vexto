@@ -515,6 +515,10 @@
 
   function hitOp(op, p) {
     const tol = Math.max(8, (op.width || 2) * 1.5);
+    if (op.tool === "mosaic") {
+      // 马赛克是像素化结果，不作为可选中/移动的图形。
+      return false;
+    }
     if (op.tool === "text") {
       return pointInBounds(p, opBounds(op));
     }
@@ -684,11 +688,13 @@
     const px = -uy;
     const py = ux;
     const w = Math.max(1, op.width || 2);
-    const headLen = Math.min(len * 0.45, Math.max(10, w * 3.2));
-    const headHalf = Math.max(7, w * 3);
+    const headLen = Math.min(len * 0.45, Math.max(14, w * 4.2));
+    // 三角形长宽比 1:0.8：半宽 = 长度 × 0.4。
+    const headHalf = headLen * 0.4;
     const shaftEnd = Math.max(0, len - headLen);
-    const startHalf = Math.max(0.5, w * 0.4);
-    const endHalf = Math.max(1, w * 0.9);
+    // 起点固定 2px（物理 2×dpr），与线条粗细无关。
+    const startHalf = Math.max(0.5, dpr);
+    const endHalf = Math.max(0.8, w * 0.9);
     const bx = op.x1 + ux * shaftEnd;
     const by = op.y1 + uy * shaftEnd;
     ctx.beginPath();
@@ -769,19 +775,16 @@
     ctx.restore();
   }
 
-  function drawHandle(ctx, h, circle) {
-    const r = 5.5 * dpr;
+  function drawHandle(ctx, h) {
+    // 所有控制点统一圆形，半径约为旧版方形的 65%。
+    const r = 3.6 * dpr;
     ctx.save();
     ctx.setLineDash([]);
-    ctx.lineWidth = Math.max(1, 1.5 * dpr);
+    ctx.lineWidth = Math.max(1, 1.3 * dpr);
     ctx.strokeStyle = accent;
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
-    if (circle) {
-      ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
-    } else {
-      ctx.rect(h.x - r, h.y - r, r * 2, r * 2);
-    }
+    ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -792,27 +795,27 @@
     if (!op) return;
     if (op.tool === "arrow") {
       dashedLine(ctx, op.x1, op.y1, op.x2, op.y2);
-      for (const h of handlesOf(op)) drawHandle(ctx, h, true);
+      for (const h of handlesOf(op)) drawHandle(ctx, h);
       return;
     }
     const b = opBounds(op);
     dashedRect(ctx, b);
-    for (const h of handlesOf(op)) drawHandle(ctx, h, false);
+    for (const h of handlesOf(op)) drawHandle(ctx, h);
   }
 
   function drawDraftHelpers(ctx) {
     if (!draft) return;
     if (draft.tool === "arrow") {
       dashedLine(ctx, draft.x1, draft.y1, draft.x2, draft.y2);
-      drawHandle(ctx, { x: draft.x1, y: draft.y1 }, true);
-      drawHandle(ctx, { x: draft.x2, y: draft.y2 }, true);
+      drawHandle(ctx, { x: draft.x1, y: draft.y1 });
+      drawHandle(ctx, { x: draft.x2, y: draft.y2 });
       return;
     }
     if (draft.tool === "rect" || draft.tool === "ellipse") {
       const b = { x: draft.x, y: draft.y, w: draft.w, h: draft.h };
       dashedRect(ctx, b);
       const fake = { ...draft, ...b };
-      for (const h of handlesOf(fake)) drawHandle(ctx, h, false);
+      for (const h of handlesOf(fake)) drawHandle(ctx, h);
     }
   }
 
@@ -823,7 +826,7 @@
 
   function textInputWidth(value, size, scale) {
     const m = measureText(value || " ", size);
-    return Math.max(32, Math.ceil(m.w * scale) + 14);
+    return Math.max(32, Math.ceil(m.w * scale) + 24);
   }
 
   function fitTextInput() {
@@ -1080,11 +1083,12 @@
       return;
     }
     const level = settings.mosaic.level;
-    const size = Math.max(16, WIDTHS[level] * 4);
-    const block = Math.max(8, WIDTHS[level] * dpr * 2.5);
-    const css = Math.max(14, Math.round((block / (annot.width || 1)) * (annot.clientWidth || 1)));
-    brush.style.width = Math.max(size, css) + "px";
-    brush.style.height = Math.max(size, css) + "px";
+    const width = WIDTHS[level] * dpr;
+    const block = Math.max(8, width * 2.5);
+    const scale = annot.width ? (annot.clientWidth || 0) / annot.width : 1;
+    const css = Math.max(2, Math.round(block * (scale || 1)));
+    brush.style.width = css + "px";
+    brush.style.height = css + "px";
     brush.style.left = ev.clientX + "px";
     brush.style.top = ev.clientY + "px";
     brush.classList.add("on");

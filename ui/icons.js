@@ -164,10 +164,10 @@ window.Icons = (function () {
       '<rect x="13.4" y="13.4" width="3.6" height="3.6" rx=".9" fill="currentColor" stroke="none"/>',
     "square-hollow":
       '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/>' +
-      '<rect x="9" y="9" width="6" height="6" rx="1"/>',
+      '<rect x="7" y="7" width="10" height="10" rx="1.5"/>',
     "square-solid":
       '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/>' +
-      '<rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/>',
+      '<rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/>',
     undo:
       '<path d="M9 7L5 11l4 4"/>' +
       '<path d="M5 11h9a5 5 0 0 1 0 10h-3"/>',
