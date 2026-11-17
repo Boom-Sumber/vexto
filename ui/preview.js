@@ -726,9 +726,13 @@
     ctx.fillText(op.text, op.x, op.y);
   }
 
+  function mosaicBlock(width) {
+    return Math.max(5, Math.round((width || 4) * 1.5));
+  }
+
   function drawMosaic(ctx, op) {
     if (!op.points.length || !img.naturalWidth) return;
-    const block = Math.max(8, Math.round((op.width || 4) * 2.5));
+    const block = mosaicBlock(op.width);
     const sw = state.width;
     const sh = state.height;
     let last = null;
@@ -740,16 +744,18 @@
       const bw = Math.min(block, sw - sx);
       const bh = Math.min(block, sh - sy);
       if (bw < 2 || bh < 2) continue;
-      const tw = Math.max(1, Math.round(bw / 8));
-      const th = Math.max(1, Math.round(bh / 8));
+      // 更小的格子 + 双线性缩放，让相邻色块过渡柔和。
+      const tw = Math.max(1, Math.round(bw / 4));
+      const th = Math.max(1, Math.round(bh / 4));
       mosaicScratch.width = tw;
       mosaicScratch.height = th;
       const tiny = mosaicScratch.getContext("2d");
-      tiny.imageSmoothingEnabled = false;
+      tiny.imageSmoothingEnabled = true;
       tiny.drawImage(img, sx, sy, bw, bh, 0, 0, tw, th);
       ctx.save();
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(mosaicScratch, 0, 0, tw, th, sx, sy, bw, bh);
+      ctx.imageSmoothingEnabled = true;
+      // 轻微外扩重叠，相邻格子边缘互相融合。
+      ctx.drawImage(mosaicScratch, 0, 0, tw, th, sx - 1, sy - 1, bw + 2, bh + 2);
       ctx.restore();
     }
   }
@@ -1084,7 +1090,7 @@
     }
     const level = settings.mosaic.level;
     const width = WIDTHS[level] * dpr;
-    const block = Math.max(8, width * 2.5);
+    const block = mosaicBlock(width);
     const scale = annot.width ? (annot.clientWidth || 0) / annot.width : 1;
     const css = Math.max(2, Math.round(block * (scale || 1)));
     brush.style.width = css + "px";
@@ -1180,14 +1186,22 @@
           if (Math.hypot(p.x - last.x, p.y - last.y) >= 1.5) {
             draft.points.push(p);
           }
+          if (draft.tool === "mosaic") showBrush(ev, p);
         } else if (draft.tool === "arrow") {
           draft.x2 = p.x;
           draft.y2 = p.y;
         } else {
-          draft.x = Math.min(draft.x0, p.x);
-          draft.y = Math.min(draft.y0, p.y);
-          draft.w = Math.abs(p.x - draft.x0);
-          draft.h = Math.abs(p.y - draft.y0);
+          let dx = p.x - draft.x0;
+          let dy = p.y - draft.y0;
+          if (ev.shiftKey && (draft.tool === "rect" || draft.tool === "ellipse")) {
+            const size = Math.max(Math.abs(dx), Math.abs(dy));
+            dx = dx < 0 ? -size : size;
+            dy = dy < 0 ? -size : size;
+          }
+          draft.x = Math.min(draft.x0, draft.x0 + dx);
+          draft.y = Math.min(draft.y0, draft.y0 + dy);
+          draft.w = Math.abs(dx);
+          draft.h = Math.abs(dy);
         }
         scheduleRender();
         return;

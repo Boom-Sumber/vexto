@@ -29,6 +29,17 @@
   let resultKind = "";
   let moving = false;
   let moveDX = 0, moveDY = 0;
+  let resizing = null;
+  const HANDLE_CURSORS = {
+    "h-tl": "nwse-resize",
+    "h-tc": "ns-resize",
+    "h-tr": "nesw-resize",
+    "h-ml": "ew-resize",
+    "h-mr": "ew-resize",
+    "h-bl": "nesw-resize",
+    "h-bc": "ns-resize",
+    "h-br": "nwse-resize",
+  };
 
   // ── 框选状态 ──────────────────────────────────────────────────────────
   let dragging = false;
@@ -124,21 +135,96 @@
     return !!sel && x >= sel.x && x <= sel.x + sel.w && y >= sel.y && y <= sel.y + sel.h;
   }
 
+  function handlePositions(s) {
+    return {
+      "h-tl": [s.x, s.y],
+      "h-tc": [s.x + s.w / 2, s.y],
+      "h-tr": [s.x + s.w, s.y],
+      "h-ml": [s.x, s.y + s.h / 2],
+      "h-mr": [s.x + s.w, s.y + s.h / 2],
+      "h-bl": [s.x, s.y + s.h],
+      "h-bc": [s.x + s.w / 2, s.y + s.h],
+      "h-br": [s.x + s.w, s.y + s.h],
+    };
+  }
+
+  function handleAt(x, y) {
+    if (!enhanced || !done || !sel || resultKind) return "";
+    for (const [key, [hx, hy]] of Object.entries(handlePositions(sel))) {
+      if (Math.abs(x - hx) <= 10 && Math.abs(y - hy) <= 10) return key;
+    }
+    return "";
+  }
+
+  function updateSelectionCursor(ev) {
+    if (!enhanced || !done || !sel || resultKind || dragging || moving || resizing) return;
+    const hit = el("hit");
+    if (!hit) return;
+    const h = handleAt(ev.clientX, ev.clientY);
+    if (h) {
+      hit.style.cursor = HANDLE_CURSORS[h] || "crosshair";
+    } else if (pointInSel(ev.clientX, ev.clientY)) {
+      hit.style.cursor = "move";
+    } else {
+      hit.style.cursor = "crosshair";
+    }
+  }
+
+  function resizeSelection(ev) {
+    const orig = resizing.orig;
+    const key = resizing.key;
+    const min = 8;
+    let x1 = orig.x;
+    let y1 = orig.y;
+    let x2 = orig.x + orig.w;
+    let y2 = orig.y + orig.h;
+    const mx = Math.max(0, Math.min(window.innerWidth, ev.clientX));
+    const my = Math.max(0, Math.min(window.innerHeight, ev.clientY));
+    if (key === "h-tl" || key === "h-ml" || key === "h-bl") {
+      x1 = Math.min(mx, x2 - min);
+    }
+    if (key === "h-tr" || key === "h-mr" || key === "h-br") {
+      x2 = Math.max(mx, x1 + min);
+    }
+    if (key === "h-tl" || key === "h-tc" || key === "h-tr") {
+      y1 = Math.min(my, y2 - min);
+    }
+    if (key === "h-bl" || key === "h-bc" || key === "h-br") {
+      y2 = Math.max(my, y1 + min);
+    }
+    sel = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    setBox(sel.x, sel.y, sel.w, sel.h);
+    positionToolbar(sel);
+    positionHint(sel);
+  }
+
   function onDown(ev) {
     if (ev.button !== 0 || busy || resultKind) return;
     if (enhanced) {
       if (!snapReady) return;
-      // 完成态：框内按下是「移动选框」，框外按下才是重新拉框。
-      if (done && sel && pointInSel(ev.clientX, ev.clientY)) {
-        moving = true;
-        moveDX = ev.clientX - sel.x;
-        moveDY = ev.clientY - sel.y;
-        el("toolbar").classList.remove("on");
-        el("magnifier").classList.remove("on");
-        el("box").classList.add("moving");
-        return;
+      // 完成态：先判断是否抓住控制点，再判断框内移动，最后才是重新拉框。
+      if (done && sel) {
+        const h = handleAt(ev.clientX, ev.clientY);
+        if (h) {
+          resizing = { key: h, orig: { ...sel } };
+          el("toolbar").classList.remove("on");
+          el("magnifier").classList.remove("on");
+          el("box").classList.add("resizing");
+          return;
+        }
+        if (pointInSel(ev.clientX, ev.clientY)) {
+          moving = true;
+          moveDX = ev.clientX - sel.x;
+          moveDY = ev.clientY - sel.y;
+          el("toolbar").classList.remove("on");
+          el("magnifier").classList.remove("on");
+          el("box").classList.add("moving");
+          const hit = el("hit");
+          if (hit) hit.style.cursor = "move";
+          return;
+        }
+        resetSelection();
       }
-      if (done) resetSelection();
       hideHint();
       el("dim").classList.add("hidden");
       hideToast();
@@ -157,6 +243,10 @@
   }
 
   window.addEventListener("mousemove", (ev) => {
+    if (resizing) {
+      resizeSelection(ev);
+      return;
+    }
     if (moving) {
       const nx = Math.max(0, Math.min(window.innerWidth - sel.w, ev.clientX - moveDX));
       const ny = Math.max(0, Math.min(window.innerHeight - sel.h, ev.clientY - moveDY));
@@ -168,6 +258,7 @@
       return;
     }
     if (enhanced) updateMagnifier(ev);
+    if (enhanced && done && !dragging) updateSelectionCursor(ev);
     if (!dragging) return;
     const x = Math.min(sx, ev.clientX);
     const y = Math.min(sy, ev.clientY);
@@ -175,12 +266,24 @@
   });
 
   window.addEventListener("mouseup", (ev) => {
+    if (resizing) {
+      resizing = null;
+      el("box").classList.remove("resizing");
+      if (sel && done) {
+        el("toolbar").classList.add("on");
+        positionToolbar(sel);
+        positionHint(sel);
+      }
+      updateSelectionCursor(ev);
+      return;
+    }
     if (moving) {
       moving = false;
       el("box").classList.remove("moving");
       el("toolbar").classList.add("on");
       positionToolbar(sel);
       positionHint(sel);
+      updateSelectionCursor(ev);
       return;
     }
     if (!dragging) return;
@@ -239,9 +342,10 @@
     magHex = "";
     resultKind = "";
     moving = false;
+    resizing = null;
     hideHint();
     const box = el("box");
-    box.classList.remove("on", "done", "result", "moving");
+    box.classList.remove("on", "done", "result", "moving", "resizing");
     const img = el("result");
     if (img) {
       img.style.display = "none";
@@ -250,7 +354,10 @@
     const snap = el("snap");
     if (snap) snap.style.display = "";
     const hit = el("hit");
-    if (hit) hit.style.display = "";
+    if (hit) {
+      hit.style.display = "";
+      hit.style.cursor = "crosshair";
+    }
     el("toolbar").classList.remove("on");
     setBarBusy(false);
     el("magnifier").classList.remove("on");
@@ -340,11 +447,13 @@
     done = true;
     resultKind = "";
     sel = rect;
-    el("box").classList.remove("result");
+    el("box").classList.remove("result", "resizing");
     el("box").classList.add("done");
     el("magnifier").classList.remove("on");
     el("toolbar").classList.add("on");
     setBarBusy(false);
+    const hit = el("hit");
+    if (hit) hit.style.cursor = "move";
     positionToolbar(rect);
     positionHint(rect);
   }

@@ -278,9 +278,9 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, .8);
-  background: rgba(124, 92, 255, .55);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, .3);
+  border: 1px solid rgba(110, 114, 120, .85);
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .22);
   pointer-events: none;
   transform: translate(-50%, -50%);
 }

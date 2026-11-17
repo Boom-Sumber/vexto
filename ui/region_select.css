@@ -206,9 +206,9 @@ body[data-purpose="scroll"] #box {
   z-index: 5;
   display: none;
   align-items: center;
-  gap: 2px;
-  padding: 6px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 14px;
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-float);
@@ -218,24 +218,24 @@ body[data-purpose="scroll"] #box {
 .tb-btn {
   all: unset;
   box-sizing: border-box;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--text-secondary);
   cursor: pointer;
 }
 .tb-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 .tb-btn:active { background: var(--bg-active); }
-.tb-btn svg { width: 18px; height: 18px; }
+.tb-btn svg { width: 27px; height: 27px; }
 .tb-btn:disabled { opacity: .45; cursor: default; }
 .tb-ok { color: var(--success); }
 .tb-close { color: var(--danger); }
 .tb-sep {
   width: 1px;
-  height: 20px;
-  margin: 0 4px;
+  height: 26px;
+  margin: 0 8px;
   background: var(--border-subtle);
 }
 

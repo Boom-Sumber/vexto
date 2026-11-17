@@ -63,15 +63,6 @@
     if (text) msgTimer = setTimeout(() => (box.className = ""), 3000);
   }
 
-  el("saveas").addEventListener("click", () => {
-    invoke("pin_save_as")
-      .then((r) => {
-        if (r && r.ok) flash(r.message || "已保存");
-        else flash((r && r.message) || "保存失败", true);
-      })
-      .catch((e) => flash(String(e), true));
-  });
-
   el("preview").addEventListener("click", () => {
     invoke("pin_preview")
       .then((r) => {
