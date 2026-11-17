@@ -16,7 +16,7 @@
 
 ## 安装
 
-运行 [Vexto_0.3.4_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.4/Vexto_0.3.4_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.3.5_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.5/Vexto_0.3.5_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
 当前安装包 **21.16 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
@@ -56,10 +56,11 @@
 |---|---|
 | 托盘空闲 | **17.2 MB / WebView2=0** |
 | 设置页打开 | 约 **346.8 MB / 5 个 WebView2** |
-| 全部关闭后 | 约 **3.2 MB / 0** |
+| 全部关闭后（轻量模式开） | 约 **3.2 MB / 0** |
+| 全部关闭后（轻量模式关，默认） | 约 **305 MB / 6 个 WebView2**（ADR-007 实测口径） |
 | 安装包 | **21.16 MiB** |
 
-空闲数值线按 ADR-037 作为「尽量优化」的监控指引；结构性红线是**无窗口时 WebView2=0**、关窗即销毁。
+空闲数值线按 ADR-037 作为「尽量优化」的监控指引。轻量模式开启时关窗即销毁、无窗口 WebView2=0；**会话 90 起轻量模式默认关闭**（ADR-067），关闭窗口后 WebView 挂起复用，内存保持在数百 MB。
 
 ## 已知限制
 

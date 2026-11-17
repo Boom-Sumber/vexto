@@ -250,8 +250,9 @@ pub struct Config {
     /// 翻译缓存开关。默认开——同一段文字反复划是最高频场景，省一次就是省一次配额
     #[serde(default = "d_true")]
     pub cache_enabled: bool,
-    /// 日志总开关。默认关：常驻程序不该在用户没要求时写盘。
-    #[serde(default)]
+    /// 日志总开关。**默认开**（会话 90 用户要求，ADR-067）：出问题时用户不必
+    /// 先去设置里打开开关才能留下现场。
+    #[serde(default = "d_true")]
     pub log_enabled: bool,
     /// 日志等级：`trace` / `debug` / `info` / `warn` / `error`。默认 `info`。
     #[serde(default = "d_log_level")]
@@ -434,15 +435,15 @@ pub struct Config {
     pub update_custom_proxy: String,
 
     /// 极轻模式：关闭窗口时销毁 WebView，把内存还给系统。
-    /// **默认开**（`d_true`，老配置没有这个字段时按开处理，ADR-013 只增字段）。
+    /// **默认关**（会话 90 用户要求，ADR-067；老配置缺字段时同样按关处理）。
     /// 关掉后窗口只 `hide()`、WebView 常驻，下次打开更快但会一直占内存。
     /// 这一个开关同时管设置 / 下载列表 / 新建任务 / 划词弹窗四条关闭路径。
-    #[serde(default = "d_true")]
+    #[serde(default)]
     pub lite_mode: bool,
 
     // ---- 外观 ----
     /// 主题：`dark` | `light` | `system`（跟随 Windows 应用模式）。
-    /// 默认暗色（程序一贯的样子）。只影响前端 `body[data-theme]`，
+    /// **默认跟随系统**（会话 90 用户要求，ADR-067）。只影响前端 `body[data-theme]`，
     /// 不参与任何后端行为（外观功能会话）。
     #[serde(default = "d_appearance_theme", skip_serializing_if = "String::is_empty")]
     pub appearance_theme: String,
@@ -588,7 +589,7 @@ fn d_version() -> u32 {
     1
 }
 fn d_appearance_theme() -> String {
-    "dark".to_string()
+    "system".to_string()
 }
 fn d_log_level() -> String {
     "info".to_string()
@@ -642,7 +643,7 @@ impl Default for Config {
             popup_timeout_ms: d_popup_timeout(),
             auto_copy: false,
             cache_enabled: true,
-            log_enabled: false,
+            log_enabled: true,
             log_level: d_log_level(),
             download_dir: String::new(),
             receive_dir: String::new(),
@@ -689,7 +690,7 @@ impl Default for Config {
             tray_left_click: d_tray_left_click(),
             update_download_source: d_update_download_source(),
             update_custom_proxy: String::new(),
-            lite_mode: true,
+            lite_mode: false,
             appearance_theme: d_appearance_theme(),
             accent_color: String::new(),
             version: d_version(),
@@ -1179,7 +1180,7 @@ mod tests {
         assert!(!c.screenshot_include_cursor);
         assert_eq!(c.ocr_engine, "paddle");
         assert!(c.pinscreen_single_window);
-        assert!(!c.log_enabled);
+        assert!(c.log_enabled, "会话 90 起默认开启日志");
         assert_eq!(c.log_level, "info");
         assert_eq!(c.transfer_peer_timeout_secs, 600);
         assert!(c.enable_translate);
@@ -1603,11 +1604,12 @@ mod tests {
         assert!(obj.contains_key("active_engine"));
     }
 
-    /// 外观字段（外观功能会话）：老配置缺省 → 暗色 + 跟随默认主色；
-    /// 显式值原样读写。ADR-013：只增字段不破坏旧配置。
+    /// 外观字段（外观功能会话）：老配置缺省 → 跟随系统 + 默认主色；
+    /// 显式值原样读写。ADR-013：只增字段不破坏旧配置。会话 90 起默认主题
+    /// 由 `dark` 改为 `system`（ADR-067）。
     #[test]
     fn appearance_fields_default_and_roundtrip() {        let c: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(c.appearance_theme, "dark");
+        assert_eq!(c.appearance_theme, "system");
         assert!(c.accent_color.is_empty());
 
         let c2: Config = serde_json::from_str(
@@ -1616,6 +1618,17 @@ mod tests {
         .unwrap();
         assert_eq!(c2.appearance_theme, "system");
         assert_eq!(c2.accent_color, "#3b82f6");
+    }
+
+    /// 会话 90：轻量模式默认值改为关（ADR-067）。老配置缺字段同样按关处理，
+    /// 显式写了 `true` 的保持开启。
+    #[test]
+    fn lite_mode_defaults_to_off() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert!(!c.lite_mode);
+        assert!(!Config::default().lite_mode);
+        let c2: Config = serde_json::from_str(r#"{"lite_mode":true}"#).unwrap();
+        assert!(c2.lite_mode);
     }
 
     /// 会话 81：老配置缺省时左键 = 打开设置页；命名规则 = 默认时间格式。
