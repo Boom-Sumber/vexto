@@ -143,6 +143,28 @@ window.Icons = (function () {
     preview:
       '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/>' +
       '<circle cx="12" cy="12" r="2.5"/>',
+    // 预览窗标注工具（会话 91）
+    pointer: '<path d="M6 3l12 9-5 1.2 2.8 5.8-2.6 1.2-2.8-5.8L6 18z"/>',
+    rect: '<rect x="4" y="5" width="16" height="14" rx="1.5"/>',
+    ellipse: '<ellipse cx="12" cy="12" rx="8" ry="6.5"/>',
+    "arrow-up-right":
+      '<path d="M6 18L18 6"/><path d="M10 6h8v8"/>',
+    pen:
+      '<path d="M4 20l4.2-1 10.3-10.3a2.1 2.1 0 0 0-3-3L5.2 16 4 20z"/>' +
+      '<path d="M13.5 6.5l4 4"/>',
+    text:
+      '<path d="M5 6h14"/><path d="M12 6v13"/><path d="M9 19h6"/>',
+    mosaic:
+      '<rect x="4" y="4" width="6" height="6" rx="1"/>' +
+      '<rect x="14" y="4" width="6" height="6" rx="1"/>' +
+      '<rect x="4" y="14" width="6" height="6" rx="1"/>' +
+      '<rect x="14" y="14" width="6" height="6" rx="1"/>',
+    undo:
+      '<path d="M9 7L5 11l4 4"/>' +
+      '<path d="M5 11h9a5 5 0 0 1 0 10h-3"/>',
+    redo:
+      '<path d="M15 7l4 4-4 4"/>' +
+      '<path d="M19 11h-9a5 5 0 0 0 0 10h3"/>',
   };
 
   // 设计稿给的两个「实心/彩色」图标：viewBox 是 1024，颜色写死或跟 currentColor，

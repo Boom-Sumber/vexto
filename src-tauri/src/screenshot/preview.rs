@@ -22,7 +22,7 @@ pub const MAX_DECODE_PIXELS: u64 = 16_000_000;
 static PREVIEW_SOURCE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 pub fn set_source(path: PathBuf) {
-    *PREVIEW_SOURCE.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
+    replace_source(path);
 }
 
 pub fn source() -> Option<PathBuf> {
@@ -37,6 +37,61 @@ pub fn clear_source() -> Option<PathBuf> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .take()
+}
+
+/// 用新的编辑结果替换预览源。旧文件若没被钉屏引用就删除。
+pub fn replace_source(path: PathBuf) {
+    let old = {
+        let mut g = PREVIEW_SOURCE.lock().unwrap_or_else(|e| e.into_inner());
+        g.replace(path.clone())
+    };
+    if let Some(old) = old {
+        if old != path && !crate::screenshot::pin::owns(&old) {
+            let _ = std::fs::remove_file(old);
+        }
+    }
+}
+
+fn validate_edited_png(bytes: &[u8]) -> Result<(u32, u32), String> {
+    if bytes.len() < 8 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+        return Err("编辑结果不是有效的 PNG".into());
+    }
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err("编辑结果文件过大（上限 64 MB）".into());
+    }
+    let reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .map_err(|e| format!("解析编辑结果失败：{e}"))?;
+    let (w, h) = reader.info().size();
+    if w == 0 || h == 0 {
+        return Err("编辑结果尺寸不合法".into());
+    }
+    let pixels = w as u64 * h as u64;
+    if pixels > MAX_DECODE_PIXELS {
+        return Err(format!(
+            "编辑结果太大（{w}×{h}，{pixels} 像素），超过 {} 万像素上限",
+            MAX_DECODE_PIXELS / 10_000
+        ));
+    }
+    Ok((w, h))
+}
+
+/// 接收前端画布合成的 PNG 字节，落到暂存目录并成为新的预览源。
+///
+/// 图片只在这一步走一次 IPC，且是原始 PNG 字节（不是 base64）；之后所有
+/// 存盘 / 复制 / OCR 仍按文件路径处理（ADR-040 / ADR-068）。
+pub fn commit_edited_png(bytes: &[u8]) -> Result<PathBuf, String> {
+    let _ = validate_edited_png(bytes)?;
+    let dir = stage_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建暂存目录失败：{e}"))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dst = dir.join(format!("edit-{stamp}.png"));
+    std::fs::write(&dst, bytes).map_err(|e| format!("保存编辑结果失败：{e}"))?;
+    replace_source(dst.clone());
+    Ok(dst)
 }
 
 /// 给预览页面拉取的状态。只给显示 URL，不把本机路径交给 WebView。
@@ -648,5 +703,21 @@ mod tests {
         assert!(crop_region_png(&src, &dst, 0, 2, 1, 2).is_err());
         assert!(crop_region_to_image(&src, 0, 0, 0, 1).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn edited_png_validation_checks_signature_and_size() {
+        let mut bytes = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut bytes, 3, 2);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            let mut w = enc.write_header().unwrap();
+            w.write_image_data(&vec![0u8; 3 * 2 * 4]).unwrap();
+        }
+        assert_eq!(validate_edited_png(&bytes), Ok((3, 2)));
+        assert!(validate_edited_png(b"not a png").is_err());
+        assert!(validate_edited_png(b"\x89PNG\r\n\x1a\nbroken").is_err());
+        assert!(validate_edited_png(&[]).is_err());
     }
 }

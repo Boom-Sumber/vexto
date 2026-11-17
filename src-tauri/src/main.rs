@@ -1140,6 +1140,32 @@ fn preview_state() -> Value {
     crate::screenshot::preview::state_value()
 }
 
+/// 接收预览页画布合成的 PNG（原始字节，不走 base64），替换当前预览源。
+/// 之后的存盘 / 复制 / 钉屏 / OCR 继续按文件路径走既有链路。
+#[tauri::command]
+fn preview_commit_edited(request: tauri::ipc::Request<'_>) -> Value {
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes,
+        _ => {
+            return json!({
+                "ok": false,
+                "message": "编辑结果必须以二进制 PNG 提交",
+            })
+        }
+    };
+    match crate::screenshot::preview::commit_edited_png(bytes) {
+        Ok(path) => {
+            let (w, h) = crate::screenshot::preview::image_size(&path).unwrap_or((0, 0));
+            json!({
+                "ok": true,
+                "message": format!("已应用标注（{w}×{h}）"),
+                "state": crate::screenshot::preview::state_value(),
+            })
+        }
+        Err(e) => json!({ "ok": false, "message": e }),
+    }
+}
+
 /// 对预览图执行存盘 / 复制 / 钉屏 / OCR。裁切与解码都放到阻塞线程。
 #[tauri::command]
 async fn preview_action(head: u32, tail: u32, action: String, app: AppHandle) -> Value {
@@ -2701,6 +2727,7 @@ fn main() {
             pin_close,
             preview_open,
             preview_state,
+            preview_commit_edited,
             preview_action,
             preview_close,
             // 下载主窗口（S3b 后端）

@@ -26,11 +26,43 @@
     <span class="pv-hint">拖动滑块裁掉头尾，右侧按钮只作用于裁切后的区域</span>
   </div>
 
+  <div id="pv-edit-bar" class="pv-edit-bar">
+    <button id="pv-tool-move" class="tb-btn pv-tool on" type="button" data-tool="" title="选择（不标注）"></button>
+    <span class="pv-edit-sep"></span>
+    <button class="tb-btn pv-tool" type="button" data-tool="rect" title="矩形"></button>
+    <button class="tb-btn pv-tool" type="button" data-tool="ellipse" title="椭圆"></button>
+    <button class="tb-btn pv-tool" type="button" data-tool="arrow" title="箭头"></button>
+    <button class="tb-btn pv-tool" type="button" data-tool="pen" title="画笔"></button>
+    <button class="tb-btn pv-tool" type="button" data-tool="text" title="文字"></button>
+    <button class="tb-btn pv-tool" type="button" data-tool="mosaic" title="马赛克"></button>
+    <span class="pv-edit-sep"></span>
+    <button id="pv-undo" class="tb-btn" type="button" title="撤销 (Ctrl+Z)"></button>
+    <button id="pv-redo" class="tb-btn" type="button" title="重做 (Ctrl+Y)"></button>
+    <button id="pv-clear" class="tb-btn" type="button" title="清空标注"></button>
+    <span class="pv-edit-sep"></span>
+    <div id="pv-colors" class="pv-colors">
+      <button class="pv-color on" type="button" data-color="#f0566d" title="红色" style="--sw:#f0566d"></button>
+      <button class="pv-color" type="button" data-color="#f59e0b" title="橙色" style="--sw:#f59e0b"></button>
+      <button class="pv-color" type="button" data-color="#22c55e" title="绿色" style="--sw:#22c55e"></button>
+      <button class="pv-color" type="button" data-color="#3b82f6" title="蓝色" style="--sw:#3b82f6"></button>
+      <button class="pv-color" type="button" data-color="#ffffff" title="白色" style="--sw:#ffffff"></button>
+      <button class="pv-color" type="button" data-color="#111111" title="黑色" style="--sw:#111111"></button>
+    </div>
+    <select id="pv-width" class="pv-width" title="线宽">
+      <option value="2">细</option>
+      <option value="4" selected>中</option>
+      <option value="6">粗</option>
+      <option value="10">特粗</option>
+    </select>
+    <span id="pv-edit-hint" class="pv-edit-hint">选择工具后在图上拖动标注</span>
+  </div>
+
   <main class="pv-main">
     <div class="pv-viewport-wrap">
       <div class="pv-viewport">
         <div id="pv-canvas" class="pv-canvas">
           <img id="pv-img" alt="" draggable="false" />
+          <canvas id="pv-annot" class="pv-annot"></canvas>
           <div id="pv-band-top" class="pv-band top"></div>
           <div id="pv-band-bottom" class="pv-band bottom"></div>
         </div>

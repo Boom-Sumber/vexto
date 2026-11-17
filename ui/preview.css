@@ -36,6 +36,89 @@ body {
   text-overflow: ellipsis;
 }
 
+/* 标注工具条（会话 91）：选择 / 矩形 / 椭圆 / 箭头 / 画笔 / 文字 / 马赛克，
+ * 撤销重做、颜色与线宽。跟截图动作栏同一套图标与按钮尺寸。 */
+.pv-edit-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pv-edit-bar .tb-btn {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.pv-edit-bar .tb-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pv-edit-bar .tb-btn:disabled,
+.pv-edit-bar .pv-color:disabled,
+.pv-edit-bar select:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.pv-edit-sep {
+  width: 1px;
+  height: 18px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--border-default);
+}
+
+.pv-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 0 2px;
+}
+
+.pv-color {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--sw);
+  cursor: pointer;
+}
+
+.pv-color.on {
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 3px var(--accent);
+}
+
+.pv-width {
+  width: 62px;
+  height: 28px;
+  flex: none;
+  padding: 0 20px 0 8px;
+  font-size: var(--fs-xs);
+}
+
+.pv-edit-hint {
+  margin-left: auto;
+  padding-left: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex: none;
+}
+
+@media (max-width: 820px) {
+  .pv-edit-hint { display: none; }
+}
+
 .pv-main {
   flex: 1;
   min-height: 0;
@@ -73,6 +156,38 @@ body {
   display: block;
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-float);
+}
+
+/* 标注画布与图片完全重合；不选工具时点击穿透，让预览正常滚动。 */
+.pv-annot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r-sm);
+  pointer-events: none;
+  touch-action: none;
+}
+
+.pv-annot.drawing {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+.pv-annot.text {
+  cursor: text;
+}
+
+/* 文字标注的就地输入框：位置与画布上的文字坐标对齐。 */
+.pv-text-input {
+  position: absolute;
+  z-index: 4;
+  min-width: 72px;
+  padding: 0 2px;
+  border: 1px dashed var(--accent);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, .18);
+  outline: none;
+  box-sizing: border-box;
 }
 
 .pv-zoom {
