@@ -9,6 +9,7 @@
 //! `stream_writer()` 逐行写，内存只有一行缓冲。OCR / 剪贴板需要像素缓冲，
 //! 这时按 `MAX_DECODE_PIXELS` 设上限并给中文原因。
 
+use crate::config::Config;
 use crate::ocr::CapturedImage;
 use crate::screenshot::output;
 use std::io::{BufReader, BufWriter, Write};
@@ -76,11 +77,8 @@ fn validate_edited_png(bytes: &[u8]) -> Result<(u32, u32), String> {
     Ok((w, h))
 }
 
-/// 接收前端画布合成的 PNG 字节，落到暂存目录并成为新的预览源。
-///
-/// 图片只在这一步走一次 IPC，且是原始 PNG 字节（不是 base64）；之后所有
-/// 存盘 / 复制 / OCR 仍按文件路径处理（ADR-040 / ADR-068）。
-pub fn commit_edited_png(bytes: &[u8]) -> Result<PathBuf, String> {
+/// 接收前端画布合成的 PNG 字节，只落到暂存目录（供选区工具条随后执行动作）。
+pub fn stage_edited_png(bytes: &[u8]) -> Result<PathBuf, String> {
     let _ = validate_edited_png(bytes)?;
     let dir = stage_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建暂存目录失败：{e}"))?;
@@ -90,8 +88,104 @@ pub fn commit_edited_png(bytes: &[u8]) -> Result<PathBuf, String> {
         .unwrap_or(0);
     let dst = dir.join(format!("edit-{stamp}.png"));
     std::fs::write(&dst, bytes).map_err(|e| format!("保存编辑结果失败：{e}"))?;
+    Ok(dst)
+}
+
+/// 接收前端画布合成的 PNG 字节，落到暂存目录并成为新的预览源。
+///
+/// 图片只在这一步走一次 IPC，且是原始 PNG 字节（不是 base64）；之后所有
+/// 存盘 / 复制 / OCR 仍按文件路径处理（ADR-040 / ADR-068）。
+pub fn commit_edited_png(bytes: &[u8]) -> Result<PathBuf, String> {
+    let dst = stage_edited_png(bytes)?;
     replace_source(dst.clone());
     Ok(dst)
+}
+
+fn staged_edited_path(name: &str) -> Result<PathBuf, String> {
+    if name.is_empty()
+        || !name.starts_with("edit-")
+        || !name.ends_with(".png")
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+    {
+        return Err("编辑结果文件名不合法".into());
+    }
+    let path = stage_dir().join(name);
+    if !path.is_file() {
+        return Err("编辑结果已不存在，请重试".into());
+    }
+    Ok(path)
+}
+
+/// 对选区工具条提交的编辑结果执行动作，动作完成后删掉临时 PNG
+/// （钉屏 / 预览会接管文件，不删）。
+pub fn apply_staged_action(action: &str, name: &str) -> Result<ActionOutcome, String> {
+    let src = staged_edited_path(name)?;
+    let (w, h) = image_size(&src)?;
+    let cfg = crate::config::load();
+    let out = run_staged_action(action, &src, w, h, &cfg);
+    if matches!(action, "copy" | "save") {
+        let _ = std::fs::remove_file(&src);
+    }
+    out
+}
+
+fn run_staged_action(
+    action: &str,
+    src: &Path,
+    w: u32,
+    h: u32,
+    cfg: &Config,
+) -> Result<ActionOutcome, String> {
+    match action {
+        "copy" => {
+            let img = crop_region_to_image(src, 0, 0, w, h)?;
+            output::copy_image(&img)?;
+            Ok(ActionOutcome {
+                pin_label: None,
+                message: format!("已复制到剪贴板（{w}×{h}）"),
+                path: None,
+                text: None,
+            })
+        }
+        "save" => {
+            let dst = output::copy_file_to_dir(src, &output::resolve_dir(cfg), cfg)?;
+            let mut message = format!("已保存并复制（{w}×{h}）：{}", dst.display());
+            match crop_region_to_image(src, 0, 0, w, h).and_then(|img| output::copy_image(&img)) {
+                Ok(()) => message.push_str("；已复制到剪贴板"),
+                Err(e) => message.push_str(&format!("；复制到剪贴板失败：{e}")),
+            }
+            Ok(ActionOutcome {
+                pin_label: None,
+                message,
+                path: Some(dst),
+                text: None,
+            })
+        }
+        "pin" => {
+            let (label, _, _) = crate::screenshot::pin::add_staged(
+                src.to_path_buf(),
+                cfg.pinscreen_single_window,
+            )?;
+            Ok(ActionOutcome {
+                pin_label: Some(label),
+                message: format!("已钉屏（{w}×{h}）"),
+                path: None,
+                text: None,
+            })
+        }
+        "preview" => {
+            set_source(src.to_path_buf());
+            Ok(ActionOutcome {
+                pin_label: None,
+                message: format!("已打开预览（{w}×{h}）"),
+                path: None,
+                text: None,
+            })
+        }
+        other => Err(format!("未知的选区编辑动作：{other}")),
+    }
 }
 
 /// 给预览页面拉取的状态。只给显示 URL，不把本机路径交给 WebView。

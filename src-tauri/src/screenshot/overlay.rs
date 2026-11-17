@@ -124,6 +124,26 @@ pub fn apply_result(action: &str, cfg: &Config) -> Result<preview::ActionOutcome
                 text: None,
             })
         }
+        "save_copy" => {
+            let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg), cfg)?;
+            let mut message = format!("已保存并复制（{w}×{h}）：{}", dst.display());
+            if kind == ResultKind::Scroll {
+                message.push_str("；长图不支持复制图片");
+            } else {
+                match preview::crop_region_to_image(&src, 0, 0, w, h)
+                    .and_then(|img| output::copy_image(&img))
+                {
+                    Ok(()) => message.push_str("；已复制到剪贴板"),
+                    Err(e) => message.push_str(&format!("；复制到剪贴板失败：{e}")),
+                }
+            }
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message,
+                path: Some(dst),
+                text: None,
+            })
+        }
         "path" => {
             let dst = output::copy_file_to_dir(&src, &output::resolve_dir(cfg), cfg)?;
             if let Err(e) = output::copy_path(&dst) {
@@ -363,6 +383,25 @@ pub fn apply(
             Ok(preview::ActionOutcome {
                 pin_label: None,
                 message: format!("已保存（{ow}×{oh}）：{}", dst.display()),
+                path: Some(dst),
+                text: None,
+            })
+        }
+        "save_copy" => {
+            let dir = output::resolve_dir(&cfg);
+            std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败：{e}"))?;
+            let dst = output::next_png_path(&dir, &cfg);
+            let (ow, oh) = preview::crop_region_png(&src, &dst, sx, sy, sw, sh)?;
+            let mut message = format!("已保存并复制（{ow}×{oh}）：{}", dst.display());
+            match preview::crop_region_to_image(&src, sx, sy, sw, sh)
+                .and_then(|img| output::copy_image(&img))
+            {
+                Ok(()) => message.push_str("；已复制到剪贴板"),
+                Err(e) => message.push_str(&format!("；复制到剪贴板失败：{e}")),
+            }
+            Ok(preview::ActionOutcome {
+                pin_label: None,
+                message,
                 path: Some(dst),
                 text: None,
             })

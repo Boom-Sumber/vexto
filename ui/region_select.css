@@ -112,8 +112,19 @@ body[data-purpose="scroll"] #box {
   border-radius: 0;
   background: transparent;
   box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45);
-  z-index: 2;
+  z-index: 4;
 }
+
+/* 选区内的标注画布：位于选区边框下方、截屏快照上方 */
+.edit-canvas {
+  position: absolute;
+  z-index: 3;
+  display: block;
+  touch-action: none;
+  border-radius: 0;
+}
+.edit-canvas[hidden] { display: none; }
+#box.editing .h { display: none; }
 
 /* 八个控制点（视觉对齐参考图；本期只读，不做拖拽缩放） */
 #box .h {
@@ -203,7 +214,7 @@ body[data-purpose="scroll"] #box {
 /* 选区下方的动作栏 */
 #toolbar {
   position: fixed;
-  z-index: 5;
+  z-index: 6;
   display: none;
   align-items: center;
   gap: 8px;

@@ -30,6 +30,18 @@
   let moving = false;
   let moveDX = 0, moveDY = 0;
   let resizing = null;
+  let editing = false;
+  let editTool = "";
+  const editCanvas = el("edit-canvas");
+  const editor =
+    window.AnnotEditor && editCanvas
+      ? window.AnnotEditor.create({
+          canvas: editCanvas,
+          getScale: () =>
+            editCanvas.width ? (editCanvas.clientWidth || 0) / editCanvas.width : 1,
+          onChange: () => updateScrollButton(),
+        })
+      : null;
   const HANDLE_CURSORS = {
     "h-tl": "nwse-resize",
     "h-tc": "ns-resize",
@@ -157,7 +169,7 @@
   }
 
   function updateSelectionCursor(ev) {
-    if (!enhanced || !done || !sel || resultKind || dragging || moving || resizing) return;
+    if (!enhanced || !done || !sel || resultKind || editing || dragging || moving || resizing) return;
     const hit = el("hit");
     if (!hit) return;
     const h = handleAt(ev.clientX, ev.clientY);
@@ -199,7 +211,7 @@
   }
 
   function onDown(ev) {
-    if (ev.button !== 0 || busy || resultKind) return;
+    if (ev.button !== 0 || busy || resultKind || editing) return;
     if (enhanced) {
       if (!snapReady) return;
       // 完成态：先判断是否抓住控制点，再判断框内移动，最后才是重新拉框。
@@ -336,7 +348,119 @@
     box.classList.add("on");
   }
 
+  function buildBaseCanvas() {
+    const snap = el("snap");
+    if (!snap || !snap.naturalWidth || !snap.naturalHeight || !sel) return null;
+    const rx = snap.naturalWidth / window.innerWidth;
+    const ry = snap.naturalHeight / window.innerHeight;
+    const sx = sel.x * rx;
+    const sy = sel.y * ry;
+    const sw = Math.max(1, sel.w * rx);
+    const sh = Math.max(1, sel.h * ry);
+    const base = document.createElement("canvas");
+    base.width = Math.max(1, Math.round(sw));
+    base.height = Math.max(1, Math.round(sh));
+    base.getContext("2d").drawImage(snap, sx, sy, sw, sh, 0, 0, base.width, base.height);
+    return base;
+  }
+
+  function updateToolButtons() {
+    const bar = el("toolbar");
+    if (!bar) return;
+    for (const btn of bar.querySelectorAll("[data-tool]")) {
+      btn.classList.toggle("on", editing && btn.dataset.tool === editTool);
+    }
+  }
+
+  function updateScrollButton() {
+    const btn = document.querySelector('#toolbar [data-act="scroll"]');
+    if (!btn) return;
+    btn.disabled = !!resultKind || busy || (editor ? editor.hasAnnotations() : false);
+  }
+
+  function stopEdit() {
+    editing = false;
+    editTool = "";
+    if (editor) {
+      editor.setEnabled(false);
+      editor.closePopup();
+    }
+    if (editCanvas) editCanvas.hidden = true;
+    const box = el("box");
+    if (box) box.classList.remove("editing");
+    const hit = el("hit");
+    if (hit) hit.style.pointerEvents = "";
+    updateToolButtons();
+    updateScrollButton();
+  }
+
+  function startEdit(toolName, btn) {
+    if (!done || !sel || busy || !editor || !editCanvas) return;
+    if (!editing) {
+      if (resultKind) {
+        const img = el("result");
+        if (!img || !img.naturalWidth || !img.naturalHeight) return;
+        if (img.naturalWidth * img.naturalHeight > 16000000) {
+          showToast("结果图太大（超过 1600 万像素），暂不支持标注", true);
+          return;
+        }
+        const boxEl = el("box");
+        const box = boxEl.getBoundingClientRect();
+        const cw = boxEl.clientWidth;
+        const ch = boxEl.clientHeight;
+        const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+        const dw = img.naturalWidth * scale;
+        const dh = img.naturalHeight * scale;
+        editCanvas.hidden = false;
+        editCanvas.style.left = box.left + boxEl.clientLeft + (cw - dw) / 2 + "px";
+        editCanvas.style.top = box.top + boxEl.clientTop + (ch - dh) / 2 + "px";
+        editCanvas.style.width = dw + "px";
+        editCanvas.style.height = dh + "px";
+        editor.setDpr(window.devicePixelRatio || 1);
+        editor.setSource(img, img.naturalWidth, img.naturalHeight);
+        editor.setEnabled(true);
+        editing = true;
+        el("box").classList.add("editing");
+        hideHint();
+        el("magnifier").classList.remove("on");
+      } else {
+        const dpr = window.devicePixelRatio || 1;
+        if (Math.round(sel.w * dpr) * Math.round(sel.h * dpr) > 16000000) {
+          showToast("选区太大（超过 1600 万像素），暂不支持标注", true);
+          return;
+        }
+        const base = buildBaseCanvas();
+        if (!base) return;
+        if (base.width * base.height > 16000000) {
+          showToast("选区太大（超过 1600 万像素），暂不支持标注", true);
+          return;
+        }
+        editCanvas.hidden = false;
+        editCanvas.style.left = sel.x + "px";
+        editCanvas.style.top = sel.y + "px";
+        editCanvas.style.width = sel.w + "px";
+        editCanvas.style.height = sel.h + "px";
+        editor.setDpr(dpr);
+        editor.setSource(base, base.width, base.height);
+        editor.setEnabled(true);
+        editing = true;
+        el("box").classList.add("editing");
+        const hit = el("hit");
+        if (hit) hit.style.pointerEvents = "none";
+        hideHint();
+        el("magnifier").classList.remove("on");
+      }
+    }
+    editTool = toolName;
+    editor.setTool(toolName);
+    editor.openPopup(btn);
+    updateToolButtons();
+    updateScrollButton();
+    positionToolbar(sel);
+  }
+
   function resetSelection() {
+    stopEdit();
     done = false;
     sel = null;
     magHex = "";
@@ -444,6 +568,7 @@
 
   // ── 选区完成后的动作栏 ────────────────────────────────────────────────
   function enterDone(rect) {
+    stopEdit();
     done = true;
     resultKind = "";
     sel = rect;
@@ -516,6 +641,11 @@
 
   function startScrollFromShot() {
     if (!sel || busy || resultKind) return;
+    if (editor && editor.hasAnnotations()) {
+      showToast("有标注时不能滚动截图，请先关闭重来", true);
+      return;
+    }
+    stopEdit();
     hideHint();
     busy = true;
     enterCapture("滚动中… 用进度窗停止");
@@ -535,6 +665,7 @@
 
   // 进入捕获态：只留边框；窗口点击穿透 + WDA_EXCLUDEFROMCAPTURE 由后端设置。
   function enterCapture(msg) {
+    stopEdit();
     hideHint();
     const snap = el("snap");
     if (snap) snap.style.display = "none";
@@ -553,6 +684,7 @@
 
   // 结果框：把长图 / 全屏图缩略图放进选框，动作栏走 result_action。
   function showResultFrame(kind, url) {
+    stopEdit();
     resultKind = kind;
     done = true;
     busy = false;
@@ -615,8 +747,16 @@
   function bindToolbar() {
     const bar = el("toolbar");
     if (!bar) return;
+    initToolbarIcons();
     bar.addEventListener("mousedown", (ev) => ev.stopPropagation());
     bar.addEventListener("click", (ev) => {
+      const toolBtn = ev.target.closest("[data-tool]");
+      if (toolBtn) {
+        if (!sel || busy) return;
+        ev.stopPropagation();
+        startEdit(toolBtn.dataset.tool, toolBtn);
+        return;
+      }
       const btn = ev.target.closest("[data-act]");
       if (!btn || !sel || busy) return;
       ev.stopPropagation();
@@ -633,8 +773,99 @@
     });
   }
 
+  function initToolbarIcons() {
+    if (purpose !== "shot" || typeof Icons === "undefined") return;
+    const tools = {
+      rect: "rect",
+      ellipse: "ellipse",
+      arrow: "arrow-up-right",
+      pen: "pen",
+      text: "text",
+      mosaic: "mosaic",
+    };
+    for (const [name, icon] of Object.entries(tools)) {
+      const btn = document.querySelector('#toolbar [data-tool="' + name + '"]');
+      if (btn) btn.innerHTML = Icons.svg(icon, 27);
+    }
+    const acts = {
+      scroll: "scroll",
+      preview: "preview",
+      pin: "pin",
+      copy: "copy",
+      save: "download",
+      close: "trash",
+    };
+    for (const [name, icon] of Object.entries(acts)) {
+      const btn = document.querySelector('#toolbar [data-act="' + name + '"]');
+      if (btn) btn.innerHTML = Icons.svg(icon, 27);
+    }
+  }
+
+  function selectionArgs() {
+    return {
+      x: sel.x,
+      y: sel.y,
+      w: sel.w,
+      h: sel.h,
+      dpr: window.devicePixelRatio || 1,
+    };
+  }
+
+  async function commitAnnotated() {
+    if (!editor) return null;
+    editor.commitPending();
+    if (!editor.hasAnnotations()) return null;
+    const blob = await editor.composeBlob();
+    const r = await invoke("shot_edited_commit", await blob.arrayBuffer());
+    if (!r || !r.ok) throw new Error((r && r.message) || "应用标注失败");
+    return r.name;
+  }
+
   async function runAction(act) {
     if (!sel || busy) return;
+    if (purpose === "scroll") {
+      runLegacyAction(act);
+      return;
+    }
+    busy = true;
+    setBarBusy(true);
+    showToast("处理中…", false, 0);
+    let ok = false;
+    try {
+      let message = "";
+      const name = await commitAnnotated();
+      if (name) {
+        const r = await invoke("shot_edited_action", { action: act, name });
+        if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
+        message = r.message || "完成";
+      } else if (resultKind) {
+        const map = { copy: "clipboard", save: "save_copy", pin: "pin", preview: "preview" };
+        const action = map[act];
+        if (!action) throw new Error("未知操作");
+        const r = await invoke("result_action", { action });
+        if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
+        message = r.message || "完成";
+      } else {
+        const map = { copy: "clipboard", save: "save_copy", pin: "pin", preview: "preview" };
+        const action = map[act];
+        if (!action) throw new Error("未知操作");
+        const r = await invoke("shot_action", { action, ...selectionArgs() });
+        if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
+        message = r.message || "完成";
+      }
+      showToast(message, false);
+      ok = true;
+    } catch (e) {
+      showToast(String(e.message || e), true);
+    } finally {
+      busy = false;
+      setBarBusy(false);
+      updateScrollButton();
+      if (ok) setTimeout(cancel, 100);
+    }
+  }
+
+  async function runLegacyAction(act) {
     busy = true;
     setBarBusy(true);
     showToast("处理中…", false, 0);
@@ -643,28 +874,15 @@
       const cmd = isResult ? "result_action" : "shot_action";
       const args = isResult
         ? { action: act }
-        : {
-            action: act,
-            x: sel.x,
-            y: sel.y,
-            w: sel.w,
-            h: sel.h,
-            dpr: window.devicePixelRatio || 1,
-          };
+        : { action: act, ...selectionArgs() };
       const r = await invoke(cmd, args);
       if (!r || !r.ok) {
         showToast((r && r.message) || "操作失败", true);
         return;
       }
       showToast(r.message || "完成", false);
-      // 另存为取消时没有 path，保持结果框不关。
       if (act === "save_as" && !r.path) return;
-      if (
-        act === "pin" ||
-        act === "preview" ||
-        act === "default" ||
-        act === "save_as"
-      ) {
+      if (act === "pin" || act === "preview" || act === "default" || act === "save_as") {
         setTimeout(cancel, 80);
       }
     } catch (e) {
@@ -679,6 +897,10 @@
     const bar = el("toolbar");
     if (!bar) return;
     for (const btn of bar.querySelectorAll("button")) btn.disabled = b;
+    if (!b) {
+      updateToolButtons();
+      updateScrollButton();
+    }
   }
 
   function hideCard() {
@@ -719,7 +941,27 @@
 
   // ── 键盘：Esc 取消；截图模式 Ctrl+C 复制色值 ──────────────────────────
   window.addEventListener("keydown", (ev) => {
+    if (editing && (ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
+      ev.preventDefault();
+      if (ev.shiftKey) editor.redo();
+      else editor.undo();
+      updateScrollButton();
+      return;
+    }
+    if (editing && (ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "y") {
+      ev.preventDefault();
+      editor.redo();
+      updateScrollButton();
+      return;
+    }
     if (ev.key === "Escape") {
+      if (editing && editTool) {
+        editor.setTool("");
+        editor.closePopup();
+        editTool = "";
+        updateToolButtons();
+        return;
+      }
       cancel();
       return;
     }

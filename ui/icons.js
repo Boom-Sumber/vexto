@@ -149,6 +149,9 @@ window.Icons = (function () {
     ellipse: '<ellipse cx="12" cy="12" rx="8" ry="6.5"/>',
     "arrow-up-right":
       '<path d="M6 18L18 6"/><path d="M10 6h8v8"/>',
+    scroll:
+      '<rect x="4" y="4" width="16" height="16" rx="2"/>' +
+      '<path d="M12 8v8"/><path d="M9 11l3-3 3 3"/><path d="M9 13l3 3 3-3"/>',
     pen:
       '<path d="M4 20l4.2-1 10.3-10.3a2.1 2.1 0 0 0-3-3L5.2 16 4 20z"/>' +
       '<path d="M13.5 6.5l4 4"/>',

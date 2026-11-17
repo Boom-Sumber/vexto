@@ -1166,6 +1166,55 @@ fn preview_commit_edited(request: tauri::ipc::Request<'_>) -> Value {
     }
 }
 
+/// 选区工具条提交编辑结果：先落暂存，再由 `shot_edited_action` 执行动作。
+#[tauri::command]
+fn shot_edited_commit(request: tauri::ipc::Request<'_>) -> Value {
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes,
+        _ => {
+            return json!({
+                "ok": false,
+                "message": "编辑结果必须以二进制 PNG 提交",
+            })
+        }
+    };
+    match crate::screenshot::preview::stage_edited_png(bytes) {
+        Ok(path) => {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            json!({ "ok": true, "name": name })
+        }
+        Err(e) => json!({ "ok": false, "message": e }),
+    }
+}
+
+#[tauri::command]
+async fn shot_edited_action(action: String, name: String, app: AppHandle) -> Value {
+    let act = action.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::screenshot::preview::apply_staged_action(&act, &name)
+    })
+    .await;
+    match result {
+        Ok(Ok(out)) => {
+            if let Some(label) = out.pin_label.clone() {
+                schedule_pin_window(&app, label);
+            } else if action == "preview" {
+                schedule_window(&app, crate::popup::open_preview_window);
+            }
+            json!({
+                "ok": true,
+                "message": out.message,
+                "path": out.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+            })
+        }
+        Ok(Err(e)) => json!({ "ok": false, "message": e }),
+        Err(e) => json!({ "ok": false, "message": format!("编辑动作失败：{e}") }),
+    }
+}
+
 /// 对预览图执行存盘 / 复制 / 钉屏 / OCR。裁切与解码都放到阻塞线程。
 #[tauri::command]
 async fn preview_action(head: u32, tail: u32, action: String, app: AppHandle) -> Value {
@@ -2728,6 +2777,8 @@ fn main() {
             preview_open,
             preview_state,
             preview_commit_edited,
+            shot_edited_commit,
+            shot_edited_action,
             preview_action,
             preview_close,
             // 下载主窗口（S3b 后端）

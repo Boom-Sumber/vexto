@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="theme-dark.css" />
 <link rel="stylesheet" href="theme-light.css" />
 <link rel="stylesheet" href="base.css" />
+<link rel="stylesheet" href="annot_editor.css" />
 <link rel="stylesheet" href="region_select.css" />
 </head>
 <body data-theme="dark" data-purpose="shot">
@@ -19,6 +20,7 @@
     <span class="h h-ml"></span><span class="h h-mr"></span>
     <span class="h h-bl"></span><span class="h h-bc"></span><span class="h h-br"></span>
   </div>
+  <canvas id="edit-canvas" class="edit-canvas" hidden></canvas>
 
   <div id="magnifier">
     <canvas id="mag-canvas" width="128" height="128"></canvas>
@@ -30,28 +32,20 @@
   </div>
 
   <div id="toolbar">
-    <button class="tb-btn" type="button" data-act="clipboard" title="复制图片">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 011-1h10"/></svg>
-    </button>
-    <button class="tb-btn" type="button" data-act="path" title="保存并复制路径">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7.5-.5l-2 2a5 5 0 007 7l1-1"/></svg>
-    </button>
-    <button class="tb-btn" type="button" data-act="pin" title="钉屏">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6z"/></svg>
-    </button>
-    <button class="tb-btn" type="button" data-act="preview" title="预览">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></svg>
-    </button>
-    <button class="tb-btn" type="button" data-act="scroll" title="长截图">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8"/><path d="M9 11l3-3 3 3"/><path d="M9 13l3 3 3-3"/></svg>
-    </button>
+    <button class="tb-btn" type="button" data-tool="rect" title="矩形"></button>
+    <button class="tb-btn" type="button" data-tool="ellipse" title="椭圆"></button>
+    <button class="tb-btn" type="button" data-tool="arrow" title="箭头"></button>
+    <button class="tb-btn" type="button" data-tool="pen" title="画笔"></button>
+    <button class="tb-btn" type="button" data-tool="text" title="文字"></button>
+    <button class="tb-btn" type="button" data-tool="mosaic" title="马赛克"></button>
     <span class="tb-sep"></span>
-    <button class="tb-btn tb-ok" type="button" data-act="default" title="完成">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>
-    </button>
-    <button class="tb-btn tb-close" type="button" data-act="close" title="关闭">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
+    <button class="tb-btn" type="button" data-act="scroll" title="长截图"></button>
+    <span class="tb-sep"></span>
+    <button class="tb-btn" type="button" data-act="preview" title="预览"></button>
+    <button class="tb-btn" type="button" data-act="pin" title="钉屏"></button>
+    <button class="tb-btn" type="button" data-act="copy" title="复制到剪贴板"></button>
+    <button class="tb-btn" type="button" data-act="save" title="保存并复制"></button>
+    <button class="tb-btn tb-close" type="button" data-act="close" title="关闭（不保存不复制）"></button>
   </div>
   <div id="scroll-hint">按 L 键开始滚动截图</div>
   <div id="toast"></div>
@@ -72,6 +66,7 @@
 <script src="contextmenu.js"></script>
 <script src="theme.js"></script>
 <script src="icons.js"></script>
+<script src="annot_editor.js"></script>
 <script src="region_select.js"></script>
 </body>
 </html>
