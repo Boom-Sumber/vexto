@@ -153,12 +153,21 @@ window.Icons = (function () {
       '<path d="M4 20l4.2-1 10.3-10.3a2.1 2.1 0 0 0-3-3L5.2 16 4 20z"/>' +
       '<path d="M13.5 6.5l4 4"/>',
     text:
-      '<path d="M5 6h14"/><path d="M12 6v13"/><path d="M9 19h6"/>',
+      '<rect x="3" y="3" width="18" height="18" rx="3"/>' +
+      '<path d="M8 8h8M12 8v9" stroke-width="2.2"/>',
     mosaic:
-      '<rect x="4" y="4" width="6" height="6" rx="1"/>' +
-      '<rect x="14" y="4" width="6" height="6" rx="1"/>' +
-      '<rect x="4" y="14" width="6" height="6" rx="1"/>' +
-      '<rect x="14" y="14" width="6" height="6" rx="1"/>',
+      '<rect x="3" y="3" width="18" height="18" rx="3"/>' +
+      '<rect x="7" y="7" width="3.6" height="3.6" rx=".9" fill="currentColor" stroke="none"/>' +
+      '<rect x="13.4" y="7" width="3.6" height="3.6" rx=".9" fill="currentColor" stroke="none"/>' +
+      '<rect x="10.2" y="10.2" width="3.6" height="3.6" rx=".9" fill="currentColor" stroke="none"/>' +
+      '<rect x="7" y="13.4" width="3.6" height="3.6" rx=".9" fill="currentColor" stroke="none"/>' +
+      '<rect x="13.4" y="13.4" width="3.6" height="3.6" rx=".9" fill="currentColor" stroke="none"/>',
+    "square-hollow":
+      '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/>' +
+      '<rect x="9" y="9" width="6" height="6" rx="1"/>',
+    "square-solid":
+      '<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/>' +
+      '<rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/>',
     undo:
       '<path d="M9 7L5 11l4 4"/>' +
       '<path d="M5 11h9a5 5 0 0 1 0 10h-3"/>',

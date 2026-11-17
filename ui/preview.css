@@ -51,8 +51,8 @@ body {
 }
 
 .pv-edit-bar .tb-btn {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex: none;
 }
 
@@ -79,14 +79,14 @@ body {
 .pv-colors {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: none;
   padding: 0 2px;
 }
 
 .pv-color {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border-radius: 50%;
   border: 1px solid var(--border-strong);
@@ -99,12 +99,103 @@ body {
 }
 
 .pv-width {
-  width: 62px;
-  height: 28px;
-  flex: none;
-  padding: 0 20px 0 8px;
-  font-size: var(--fs-xs);
+  display: none;
 }
+
+/* 工具气泡：点在工具图标下方，尾巴指向按钮。定位由 preview.js 用 fixed 坐标完成。 */
+.pv-tool-pop {
+  position: fixed;
+  z-index: 40;
+  padding: 7px 9px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+}
+
+.pv-tool-pop[hidden] {
+  display: none;
+}
+
+.pv-pop-arrow {
+  position: absolute;
+  top: -5px;
+  left: var(--arrow-left, 18px);
+  width: 9px;
+  height: 9px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+
+.pv-pop-body {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pv-pop-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-default);
+}
+
+.pop-dot {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pop-dot::before {
+  content: "";
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.pop-dot:hover { background: var(--bg-hover); }
+.pop-dot.on::before { background: var(--accent); }
+.pop-dot:disabled { opacity: .35; cursor: default; background: transparent; }
+
+.pop-fill {
+  width: 28px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pop-fill:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pop-fill.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+
+.pop-size {
+  min-width: 38px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.pop-size:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pop-size.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
 
 .pv-edit-hint {
   margin-left: auto;
@@ -158,30 +249,50 @@ body {
   box-shadow: var(--shadow-float);
 }
 
-/* 标注画布与图片完全重合；不选工具时点击穿透，让预览正常滚动。 */
+/* 标注画布与图片完全重合。始终接收指针事件：绘制工具下画新图，
+ * 选择模式下点已有图形移动/缩放；滚轮仍能正常滚动预览。 */
 .pv-annot {
   position: absolute;
   left: 0;
   top: 0;
   border-radius: var(--r-sm);
-  pointer-events: none;
+  pointer-events: auto;
   touch-action: none;
+  cursor: default;
 }
 
 .pv-annot.drawing {
-  pointer-events: auto;
   cursor: crosshair;
 }
 
-.pv-annot.text {
+.pv-annot.textmode {
   cursor: text;
+}
+
+/* 马赛克画笔：半透明小圆球跟随指针。 */
+.pv-brush-cursor {
+  position: fixed;
+  z-index: 35;
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, .9);
+  background: rgba(124, 92, 255, .22);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .3);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.pv-brush-cursor.on {
+  display: block;
 }
 
 /* 文字标注的就地输入框：位置与画布上的文字坐标对齐。 */
 .pv-text-input {
   position: absolute;
   z-index: 4;
-  min-width: 72px;
+  min-width: 24px;
   padding: 0 2px;
   border: 1px dashed var(--accent);
   border-radius: 2px;
