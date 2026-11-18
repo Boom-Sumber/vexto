@@ -21,7 +21,6 @@ use tauri::{AppHandle, Emitter};
 use crate::dlog;
 
 const EVENT: &str = "update:state";
-const DAY_SECS: i64 = 24 * 60 * 60;
 /// 下载进度事件的节流间隔。
 const PROGRESS_MS: u128 = 300;
 
@@ -571,7 +570,7 @@ fn fail(app: &AppHandle, msg: &str) {
     });
 }
 
-// ── 启动日检 + 状态文件 ─────────────────────────────────────────────────
+// ── 启动检查 + 状态文件 ─────────────────────────────────────────────────
 
 #[derive(Default, Serialize, Deserialize)]
 struct Persist {
@@ -631,17 +630,6 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-/// 距上次检查满 24 小时才自动查；时钟回拨也视为「该查了」。
-fn should_auto_check(last: i64, now: i64) -> bool {
-    if last <= 0 {
-        return true;
-    }
-    if now < last {
-        return true;
-    }
-    now - last >= DAY_SECS
-}
-
 /// 启动后延迟检查（静默），并顺带清理过期安装包。
 pub fn spawn_startup(app: AppHandle) {
     std::thread::spawn(move || {
@@ -651,8 +639,8 @@ pub fn spawn_startup(app: AppHandle) {
         if p.last_check_at > 0 {
             set(Some(&app), |s| s.view.last_check = Some(p.last_check_at));
         }
-        // 上次已知的最低版本已经高于当前版本：这一次启动就绕过 24h 节流，
-        // 立刻检查并自动下载（用户仍要自己点「立即安装」）。
+        // 上次已知的最低版本已经高于当前版本：这一次启动就检查并自动下载
+        // （用户仍要自己点「立即安装」）。
         let forced = is_required(
             Some(p.min_version.as_str()).filter(|m| !m.is_empty()),
             current,
@@ -669,11 +657,7 @@ pub fn spawn_startup(app: AppHandle) {
         {
             crate::tray::set_update_hint(&app, Some(p.latest_seen.as_str()), forced);
         }
-        if !forced && !should_auto_check(p.last_check_at, now_secs()) {
-            dlog::dlog("update: 距上次检查不足 24 小时，跳过自动检查");
-            return;
-        }
-        // 强制更新场景下检查失败也要在面板里显示原因（manual=true 只影响错误展示）。
+        // 每次启动都检查，不再按 24 小时节流。
         run_check(app, forced);
     });
 
@@ -747,17 +731,6 @@ pub fn diagnostics_line() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn auto_check_respects_day_boundary() {
-        let now = 2_000_000_000;
-        assert!(should_auto_check(0, now));
-        assert!(!should_auto_check(now - 60, now));
-        assert!(should_auto_check(now - DAY_SECS, now));
-        assert!(should_auto_check(now - DAY_SECS - 1, now));
-        // 时钟回拨：该查
-        assert!(should_auto_check(now + 3600, now));
-    }
 
     #[test]
     fn initial_state_is_idle_with_package_version() {
