@@ -1155,6 +1155,35 @@ fn preview_state() -> Value {
     crate::screenshot::preview::state_value()
 }
 
+/// 预览页显示的截图保存目录（与「保存」动作一致）。
+#[tauri::command]
+fn preview_save_dir() -> Value {
+    let dir = crate::screenshot::output::resolve_dir(&config::load());
+    json!(dir.to_string_lossy().to_string())
+}
+
+/// 打开预览页显示的截图保存目录。
+#[tauri::command]
+fn preview_open_save_dir() -> SimpleOut {
+    let dir = crate::screenshot::output::resolve_dir(&config::load());
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        return SimpleOut {
+            ok: false,
+            message: format!("创建截图目录失败（{}）：{e}", dir.display()),
+        };
+    }
+    match std::process::Command::new("explorer").arg(&dir).spawn() {
+        Ok(_) => SimpleOut {
+            ok: true,
+            message: format!("已打开 {}", dir.display()),
+        },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: format!("打开目录失败：{e}"),
+        },
+    }
+}
+
 /// 接收预览页画布合成的 PNG（原始字节，不走 base64），替换当前预览源。
 /// 之后的存盘 / 复制 / 钉屏 / OCR 继续按文件路径走既有链路。
 #[tauri::command]
@@ -1232,9 +1261,18 @@ async fn shot_edited_action(action: String, name: String, app: AppHandle) -> Val
 
 /// 对预览图执行存盘 / 复制 / 钉屏 / OCR。裁切与解码都放到阻塞线程。
 #[tauri::command]
-async fn preview_action(head: u32, tail: u32, action: String, app: AppHandle) -> Value {
+async fn preview_action(
+    head: u32,
+    tail: u32,
+    left: Option<u32>,
+    right: Option<u32>,
+    action: String,
+    app: AppHandle,
+) -> Value {
+    let l = left.unwrap_or(0);
+    let r = right.unwrap_or(0);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::screenshot::preview::apply(&action, head, tail)
+        crate::screenshot::preview::apply(&action, head, tail, l, r)
     })
     .await;
     match result {
@@ -2792,6 +2830,8 @@ fn main() {
             pin_close,
             preview_open,
             preview_state,
+            preview_save_dir,
+            preview_open_save_dir,
             preview_commit_edited,
             shot_edited_commit,
             shot_edited_action,

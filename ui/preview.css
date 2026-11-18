@@ -334,6 +334,26 @@ body {
 }
 .pv-band.top { top: 0; border-bottom-width: 1px; }
 .pv-band.bottom { bottom: 0; border-top-width: 1px; }
+.pv-band.left {
+  left: 0;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  height: auto;
+  border-right-width: 1px;
+  border-bottom-width: 0;
+}
+.pv-band.right {
+  right: 0;
+  left: auto;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  height: auto;
+  border-left-width: 1px;
+  border-bottom-width: 0;
+}
 
 .pv-side {
   width: 320px;
@@ -364,6 +384,25 @@ body {
 .pv-field input[type="range"] {
   width: 100%;
   accent-color: var(--accent);
+}
+
+.pv-path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pv-path-row input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-xs);
+}
+
+.pv-path-row .icon-btn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
 }
 
 .pv-hint {
@@ -417,21 +456,6 @@ body {
   width: 28px;
   height: 28px;
   padding: 0;
-}
-
-.pv-translation {
-  min-width: 0;
-  overflow: hidden;
-  border-top: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-}
-
-.pv-translation-head {
-  flex: 0 0 auto;
-  padding: var(--sp-2) var(--sp-3) 0;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
 }
 
 .pv-ocr pre {

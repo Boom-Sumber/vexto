@@ -48,6 +48,8 @@
           <canvas id="pv-annot" class="pv-annot"></canvas>
           <div id="pv-band-top" class="pv-band top"></div>
           <div id="pv-band-bottom" class="pv-band bottom"></div>
+          <div id="pv-band-left" class="pv-band left"></div>
+          <div id="pv-band-right" class="pv-band right"></div>
         </div>
       </div>
       <div class="pv-zoom">
@@ -65,10 +67,26 @@
         <div class="pv-label"><span>裁掉底部</span><span id="pv-tail-v">0 px</span></div>
         <input id="pv-tail" type="range" min="0" max="0" value="0" step="1" />
       </div>
-      <p class="pv-hint">拖动滑块裁掉 sticky header 或固定底栏；下面的按钮只作用于裁切后的区域。</p>
+      <div class="pv-field">
+        <div class="pv-label"><span>裁掉左侧</span><span id="pv-left-v">0 px</span></div>
+        <input id="pv-left" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <div class="pv-field">
+        <div class="pv-label"><span>裁掉右侧</span><span id="pv-right-v">0 px</span></div>
+        <input id="pv-right" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <p class="pv-hint">拖动滑块裁掉边缘；下面的按钮只作用于裁切后的区域。</p>
+
+      <div class="pv-field">
+        <div class="pv-label"><span>保存目录</span></div>
+        <div class="pv-path-row">
+          <input id="pv-dir" type="text" readonly />
+          <button id="pv-open-dir" class="btn icon-btn" type="button" title="打开资源管理器"></button>
+        </div>
+      </div>
 
       <div class="pv-actions">
-        <button id="pv-save" class="btn btn-primary" type="button">另存为</button>
+        <button id="pv-save" class="btn btn-primary" type="button">保存</button>
         <button id="pv-copy" class="btn" type="button">复制</button>
         <button id="pv-pin" class="btn" type="button">钉屏</button>
         <button id="pv-ocr" class="btn" type="button">识别文字</button>
@@ -85,10 +103,6 @@
           </div>
         </div>
         <pre id="pv-ocr-text"></pre>
-        <div id="pv-translation" class="pv-translation" hidden>
-          <div class="pv-translation-head">译文</div>
-          <pre id="pv-translation-text"></pre>
-        </div>
       </div>
     </aside>
   </main>

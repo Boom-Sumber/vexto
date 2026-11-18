@@ -8,6 +8,9 @@
   const img = el("pv-img");
   const headEl = el("pv-head");
   const tailEl = el("pv-tail");
+  const leftEl = el("pv-left");
+  const rightEl = el("pv-right");
+  const dirEl = el("pv-dir");
   const annot = el("pv-annot");
   const editBar = el("pv-edit-bar");
   const hintEl = el("pv-edit-hint");
@@ -17,6 +20,8 @@
   let state = { url: "", width: 0, height: 0 };
   let head = 0;
   let tail = 0;
+  let left = 0;
+  let right = 0;
   let busy = false;
   let zoom = 1;
   let dpr = window.devicePixelRatio || 1;
@@ -33,6 +38,8 @@
   function labels() {
     el("pv-head-v").textContent = head + " px";
     el("pv-tail-v").textContent = tail + " px";
+    el("pv-left-v").textContent = left + " px";
+    el("pv-right-v").textContent = right + " px";
   }
 
   function imageEditable() {
@@ -56,17 +63,21 @@
     state = { url: p.url, width: p.width || 0, height: p.height || 0 };
     head = 0;
     tail = 0;
+    left = 0;
+    right = 0;
     zoom = 1;
     headEl.max = Math.max(0, state.height - 1);
     tailEl.max = Math.max(0, state.height - 1);
+    leftEl.max = Math.max(0, state.width - 1);
+    rightEl.max = Math.max(0, state.width - 1);
     headEl.value = 0;
     tailEl.value = 0;
+    leftEl.value = 0;
+    rightEl.value = 0;
     labels();
     el("pv-info").textContent = state.width + " × " + state.height + " px";
     el("pv-msg").textContent = "";
     el("pv-ocr-box").hidden = true;
-    el("pv-translation").hidden = true;
-    el("pv-translation-text").textContent = "";
     editor.setEnabled(false);
     img.crossOrigin = "anonymous";
     imgReady = false;
@@ -93,19 +104,27 @@
 
   function clamp() {
     const h = state.height || 1;
+    const w = state.width || 1;
     head = Math.max(0, Math.min(Number(headEl.value) || 0, h - 1));
     tail = Math.max(0, Math.min(Number(tailEl.value) || 0, h - 1 - head));
+    left = Math.max(0, Math.min(Number(leftEl.value) || 0, w - 1));
+    right = Math.max(0, Math.min(Number(rightEl.value) || 0, w - 1 - left));
     headEl.value = head;
     tailEl.value = tail;
+    leftEl.value = left;
+    rightEl.value = right;
     labels();
     updateBands();
   }
 
   function updateBands() {
-    if (!state.height || !img.clientHeight) return;
-    const s = img.clientHeight / state.height;
-    el("pv-band-top").style.height = Math.round(head * s) + "px";
-    el("pv-band-bottom").style.height = Math.round(tail * s) + "px";
+    if (!state.height || !state.width || !img.clientHeight || !img.clientWidth) return;
+    const sy = img.clientHeight / state.height;
+    const sx = img.clientWidth / state.width;
+    el("pv-band-top").style.height = Math.round(head * sy) + "px";
+    el("pv-band-bottom").style.height = Math.round(tail * sy) + "px";
+    el("pv-band-left").style.width = Math.round(left * sx) + "px";
+    el("pv-band-right").style.width = Math.round(right * sx) + "px";
   }
 
   function applyZoom() {
@@ -204,9 +223,9 @@
         let blob;
         try {
           blob = await editor.composeBlob({
-            x: 0,
+            x: left,
             y: head,
-            w: state.width,
+            w: state.width - left - right,
             h: state.height - head - tail,
           });
         } catch (e) {
@@ -221,13 +240,23 @@
         applyState(r.state);
         head = 0;
         tail = 0;
+        left = 0;
+        right = 0;
         headEl.value = 0;
         tailEl.value = 0;
+        leftEl.value = 0;
+        rightEl.value = 0;
         labels();
       }
 
       msg(kind === "ocr" ? "识别中…" : "处理中…");
-      const r = await invoke("preview_action", { head, tail, action: kind });
+      const r = await invoke("preview_action", {
+        head,
+        tail,
+        left,
+        right,
+        action: kind,
+      });
       if (!r || !r.ok) {
         msg((r && r.message) || "操作失败");
         return;
@@ -236,8 +265,6 @@
       if (kind === "ocr") {
         el("pv-ocr-box").hidden = false;
         el("pv-ocr-text").textContent = r.text || "";
-        el("pv-translation").hidden = true;
-        el("pv-translation-text").textContent = "";
       }
     } catch (e) {
       msg(String(e));
@@ -247,27 +274,18 @@
   }
 
   async function translateOcr() {
-    const text = el("pv-ocr-text").textContent;
-    if (!text.trim()) {
+    const text = el("pv-ocr-text").textContent.trim();
+    if (!text) {
       msg("没有可翻译的文字");
       return;
     }
-    if (busy) return;
-    setBusy(true);
-    msg("翻译中…");
     try {
-      const r = await invoke("translate_text_only", { text });
-      if (!r || !r.dst) {
-        msg("翻译失败");
-        return;
+      const r = await invoke("translate_text", { text, mode: "select" });
+      if (!r || !r.ok) {
+        msg((r && r.message) || "翻译失败");
       }
-      el("pv-translation").hidden = false;
-      el("pv-translation-text").textContent = r.dst;
-      msg("已翻译");
     } catch (e) {
       msg(String(e));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -279,6 +297,8 @@
 
   headEl.addEventListener("input", clamp);
   tailEl.addEventListener("input", clamp);
+  leftEl.addEventListener("input", clamp);
+  rightEl.addEventListener("input", clamp);
   window.addEventListener("resize", () => {
     dpr = window.devicePixelRatio || 1;
     editor.setDpr(dpr);
@@ -288,7 +308,7 @@
     editor.render();
   });
 
-  el("pv-save").addEventListener("click", () => act("save_as"));
+  el("pv-save").addEventListener("click", () => act("save"));
   el("pv-copy").addEventListener("click", () => act("clipboard"));
   el("pv-pin").addEventListener("click", () => act("pin"));
   el("pv-ocr").addEventListener("click", () => act("ocr"));
@@ -325,7 +345,21 @@
     el("pv-zoom-in").innerHTML = Icons.svg("plus", 16);
     el("pv-translate").innerHTML = Icons.raw("translate", 20);
     el("pv-copy-text").innerHTML = Icons.svg("copy", 20);
+    el("pv-open-dir").innerHTML = Icons.svg("folder", 18);
   }
+
+  invoke("preview_save_dir")
+    .then((dir) => {
+      if (dirEl && dir) dirEl.value = dir;
+    })
+    .catch(() => {});
+  el("pv-open-dir").addEventListener("click", () => {
+    invoke("preview_open_save_dir")
+      .then((r) => {
+        if (!r || !r.ok) msg((r && r.message) || "打开目录失败");
+      })
+      .catch((e) => msg(String(e)));
+  });
 
   el("pv-copy-text").addEventListener("click", () => {
     const text = el("pv-ocr-text").textContent;

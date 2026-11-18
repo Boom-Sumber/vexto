@@ -316,16 +316,21 @@ pub fn image_size(path: &Path) -> Result<(u32, u32), String> {
     Ok(reader.info().size())
 }
 
-/// 裁切后的矩形：`(x, y, w, h)`。头尾各裁掉 `head` / `tail` 像素。
-pub fn crop_rect(width: u32, height: u32, head: u32, tail: u32) -> Option<(u32, u32, u32, u32)> {
-    if width == 0 || height == 0 {
-        return None;
-    }
+/// 裁切后的矩形：`(x, y, w, h)`。四边各裁掉 `left/right/head/tail` 像素。
+pub fn crop_rect(
+    width: u32,
+    height: u32,
+    head: u32,
+    tail: u32,
+    left: u32,
+    right: u32,
+) -> Option<(u32, u32, u32, u32)> {
+    let out_w = width.checked_sub(left)?.checked_sub(right)?;
     let out_h = height.checked_sub(head)?.checked_sub(tail)?;
-    if out_h == 0 {
+    if out_w == 0 || out_h == 0 {
         return None;
     }
-    Some((0, head, width, out_h))
+    Some((left, head, out_w, out_h))
 }
 
 struct Decoded {
@@ -361,101 +366,33 @@ fn open_decoder(src: &Path) -> Result<Decoded, String> {
     })
 }
 
-/// 流式裁切：逐行解码、逐行编码，不把整图放进内存。
-pub fn crop_png(src: &Path, dst: &Path, head: u32, tail: u32) -> Result<(u32, u32), String> {
-    let mut d = open_decoder(src)?;
-    let (_, _, out_w, out_h) = crop_rect(d.width, d.height, head, tail)
+/// 流式裁切：逐行解码、逐列切片，不把整图放进内存。
+pub fn crop_png(
+    src: &Path,
+    dst: &Path,
+    head: u32,
+    tail: u32,
+    left: u32,
+    right: u32,
+) -> Result<(u32, u32), String> {
+    let (w, h) = image_size(src)?;
+    let (x, y, out_w, out_h) = crop_rect(w, h, head, tail, left, right)
         .ok_or_else(|| "裁切范围不合法".to_string())?;
-
-    let out_file = std::fs::File::create(dst)
-        .map_err(|e| format!("创建预览文件失败（{}）：{e}", dst.display()))?;
-    let mut out_buf = BufWriter::new(out_file);
-    let result = (|| -> Result<(), String> {
-        let mut enc = png::Encoder::new(&mut out_buf, out_w, out_h);
-        enc.set_color(d.color);
-        enc.set_depth(png::BitDepth::Eight);
-        let mut writer = enc.write_header().map_err(|e| format!("写 PNG 头失败：{e}"))?;
-        let mut stream = writer
-            .stream_writer()
-            .map_err(|e| format!("写裁切结果失败：{e}"))?;
-        let mut y = 0u32;
-        while let Some(row) = d
-            .reader
-            .next_row()
-            .map_err(|e| format!("解码 PNG 失败：{e}"))?
-        {
-            if y >= head && y < head + out_h {
-                stream
-                    .write_all(row.data())
-                    .map_err(|e| format!("写裁切结果失败：{e}"))?;
-            }
-            y += 1;
-            if y >= head + out_h {
-                break;
-            }
-        }
-        if y < head + out_h {
-            return Err("PNG 行数不足，文件可能不完整".into());
-        }
-        stream.finish().map_err(|e| format!("写裁切结果失败：{e}"))?;
-        Ok(())
-    })();
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(dst);
-        return Err(e);
-    }
-    out_buf
-        .flush()
-        .map_err(|e| format!("保存裁切结果失败：{e}"))?;
-    Ok((out_w, out_h))
+    crop_region_png(src, dst, x, y, out_w, out_h)
 }
 
 /// 解码裁切区域为 BGRA，供 OCR / 剪贴板使用。
-pub fn crop_to_image(src: &Path, head: u32, tail: u32) -> Result<CapturedImage, String> {
-    let mut d = open_decoder(src)?;
-    let (_, _, out_w, out_h) = crop_rect(d.width, d.height, head, tail)
+pub fn crop_to_image(
+    src: &Path,
+    head: u32,
+    tail: u32,
+    left: u32,
+    right: u32,
+) -> Result<CapturedImage, String> {
+    let (w, h) = image_size(src)?;
+    let (x, y, out_w, out_h) = crop_rect(w, h, head, tail, left, right)
         .ok_or_else(|| "裁切范围不合法".to_string())?;
-    let pixels = out_w as u64 * out_h as u64;
-    if pixels > MAX_DECODE_PIXELS {
-        return Err(format!(
-            "裁切区域太大（{out_w}×{out_h}，{pixels} 像素），请改用「存盘」"
-        ));
-    }
-    let mut out = Vec::with_capacity((pixels * 4) as usize);
-    let mut y = 0u32;
-    while let Some(row) = d
-        .reader
-        .next_row()
-        .map_err(|e| format!("解码 PNG 失败：{e}"))?
-    {
-        if y >= head && y < head + out_h {
-            let data = row.data();
-            match d.color {
-                png::ColorType::Rgba => {
-                    for px in data.as_chunks::<4>().0 {
-                        out.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
-                    }
-                }
-                _ => {
-                    for px in data.as_chunks::<3>().0 {
-                        out.extend_from_slice(&[px[2], px[1], px[0], 255]);
-                    }
-                }
-            }
-        }
-        y += 1;
-        if y >= head + out_h {
-            break;
-        }
-    }
-    if y < head + out_h {
-        return Err("PNG 行数不足，文件可能不完整".into());
-    }
-    Ok(CapturedImage {
-        width: out_w as i32,
-        height: out_h as i32,
-        pixels: out,
-    })
+    crop_region_to_image(src, x, y, out_w, out_h)
 }
 
 fn validate_region(
@@ -602,8 +539,14 @@ pub struct ActionOutcome {
     pub pin_label: Option<String>,
 }
 
-/// 对当前预览图执行一个动作。`head` / `tail` 是像素行数。
-pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String> {
+/// 对当前预览图执行一个动作。四边裁切量都是像素。
+pub fn apply(
+    action: &str,
+    head: u32,
+    tail: u32,
+    left: u32,
+    right: u32,
+) -> Result<ActionOutcome, String> {
     let src = source().ok_or_else(|| "预览窗口没有图片".to_string())?;
     match action {
         "save_as" => {
@@ -619,7 +562,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
                     text: None,
                 });
             };
-            let (w, h) = crop_png(&src, &dst, head, tail)?;
+            let (w, h) = crop_png(&src, &dst, head, tail, left, right)?;
             Ok(ActionOutcome {
                 pin_label: None,
                 message: format!("已另存为（{w}×{h}）：{}", dst.display()),
@@ -632,7 +575,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let dir = output::resolve_dir(&cfg);
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建截图目录失败：{e}"))?;
             let dst = output::next_png_path(&dir, &cfg);
-            let (w, h) = crop_png(&src, &dst, head, tail)?;
+            let (w, h) = crop_png(&src, &dst, head, tail, left, right)?;
             Ok(ActionOutcome {
                 pin_label: None,
                 message: format!("已保存（{w}×{h}）：{}", dst.display()),
@@ -641,7 +584,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             })
         }
         "clipboard" => {
-            let img = crop_to_image(&src, head, tail)?;
+            let img = crop_to_image(&src, head, tail, left, right)?;
             output::copy_image(&img)?;
             Ok(ActionOutcome {
                 pin_label: None,
@@ -654,10 +597,10 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             let dir = stage_dir();
             std::fs::create_dir_all(&dir).map_err(|e| format!("创建暂存目录失败：{e}"))?;
             let dst = dir.join(format!(
-                "crop-{:016x}-{head}-{tail}.png",
+                "crop-{:016x}-{head}-{tail}-{left}-{right}.png",
                 file_key(&src)?
             ));
-            let (w, h) = crop_png(&src, &dst, head, tail)?;
+            let (w, h) = crop_png(&src, &dst, head, tail, left, right)?;
             let single = crate::config::load().pinscreen_single_window;
             let (label, _, _) = crate::screenshot::pin::add_staged(dst, single)?;
             Ok(ActionOutcome {
@@ -668,7 +611,7 @@ pub fn apply(action: &str, head: u32, tail: u32) -> Result<ActionOutcome, String
             })
         }
         "ocr" => {
-            let img = crop_to_image(&src, head, tail)?;
+            let img = crop_to_image(&src, head, tail, left, right)?;
             let text = crate::ocr::ocr_bitmap(&img)?;
             let empty = text.trim().is_empty();
             Ok(ActionOutcome {
@@ -728,10 +671,12 @@ mod tests {
 
     #[test]
     fn crop_rect_rejects_empty_and_returns_row_range() {
-        assert_eq!(crop_rect(100, 200, 10, 20), Some((0, 10, 100, 170)));
-        assert_eq!(crop_rect(100, 200, 190, 10), None);
-        assert_eq!(crop_rect(100, 200, 200, 0), None);
-        assert_eq!(crop_rect(0, 200, 0, 0), None);
+        assert_eq!(crop_rect(100, 200, 10, 20, 0, 0), Some((0, 10, 100, 170)));
+        assert_eq!(crop_rect(100, 200, 10, 20, 5, 7), Some((5, 10, 88, 170)));
+        assert_eq!(crop_rect(100, 200, 190, 10, 0, 0), None);
+        assert_eq!(crop_rect(100, 200, 200, 0, 0, 0), None);
+        assert_eq!(crop_rect(100, 200, 0, 0, 95, 10), None);
+        assert_eq!(crop_rect(0, 200, 0, 0, 0, 0), None);
     }
 
     #[test]
@@ -741,7 +686,7 @@ mod tests {
         let rows: Vec<u8> = (0..20).collect();
         write_png(&src, 4, &rows);
         let dst = dir.join("out.png");
-        let (w, h) = crop_png(&src, &dst, 5, 3).unwrap();
+        let (w, h) = crop_png(&src, &dst, 5, 3, 0, 0).unwrap();
         assert_eq!((w, h), (4, 12));
 
         let file = std::fs::File::open(&dst).unwrap();
@@ -761,7 +706,7 @@ mod tests {
         let dir = temp_dir("image");
         let src = dir.join("src.png");
         write_png(&src, 3, &[1, 2, 3, 4]);
-        let img = crop_to_image(&src, 1, 1).unwrap();
+        let img = crop_to_image(&src, 1, 1, 0, 0).unwrap();
         assert_eq!((img.width, img.height), (3, 2));
         assert_eq!(&img.pixels[0..4], &[2, 2, 2, 255]);
         let _ = std::fs::remove_dir_all(&dir);
