@@ -17,7 +17,7 @@ use crate::config;
 pub struct TransferConfig {
     /// 本机对其他设备显示的名字（已解析：空值 → 计算机名）。
     pub alias: String,
-    /// 服务端口（UDP 组播 + TCP 同号）。
+    /// 配置端口：UDP 组播固定用它；TCP 不可用时服务会自动改用相邻端口。
     pub port: u16,
     /// 接收目录（已解析：空值 → 系统「下载」下 Vexto 子目录）。
     pub receive_dir: PathBuf,

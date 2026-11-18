@@ -33,6 +33,6 @@ pub fn backend() -> &'static dyn backend::TransferBackend {
     &server::BACKEND
 }
 
-/// LocalSend 协议端口（UDP 组播 + TCP 同号）。任务书 §S4.3 定死，
-/// 「多播组自定义 / 换端口」是明确不做项。
+/// LocalSend 协议端口：UDP 组播固定用这个端口；TCP 在不可用时由
+/// `server::pick_http_port` 自动降级到相邻端口（ADR-076）。
 pub const TRANSFER_PORT: u16 = 53317;

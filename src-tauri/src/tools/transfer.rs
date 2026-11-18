@@ -56,8 +56,14 @@ impl Tool for Transfer {
         }
         match transfer::server::state() {
             transfer::server::ServiceState::Listening { port } => {
+                let preferred = transfer::TransferConfig::from_app(&config::load()).port;
+                let switched = if port != preferred {
+                    format!("（{preferred} 不可用，已自动切换）")
+                } else {
+                    String::new()
+                };
                 format!(
-                    "已启用 · 监听 {port} · 发现 {} 台设备",
+                    "已启用 · 监听 {port}{switched} · 发现 {} 台设备",
                     transfer::backend().peers().len()
                 )
             }

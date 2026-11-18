@@ -5,7 +5,8 @@
 //! 其余模块只看 `TransferBackend` 与 [`ServiceState`]。
 //!
 //! 会话 39（S4a）：绑定 53317（TCP+UDP，HTTPS + 持久化自签证书）、
-//! 组播 announce、设备发现与快照。
+//! 组播 announce、设备发现与快照。会话 100 起 TCP 端口支持自动降级，
+//! 降级时组播仍留在配置端口上（ADR-076）。
 //!
 //! 会话 40（S4b）：接收确认（PrepareUpload → [`respond`]）、进度事件汇聚、
 //! 落盘由 lanflare 的 `StreamingFileWriter` 完成（128 KB 分块、边写边算
@@ -733,6 +734,62 @@ fn map_peer(p: &DiscoveredPeer) -> Peer {
 
 // ---------- 服务线程 ----------
 
+/// 配置端口不可用时向后尝试的备用端口数。Windows 的 WinNAT / Hyper-V
+/// 保留段通常按 100 个一组划走，300 足够跨过常见保留段。
+const FALLBACK_PORT_SPAN: u16 = 300;
+
+fn port_candidates(preferred: u16) -> Vec<u16> {
+    let mut out = Vec::with_capacity(FALLBACK_PORT_SPAN as usize + 1);
+    let mut p = preferred;
+    out.push(p);
+    for _ in 0..FALLBACK_PORT_SPAN {
+        match p.checked_add(1) {
+            Some(next) => {
+                p = next;
+                out.push(p);
+            }
+            None => break,
+        }
+    }
+    out
+}
+
+fn port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok()
+}
+
+/// 选实际 HTTP 端口：配置端口 → 向后 300 个 → 由系统分配。
+///
+/// 组播仍固定在配置端口上，所以 TCP 降级不会破坏设备发现；
+/// 公告里带的是实际 HTTP 端口（见 `MulticastNodeInfo.port`）。
+fn pick_http_port(preferred: u16) -> Result<u16, String> {
+    for port in port_candidates(preferred) {
+        if port_is_free(port) {
+            return Ok(port);
+        }
+    }
+    let listener = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))
+        .map_err(|e| format!("找不到可用端口：{e}"))?;
+    listener
+        .local_addr()
+        .map(|addr| addr.port())
+        .map_err(|e| format!("找不到可用端口：{e}"))
+}
+
+/// 只认端口绑定类错误，不要把 TLS / 证书等启动失败也当成端口问题。
+fn is_port_bind_error(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    [
+        "os error 10048",          // WSAEADDRINUSE
+        "os error 10013",          // WSAEACCES（系统保留段 / 安全软件）
+        "address already in use",
+        "permission denied",
+    ]
+    .iter()
+    .any(|key| m.contains(key))
+}
+
+
 /// 传输服务线程体：自建 tokio 运行时，不占用 Tauri 的 async_runtime。
 ///
 /// 生命周期：建运行时 → 绑 TCP（失败立刻回报）→ 绑组播（失败回报）→
@@ -818,9 +875,24 @@ async fn service_main(
     };
     *lock(&globals().identity) = Some(identity.clone());
 
+    // TCP 端口可以降级，UDP 组播仍固定在配置端口上：否则 LocalSend 的发现会失效。
+    let preferred_port = cfg.port;
+    let http_port = match pick_http_port(preferred_port) {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = result_tx.send(Err(format!("无法启动传输服务：{e}")));
+            return;
+        }
+    };
+    if http_port != preferred_port {
+        crate::dlog::warn(&format!(
+            "transfer: 端口 {preferred_port} 不可用（被占用或被系统保留），HTTP 自动改用 {http_port}；组播仍用 {preferred_port}"
+        ));
+    }
+
     let app_cfg = AppConfig {
         alias: cfg.alias.clone(),
-        port: cfg.port,
+        port: http_port,
         download_dir: cfg.receive_dir.clone(),
         // 未开 PIN 时传 None；开了由 lanflare 的 PinTracker 在 prepare-upload 校验
         // （401 在事件之前返回，确认框只处理过了 PIN 的请求）。
@@ -848,14 +920,14 @@ async fn service_main(
         Ok(s) => s,
         Err(e) => {
             // 用户要求：通知里不出现错误码，只说原因（会话 52）。
-            // 端口被占是最常见的失败；其余异常也给一句能懂的话，细节在日志里。
-            let looks_like_port = ["占用", "already in use", "os error 10048", "os error 10013"]
-                .iter()
-                .any(|k| e.to_string().to_lowercase().contains(k));
-            let msg = if looks_like_port {
+            // 备用端口也失败时优先怀疑系统保留段或安全软件，而不是“被占用”。
+            let detail = e.to_string();
+            crate::dlog::warn(&format!(
+                "transfer: 启动失败（HTTP {http_port}，组播 {preferred_port}）：{detail}"
+            ));
+            let msg = if is_port_bind_error(&detail) {
                 format!(
-                    "无法启动传输服务（端口 {} 可能被占用）。请释放端口或改用其他端口后，在「高级 → 维护」里重启传输服务",
-                    cfg.port
+                    "无法启动传输服务：端口 {http_port} 不可用（可能被其他程序占用，或被系统保留）。请稍后重试；反复失败可在日志中查看原因"
                 )
             } else {
                 "无法启动传输服务（服务异常退出）。请在「高级 → 维护」里重启传输服务；反复失败可在日志中查看原因".to_string()
@@ -1245,6 +1317,78 @@ mod tests {
         assert_eq!(device_type_str(Some(DeviceType::Web)), "web");
         assert_eq!(device_type_str(Some(DeviceType::Headless)), "headless");
         assert_eq!(device_type_str(Some(DeviceType::Server)), "server");
+    }
+
+    /// 备用端口必须从配置端口开始、连续向后，且跨过常见 100 段保留区。
+    #[test]
+    fn port_candidates_cover_reserved_span() {
+        let ports = port_candidates(53317);
+        assert_eq!(ports.first(), Some(&53317));
+        assert_eq!(ports.len(), FALLBACK_PORT_SPAN as usize + 1);
+        assert!(ports.contains(&53382));
+        assert!(ports.contains(&53383));
+        assert!(ports.windows(2).all(|w| w[1] == w[0] + 1));
+    }
+
+    #[test]
+    fn port_candidates_stop_at_u16_max() {
+        assert_eq!(port_candidates(u16::MAX), vec![u16::MAX]);
+    }
+
+    /// 真实占用一个端口，确认选择器会跳过它。系统保留段同理返回不可绑定。
+    #[test]
+    fn pick_http_port_skips_occupied_preferred() {
+        let probe = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let preferred = probe.local_addr().unwrap().port();
+        drop(probe);
+        let occupied = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, preferred)).unwrap();
+        let picked = pick_http_port(preferred).unwrap();
+        assert_ne!(picked, preferred);
+        drop(occupied);
+    }
+
+    /// 手工集成测试：占用首选端口后启动真实传输服务，确认监听端口自动后移。
+    #[test]
+    #[ignore = "manual integration: starts a real transfer service"]
+    fn service_starts_on_fallback_when_preferred_occupied() {
+        let probe = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).unwrap();
+        let preferred = probe.local_addr().unwrap().port();
+        drop(probe);
+        let occupied = std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, preferred)).unwrap();
+        let dir = std::env::temp_dir().join(format!("vexto-fallback-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let cfg = TransferConfig {
+            alias: "fallback-test".into(),
+            port: preferred,
+            receive_dir: dir,
+            require_pin: false,
+            pin: String::new(),
+            auto_accept: false,
+            use_https: false,
+            multicast: "224.0.0.167".into(),
+            device_type: "desktop".into(),
+            device_model: "Windows".into(),
+            peer_timeout_secs: 90,
+            interface_whitelist: String::new(),
+        };
+        start_service(&cfg).expect("服务应在备用端口启动");
+        let bound = match state() {
+            ServiceState::Listening { port } => port,
+            other => panic!("服务应处于监听状态：{other:?}"),
+        };
+        assert_ne!(bound, preferred, "应跳过被占用的首选端口");
+        stop_service().expect("停止服务");
+        drop(occupied);
+    }
+
+    #[test]
+    fn bind_errors_are_not_mistaken_for_other_failures() {
+        assert!(is_port_bind_error("bind failed: (os error 10048)"));
+        assert!(is_port_bind_error("bind failed: (os error 10013)"));
+        assert!(is_port_bind_error("Address already in use"));
+        assert!(is_port_bind_error("Permission denied"));
+        assert!(!is_port_bind_error("certificate parse failed"));
+        assert!(!is_port_bind_error("invalid DNS name"));
     }
 
     #[test]
