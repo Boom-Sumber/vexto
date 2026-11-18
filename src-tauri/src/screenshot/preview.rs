@@ -125,7 +125,16 @@ pub fn apply_staged_action(action: &str, name: &str) -> Result<ActionOutcome, St
     let (w, h) = image_size(&src)?;
     let cfg = crate::config::load();
     let out = run_staged_action(action, &src, w, h, &cfg);
-    if matches!(action, "copy" | "save") {
+    if out.is_ok() && matches!(action, "copy" | "save") {
+        // 选区保存 / 复制后复用右下角缩略图确认；文件交给反馈窗，
+        // 反馈窗销毁时统一删除。
+        crate::screenshot::feedback::set_source(
+            src.clone(),
+            w,
+            h,
+            output::resolve_dir(&cfg),
+        );
+    } else if out.is_err() && matches!(action, "copy" | "save") {
         let _ = std::fs::remove_file(&src);
     }
     out

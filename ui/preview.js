@@ -76,7 +76,7 @@
     rightEl.value = 0;
     labels();
     el("pv-info").textContent = state.width + " × " + state.height + " px";
-    el("pv-msg").textContent = "";
+    msg("");
     el("pv-ocr-box").hidden = true;
     editor.setEnabled(false);
     img.crossOrigin = "anonymous";
@@ -201,14 +201,26 @@
     }
   }
 
-  function msg(text) {
-    el("pv-msg").textContent = text || "";
+  let msgTimer = 0;
+  function msg(text, kind) {
+    const box = el("pv-msg");
+    if (msgTimer) clearTimeout(msgTimer);
+    msgTimer = 0;
+    if (!box) return;
+    box.textContent = text || "";
+    box.className = "pv-msg" + (kind === "error" ? " bad" : "");
+    if (!text || kind === "error" || kind === "progress") return;
+    msgTimer = setTimeout(() => {
+      box.textContent = "";
+      box.className = "pv-msg";
+      msgTimer = 0;
+    }, 4000);
   }
 
   async function act(kind) {
     if (busy) return;
     if (!state.url) {
-      msg("没有可预览的图片");
+      msg("没有可预览的图片", "error");
       return;
     }
     editor.commitPending();
@@ -216,10 +228,10 @@
     try {
       if (editor.hasAnnotations()) {
         if (!imageEditable()) {
-          msg("图片过大，暂不支持标注");
+          msg("图片过大，暂不支持标注", "error");
           return;
         }
-        msg("正在应用标注…");
+        msg("正在应用标注…", "progress");
         let blob;
         try {
           blob = await editor.composeBlob({
@@ -229,12 +241,12 @@
             h: state.height - head - tail,
           });
         } catch (e) {
-          msg(String(e));
+          msg(String(e), "error");
           return;
         }
         const r = await invoke("preview_commit_edited", await blob.arrayBuffer());
         if (!r || !r.ok) {
-          msg((r && r.message) || "应用标注失败");
+          msg((r && r.message) || "应用标注失败", "error");
           return;
         }
         applyState(r.state);
@@ -249,7 +261,7 @@
         labels();
       }
 
-      msg(kind === "ocr" ? "识别中…" : "处理中…");
+      msg(kind === "ocr" ? "识别中…" : "处理中…", "progress");
       const r = await invoke("preview_action", {
         head,
         tail,
@@ -258,7 +270,7 @@
         action: kind,
       });
       if (!r || !r.ok) {
-        msg((r && r.message) || "操作失败");
+        msg((r && r.message) || "操作失败", "error");
         return;
       }
       msg(r.message || "完成");
@@ -276,13 +288,13 @@
   async function translateOcr() {
     const text = el("pv-ocr-text").textContent.trim();
     if (!text) {
-      msg("没有可翻译的文字");
+      msg("没有可翻译的文字", "error");
       return;
     }
     try {
       const r = await invoke("translate_text", { text, mode: "select" });
       if (!r || !r.ok) {
-        msg((r && r.message) || "翻译失败");
+        msg((r && r.message) || "翻译失败", "error");
       }
     } catch (e) {
       msg(String(e));
@@ -356,7 +368,7 @@
   el("pv-open-dir").addEventListener("click", () => {
     invoke("preview_open_save_dir")
       .then((r) => {
-        if (!r || !r.ok) msg((r && r.message) || "打开目录失败");
+        if (!r || !r.ok) msg((r && r.message) || "打开目录失败", "error");
       })
       .catch((e) => msg(String(e)));
   });

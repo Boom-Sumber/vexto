@@ -544,7 +544,8 @@ fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
                 let app = a.clone();
                 std::thread::spawn(move || {
                     if let Err(e) = crate::screenshot::capture_full_feedback(&app) {
-                        crate::screenshot::show_error(&e);
+                        crate::dlog::dlog(&format!("screenshot: 全屏热键失败：{e}"));
+                        crate::screenshot::notify_error(&app, &e);
                     }
                 });
             }),
@@ -639,6 +640,8 @@ async fn shot_action(
                 schedule_pin_window(&app, label);
             } else if action == "preview" {
                 schedule_window(&app, crate::popup::open_preview_window);
+            } else if matches!(action.as_str(), "clipboard" | "save_copy") {
+                schedule_window(&app, crate::popup::open_feedback_window);
             }
             json!({
                 "ok": true,
@@ -1247,6 +1250,8 @@ async fn shot_edited_action(action: String, name: String, app: AppHandle) -> Val
                 schedule_pin_window(&app, label);
             } else if action == "preview" {
                 schedule_window(&app, crate::popup::open_preview_window);
+            } else if matches!(action.as_str(), "copy" | "save") {
+                schedule_window(&app, crate::popup::open_feedback_window);
             }
             json!({
                 "ok": true,

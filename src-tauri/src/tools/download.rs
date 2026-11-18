@@ -118,7 +118,8 @@ impl Tool for Download {
                     Field::switch("auto_limit", "自动限速")
                         .help("按实测速度把上限收到「峰值 × 1.3」，只降不升，避免上限虚高时 aria2 开满连接空转。"),
                     Field::group("通知"),
-                    Field::switch("notify_download", "启用系统通知"),
+                    Field::switch("notify_download", "下载系统通知")
+                        .help("只控制下载开始 / 完成 / 失败的系统通知；强制更新下载完成仍会提醒。"),
                     Field::switch("notify_on_start", "下载开始时通知"),
                     Field::switch("notify_on_done", "下载完成时通知"),
                     Field::select(

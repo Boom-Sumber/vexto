@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="theme-dark.css" />
 <link rel="stylesheet" href="theme-light.css" />
 <link rel="stylesheet" href="base.css" />
+<link rel="stylesheet" href="toast.css" />
 <link rel="stylesheet" href="main.css" />
 </head>
 <body data-theme="dark">
@@ -296,13 +297,13 @@
     </div>
   </div>
 
-  <!-- 轻提示浮层：右下角堆叠，3 秒自动消失（见 main.js 的 tfNotice） -->
-  <div id="toastHost" class="toast-host" aria-live="polite"></div>
+  <!-- 轻提示由 toast.js 统一创建（标题栏下方居中） -->
 </div>
 
 <script src="contextmenu.js"></script>
 <script src="theme.js"></script>
 <script src="icons.js"></script>
+<script src="toast.js"></script>
 <script src="controls.js"></script>
 <script src="titlebar.js"></script>
 <script src="main.js"></script>

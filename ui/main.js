@@ -476,38 +476,10 @@ el("autoSave").addEventListener("click", async () => {
   }
 });
 
-// 轻提示（toast）：浮在窗口右下角，3 秒自动消失，错误类 6 秒；悬停暂停计时、点击立即关。
-// 取代原先把消息写进页面顶部常驻 div 的做法（S4 复测：常驻通知一直挂着，还挤占内容区）。
+// 操作结果统一走标题栏下方的 Toast（toast.js）；持久错误仍走页面内的 #error。
 function tfNotice(msg, danger) {
   if (!msg) return;
-  const host = el("toastHost");
-  if (!host) return;
-  const t = document.createElement("div");
-  t.className = "toast" + (danger ? " toast-danger" : "");
-  t.innerHTML = Icons.svg(danger ? "alert" : "info", 16);
-  const text = document.createElement("span");
-  text.className = "toast-text";
-  text.textContent = msg;
-  t.appendChild(text);
-  host.appendChild(t);
-  // 最多同时 3 条，超出丢最早的一条
-  while (host.children.length > 3) host.removeChild(host.firstElementChild);
-  requestAnimationFrame(() => t.classList.add("in"));
-
-  let timer = null;
-  const close = () => {
-    clearTimeout(timer);
-    t.classList.remove("in");
-    setTimeout(() => t.remove(), 200);
-  };
-  const arm = () => {
-    clearTimeout(timer);
-    timer = setTimeout(close, danger ? 6000 : 3000);
-  };
-  t.addEventListener("mouseenter", () => clearTimeout(timer));
-  t.addEventListener("mouseleave", arm);
-  t.addEventListener("click", close);
-  arm();
+  window.Toast.show(msg, { kind: danger ? "error" : "info" });
 }
 
 function renderPeers() {

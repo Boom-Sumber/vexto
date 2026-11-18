@@ -921,12 +921,14 @@
     let left = br
       ? br.left + br.width / 2 - tw / 2
       : window.innerWidth / 2 - tw / 2;
-    let top = br ? br.top - th - 8 : window.innerHeight - th - 24;
-    if (top < 12) top = br ? br.bottom + 8 : 12;
+    let top = br ? br.bottom + 8 : 48;
+    if (top + th > window.innerHeight - 12) {
+      top = br ? br.top - th - 8 : window.innerHeight - th - 24;
+    }
     t.style.left = Math.max(12, Math.min(window.innerWidth - tw - 12, left)) + "px";
     t.style.top = Math.max(12, top) + "px";
     if (toastTimer) clearTimeout(toastTimer);
-    if (ms !== 0) toastTimer = setTimeout(hideToast, ms || 2600);
+    if (ms !== 0) toastTimer = setTimeout(hideToast, ms || (isErr ? 6000 : 3000));
   }
 
   function hideToast() {

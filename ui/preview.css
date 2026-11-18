@@ -426,6 +426,10 @@ body {
   word-break: break-all;
 }
 
+.pv-msg.bad {
+  color: var(--danger);
+}
+
 .pv-ocr {
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);

@@ -83,7 +83,7 @@ pub fn tray_capture(app: &tauri::AppHandle, mode: Mode) {
         };
         if let Err(e) = r {
             crate::dlog::dlog(&format!("screenshot: 失败：{e}"));
-            show_error(&e);
+            notify_error(&app, &e);
         }
     });
 }
@@ -102,7 +102,22 @@ fn capture_active_preview(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 原生错误框。只在没有浮层可用的路径（托盘 / 设置页按钮）使用。
+/// 普通截图失败用系统通知，不弹阻塞式原生框；只有浮层建不起来的致命失败
+/// 才继续用 [`show_error`]。
+pub fn notify_error(app: &tauri::AppHandle, msg: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(e) = app
+        .notification()
+        .builder()
+        .title("Vexto 截图")
+        .body(msg)
+        .show()
+    {
+        crate::dlog::warn(&format!("screenshot: 发送失败通知失败：{e}"));
+    }
+}
+
+/// 原生错误框。只在没有浮层可用的致命路径（框选浮层初始化失败）使用。
 pub fn show_error(msg: &str) {
     use windows::core::HSTRING;
     use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};

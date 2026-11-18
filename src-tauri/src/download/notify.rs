@@ -7,12 +7,23 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use tauri_plugin_notification::NotificationExt;
 
 use super::rpc::TaskRow;
 
 static SEEN: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+/// 3 秒内结束的任务合并成一条摘要，避免批量下载刷屏。
+struct BatchItem {
+    title: String,
+    body: String,
+    path: String,
+}
+
+static BATCH: Mutex<Option<Vec<BatchItem>>> = Mutex::new(None);
+const BATCH_WINDOW: Duration = Duration::from_secs(3);
 
 /// 最近发出去的通知：正文 → 落盘路径（没有路径就是空串）。
 ///
@@ -56,14 +67,16 @@ pub fn observe(app: &tauri::AppHandle, tasks: &[TaskRow]) {
             "active" if prev.is_none() && cfg.notify_on_start => {
                 send(app, "开始下载", &t.name, &t.file_path);
             }
-            "complete" if cfg.notify_on_done => send(app, "下载完成", &t.name, &t.file_path),
+            "complete" if cfg.notify_on_done => {
+                queue_terminal(app, "下载完成", &t.name, &t.file_path)
+            }
             "error" if cfg.notify_on_done => {
                 let reason = t
                     .error_message
                     .as_deref()
                     .filter(|s| !s.trim().is_empty())
                     .unwrap_or("未知错误");
-                send(
+                queue_terminal(
                     app,
                     "下载失败",
                     &format!("{}：{reason}", t.name),
@@ -73,6 +86,61 @@ pub fn observe(app: &tauri::AppHandle, tasks: &[TaskRow]) {
             _ => {}
         }
     }
+}
+
+fn queue_terminal(app: &tauri::AppHandle, title: &str, body: &str, path: &str) {
+    let spawn = {
+        let mut g = BATCH.lock().unwrap_or_else(|e| e.into_inner());
+        let first = g.is_none();
+        let items = g.get_or_insert_with(Vec::new);
+        items.push(BatchItem {
+            title: title.to_string(),
+            body: body.to_string(),
+            path: path.to_string(),
+        });
+        first
+    };
+    if spawn {
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(BATCH_WINDOW);
+            flush_batch(&handle);
+        });
+    }
+}
+
+fn flush_batch(app: &tauri::AppHandle) {
+    let Some(items) = BATCH.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+        return;
+    };
+    if items.len() == 1 {
+        let item = &items[0];
+        send(app, &item.title, &item.body, &item.path);
+        return;
+    }
+    if items.is_empty() {
+        return;
+    }
+    let total = items.len();
+    let failed = items.iter().filter(|i| i.title == "下载失败").count();
+    let first = items
+        .first()
+        .map(|i| i.body.split('：').next().unwrap_or(&i.body).trim())
+        .filter(|s| !s.is_empty());
+    let suffix = first
+        .map(|name| format!("（含「{name}」等）"))
+        .unwrap_or_default();
+    let (title, body) = if failed == total {
+        ("下载失败", format!("{failed} 个下载失败{suffix}"))
+    } else if failed == 0 {
+        ("下载完成", format!("已完成 {total} 个下载{suffix}"))
+    } else {
+        (
+            "下载结束",
+            format!("已完成 {} 个下载，{failed} 个失败{suffix}", total - failed),
+        )
+    };
+    send(app, title, &body, "");
 }
 
 /// 注册「点击通知」的处理器。**只在 setup 里调一次**。

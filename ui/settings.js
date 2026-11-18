@@ -67,25 +67,10 @@ function setStatus(msg, kind) {
 }
 let statusTimer = null;
 
-/// 右下角轻提示：操作类反馈统一走这里，3 秒消失（错误 6 秒）。
-let toastTimer = null;
+/// 操作结果统一走标题栏下方的 Toast（toast.js）；持久问题仍走顶部横幅 / 状态行。
 function showToast(msg, kind) {
   if (!msg) return;
-  let box = el("toast");
-  if (!box) {
-    box = document.createElement("div");
-    box.id = "toast";
-    box.setAttribute("role", "status");
-    box.setAttribute("aria-live", "polite");
-    document.body.append(box);
-  }
-  const bad = kind === "bad";
-  box.className = "toast on" + (bad ? " bad" : "");
-  box.innerHTML =
-    Icons.svg(bad ? "alert" : "info", 16) + "<span></span>";
-  box.querySelector("span").textContent = msg;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => box.classList.remove("on"), bad ? 6000 : 3000);
+  window.Toast.show(msg, { kind: kind === "bad" ? "error" : "info" });
 }
 
 // 顶部横幅：热键被占用、保存警告都走这里，不弹窗也不写控制台（用户看不见）。

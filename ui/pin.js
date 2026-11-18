@@ -191,12 +191,16 @@
   el("copy").addEventListener("click", () => {
     invoke("pin_copy")
       .then((r) => {
-        if (!r || !r.ok) return;
+        if (!r || !r.ok) {
+          flash((r && r.message) || "复制失败", true);
+          return;
+        }
         const btn = el("copy");
         btn.classList.add("copied");
         setTimeout(() => btn.classList.remove("copied"), 700);
+        flash("已复制图片");
       })
-      .catch(() => {});
+      .catch((e) => flash(String(e), true));
   });
 
   el("reset").addEventListener("click", () => {

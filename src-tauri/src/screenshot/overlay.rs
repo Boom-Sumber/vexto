@@ -8,7 +8,7 @@
 //! 快照只在浮层存活期间有效，窗口销毁时删除。
 
 use crate::config::Config;
-use crate::screenshot::{output, preview};
+use crate::screenshot::{feedback, output, preview};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -332,6 +332,20 @@ fn staged_crop(src: &Path, sx: u32, sy: u32, sw: u32, sh: u32) -> Result<PathBuf
     Ok(dst)
 }
 
+/// 选区保存 / 复制后，把同一块裁剪图交给右下角缩略图反馈窗。
+fn show_crop_feedback(
+    src: &Path,
+    sx: u32,
+    sy: u32,
+    sw: u32,
+    sh: u32,
+    cfg: &Config,
+) {
+    if let Ok(path) = staged_crop(src, sx, sy, sw, sh) {
+        feedback::set_source(path, sw, sh, output::resolve_dir(cfg));
+    }
+}
+
 /// 对当前选区执行动作。坐标是浮层内的 CSS 像素，`dpr` 由前端上报。
 pub fn apply(
     action: &str,
@@ -399,6 +413,7 @@ pub fn apply(
                 Ok(()) => message.push_str("；已复制到剪贴板"),
                 Err(e) => message.push_str(&format!("；复制到剪贴板失败：{e}")),
             }
+            show_crop_feedback(&src, sx, sy, sw, sh, &cfg);
             Ok(preview::ActionOutcome {
                 pin_label: None,
                 message,
@@ -424,6 +439,7 @@ pub fn apply(
         "clipboard" => {
             let img = preview::crop_region_to_image(&src, sx, sy, sw, sh)?;
             output::copy_image(&img)?;
+            show_crop_feedback(&src, sx, sy, sw, sh, &cfg);
             Ok(preview::ActionOutcome {
                 pin_label: None,
                 message: format!("已复制到剪贴板（{}×{}）", img.width, img.height),
