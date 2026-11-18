@@ -183,7 +183,24 @@ pub fn zoom_window(win: &tauri::WebviewWindow, delta: i32, reset: bool) -> Optio
         e.zoom = next;
         (path, next)
     };
-    let Ok((w, h)) = preview::image_size(&path) else {
+    apply_zoom(win, &path, zoom)
+}
+
+/// 控制点缩放：按百分比绝对设置（20%–400%）。
+pub fn set_zoom(win: &tauri::WebviewWindow, percent: f64) -> Option<i64> {
+    let label = win.label().to_string();
+    let zoom = (percent / 100.0).clamp(0.2, 4.0);
+    let path = {
+        let mut g = lock();
+        let e = g.get_mut(&label)?;
+        e.zoom = zoom;
+        e.images.get(e.index)?.clone()
+    };
+    apply_zoom(win, &path, zoom)
+}
+
+fn apply_zoom(win: &tauri::WebviewWindow, path: &std::path::Path, zoom: f64) -> Option<i64> {
+    let Ok((w, h)) = preview::image_size(path) else {
         return None;
     };
     let (base_w, base_h) = display_size(w as f64, h as f64);

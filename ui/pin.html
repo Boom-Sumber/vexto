@@ -33,8 +33,39 @@ html, body {
   display: block;
   box-sizing: border-box;
   border: 2px solid rgba(126, 140, 160, .95);
+  pointer-events: auto;
+  cursor: move;
+}
+
+/* 点击图片后的选中框：边框 + 8 个圆形控制点；控制点可等比缩放图片。 */
+#frame {
+  position: fixed;
+  z-index: 2;
+  border: 1px solid #7c5cff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .25);
   pointer-events: none;
 }
+#frame.hidden { display: none; }
+.ph {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid #7c5cff;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+}
+.ph.nw { left: 4px; top: 4px; cursor: nwse-resize; }
+.ph.n { left: 50%; top: 4px; cursor: ns-resize; }
+.ph.ne { left: calc(100% - 4px); top: 4px; cursor: nesw-resize; }
+.ph.e { left: calc(100% - 4px); top: 50%; cursor: ew-resize; }
+.ph.se { left: calc(100% - 4px); top: calc(100% - 4px); cursor: nwse-resize; }
+.ph.s { left: 50%; top: calc(100% - 4px); cursor: ns-resize; }
+.ph.sw { left: 4px; top: calc(100% - 4px); cursor: nesw-resize; }
+.ph.w { left: 4px; top: 50%; cursor: ew-resize; }
+body.sel #bar { opacity: 1; }
 #bar {
   position: fixed;
   top: 6px;
@@ -119,7 +150,13 @@ button svg { width: 15px; height: 15px; }
 </head>
 <body>
   <div id="stage" data-tauri-drag-region>
-    <img id="img" alt="" draggable="false" />
+    <img id="img" alt="" draggable="false" data-tauri-drag-region />
+  </div>
+
+  <div id="frame" class="hidden">
+    <span class="ph nw"></span><span class="ph n"></span><span class="ph ne"></span>
+    <span class="ph e"></span><span class="ph se"></span><span class="ph s"></span>
+    <span class="ph sw"></span><span class="ph w"></span>
   </div>
 
   <div id="bar">

@@ -301,6 +301,8 @@
           popBody.appendChild(makeFill());
         }
       }
+      // 马赛克不需要颜色：像素块颜色来自底图。
+      if (tool === "mosaic") return;
       popBody.appendChild(sep());
       const colors = document.createElement("div");
       colors.className = "ae-colors";

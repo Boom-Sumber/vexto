@@ -1050,6 +1050,21 @@ fn pin_zoom(window: tauri::WebviewWindow, delta: i32, reset: Option<bool>) -> Si
     }
 }
 
+/// 钉屏控制点缩放：按百分比绝对设置。
+#[tauri::command]
+fn pin_set_zoom(window: tauri::WebviewWindow, zoom: f64) -> SimpleOut {
+    match crate::screenshot::pin::set_zoom(&window, zoom) {
+        Some(percent) => SimpleOut {
+            ok: true,
+            message: format!("{percent}%"),
+        },
+        None => SimpleOut {
+            ok: false,
+            message: "钉屏里还没有图片".into(),
+        },
+    }
+}
+
 /// 钉屏操作条：复制当前窗口的图片到剪贴板。
 #[tauri::command]
 fn pin_copy(window: tauri::WebviewWindow) -> SimpleOut {
@@ -2769,6 +2784,7 @@ fn main() {
             pin_add,
             pin_step,
             pin_zoom,
+            pin_set_zoom,
             pin_copy,
             pin_save_as,
             pin_preview,

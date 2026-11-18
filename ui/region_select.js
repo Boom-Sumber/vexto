@@ -785,7 +785,7 @@
     };
     for (const [name, icon] of Object.entries(tools)) {
       const btn = document.querySelector('#toolbar [data-tool="' + name + '"]');
-      if (btn) btn.innerHTML = Icons.svg(icon, 27);
+      if (btn) btn.innerHTML = Icons.svg(icon, 24);
     }
     const acts = {
       scroll: "scroll",
@@ -797,7 +797,7 @@
     };
     for (const [name, icon] of Object.entries(acts)) {
       const btn = document.querySelector('#toolbar [data-act="' + name + '"]');
-      if (btn) btn.innerHTML = Icons.svg(icon, 27);
+      if (btn) btn.innerHTML = Icons.svg(icon, 24);
     }
   }
 
