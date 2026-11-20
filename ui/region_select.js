@@ -218,6 +218,7 @@
     }
     sel = { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
     setBox(sel.x, sel.y, sel.w, sel.h);
+    updateSizeLabel(sel);
     positionToolbar(sel);
     positionHint(sel);
   }
@@ -227,6 +228,7 @@
     hoverRect = null;
     const node = el("window-highlight");
     if (node) node.classList.remove("on");
+    if (!done) hideSizeLabel();
   }
 
   function physicalToCssRect(rect) {
@@ -251,6 +253,7 @@
     node.style.width = rect.w + "px";
     node.style.height = rect.h + "px";
     node.classList.add("on");
+    updateSizeLabel(rect);
   }
 
   function hideSizeLabel() {
@@ -403,6 +406,7 @@
       sel.x = nx;
       sel.y = ny;
       setBox(nx, ny, sel.w, sel.h);
+      updateSizeLabel(sel);
       positionToolbar(sel);
       positionHint(sel);
       return;
@@ -448,7 +452,6 @@
     if (!dragging) return;
     dragging = false;
     el("box").classList.remove("drawing");
-    hideSizeLabel();
     const w = Math.abs(ev.clientX - sx);
     const h = Math.abs(ev.clientY - sy);
     const rect = {
@@ -736,7 +739,6 @@
   function enterDone(rect) {
     stopEdit();
     hideWindowHighlight();
-    hideSizeLabel();
     el("box").classList.remove("drawing");
     done = true;
     resultKind = "";
@@ -750,6 +752,7 @@
     if (hit) hit.style.cursor = "move";
     positionToolbar(rect);
     positionHint(rect);
+    updateSizeLabel(rect);
   }
 
   function positionToolbar(rect) {

@@ -199,6 +199,11 @@ body[data-purpose="scroll"] #box {
   width: 128px;
   height: 128px;
   image-rendering: pixelated;
+  /* 放大画面与下方信息区之间加一道下边框，并给画面一点投影层次 */
+  border-bottom: 1px solid var(--border-default);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .28);
+  position: relative;
+  z-index: 1;
 }
 
 .mag-info {
