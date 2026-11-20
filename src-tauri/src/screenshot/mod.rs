@@ -17,6 +17,7 @@ pub mod pin;
 pub mod preview;
 pub mod scroll;
 pub mod stitch;
+pub mod window_pick;
 
 use crate::ocr::CapturedImage;
 

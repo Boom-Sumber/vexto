@@ -90,6 +90,21 @@ html, body {
   display: none;
 }
 
+/* 区域截图：悬停窗口高亮。位于快照之上、选框（z4）之下，不接收鼠标。 */
+#window-highlight {
+  position: absolute;
+  z-index: 3;
+  display: none;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+#window-highlight.on {
+  display: block;
+}
+
 body[data-purpose="shot"] .snap,
 body[data-purpose="scroll"] .snap { display: block; }
 

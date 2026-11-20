@@ -619,19 +619,43 @@ fn shot_overlay_state() -> Value {
 ///
 /// 坐标是浮层内的 CSS 像素；后端按快照物理像素裁切，用户看到什么就裁什么。
 /// 钉屏 / 预览成功后由这里排主线程建窗（会话 62 坑 11）。
+/// 光标下的窗口高亮（区域截图浮层用）。Win32 枚举/命中放阻塞线程，
+/// 前端节流调用；返回屏幕物理像素矩形，由页面换算成 CSS。
 #[tauri::command]
-async fn shot_action(
-    action: String,
+async fn shot_window_at() -> Value {
+    match tauri::async_runtime::spawn_blocking(crate::screenshot::window_pick::pick_at_cursor).await
+    {
+        Ok(value) => value,
+        Err(e) => json!({ "ok": false, "message": format!("窗口检测失败：{e}") }),
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SelectionArgs {
     x: f64,
     y: f64,
     w: f64,
     h: f64,
     dpr: Option<f64>,
-    app: AppHandle,
-) -> Value {
+    scale_x: Option<f64>,
+    scale_y: Option<f64>,
+}
+
+/// 对当前选区执行动作（保存 / 复制 / 钉屏 / 预览）。
+#[tauri::command]
+async fn shot_action(action: String, sel: SelectionArgs, app: AppHandle) -> Value {
     let act = action.clone();
+    let selection = crate::screenshot::overlay::Selection {
+        x: sel.x,
+        y: sel.y,
+        w: sel.w,
+        h: sel.h,
+        dpr: sel.dpr,
+        scale: sel.scale_x.zip(sel.scale_y),
+    };
     let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::screenshot::overlay::apply(&act, x, y, w, h, dpr)
+        crate::screenshot::overlay::apply(&act, selection)
     })
     .await;
     match result {
@@ -2809,6 +2833,7 @@ fn main() {
             // 截图（S7）
             shot_overlay_state,
             shot_action,
+            shot_window_at,
             shot_cancel,
             result_action,
             feedback_state,

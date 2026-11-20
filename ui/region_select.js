@@ -63,10 +63,19 @@
   let busy = false;
   let sel = null;
   let magHex = "";
-  let meta = { border: 3, originX: 0, originY: 0, zoom: 8 };
+  let meta = { border: 3, originX: 0, originY: 0, zoom: 8, snapW: 0, snapH: 0 };
   let accent = "#22c55e";
   let toastTimer = 0;
   let copiedTimer = 0;
+  // 悬停窗口高亮：物理矩形 → CSS；pressWindow 记录按下时的高亮窗口，用于「单击整窗选中」。
+  let hoverRect = null;
+  let hoverSeq = 0;
+  let hoverBusy = false;
+  let hoverPending = false;
+  let hoverTimer = 0;
+  let hoverLast = 0;
+  let pressWindow = null;
+  let pressStart = null;
   const colorCanvas = document.createElement("canvas");
   colorCanvas.width = 1;
   colorCanvas.height = 1;
@@ -121,12 +130,15 @@
         meta.zoom = Math.min(10, Math.max(2, Number(s.zoom) || 8));
         meta.originX = Number(s.originX) || 0;
         meta.originY = Number(s.originY) || 0;
+        meta.snapW = Number(s.width) || 0;
+        meta.snapH = Number(s.height) || 0;
         el("box").style.borderWidth = meta.border + "px";
         const img = el("snap");
         img.crossOrigin = "anonymous";
         img.onload = () => {
           snapReady = true;
           invoke("window_ready").catch(() => {});
+          setTimeout(scheduleWindowHover, 60);
         };
         img.onerror = () => {
           invoke("window_ready").catch(() => {});
@@ -210,6 +222,94 @@
     positionHint(sel);
   }
 
+  // ── 悬停窗口高亮（仅区域截图）────────────────────────────────────────
+  function hideWindowHighlight() {
+    hoverRect = null;
+    const node = el("window-highlight");
+    if (node) node.classList.remove("on");
+  }
+
+  function physicalToCssRect(rect) {
+    const scaleX = meta.snapW > 0 ? meta.snapW / window.innerWidth : (window.devicePixelRatio || 1);
+    const scaleY = meta.snapH > 0 ? meta.snapH / window.innerHeight : (window.devicePixelRatio || 1);
+    let x = (rect.x - meta.originX) / scaleX;
+    let y = (rect.y - meta.originY) / scaleY;
+    let w = rect.w / scaleX;
+    let h = rect.h / scaleY;
+    x = Math.max(0, Math.min(window.innerWidth - 1, x));
+    y = Math.max(0, Math.min(window.innerHeight - 1, y));
+    w = Math.max(1, Math.min(window.innerWidth - x, w));
+    h = Math.max(1, Math.min(window.innerHeight - y, h));
+    return { x, y, w, h };
+  }
+
+  function showWindowHighlight(rect) {
+    const node = el("window-highlight");
+    if (!node) return;
+    node.style.left = rect.x + "px";
+    node.style.top = rect.y + "px";
+    node.style.width = rect.w + "px";
+    node.style.height = rect.h + "px";
+    node.classList.add("on");
+  }
+
+  function scheduleWindowHover() {
+    if (
+      !enhanced ||
+      purpose !== "shot" ||
+      !snapReady ||
+      done ||
+      dragging ||
+      moving ||
+      resizing ||
+      editing ||
+      resultKind
+    ) {
+      return;
+    }
+    if (hoverBusy) {
+      hoverPending = true;
+      return;
+    }
+    const now = performance.now();
+    const wait = 28 - (now - hoverLast);
+    if (wait > 0) {
+      if (!hoverTimer) {
+        hoverTimer = setTimeout(() => {
+          hoverTimer = 0;
+          scheduleWindowHover();
+        }, wait);
+      }
+      return;
+    }
+    hoverLast = now;
+    hoverBusy = true;
+    const seq = ++hoverSeq;
+    invoke("shot_window_at")
+      .then((r) => {
+        if (seq !== hoverSeq) return;
+        if (done || dragging || moving || resizing || editing || resultKind) {
+          hideWindowHighlight();
+          return;
+        }
+        if (!r || !r.ok || !r.rect) {
+          hideWindowHighlight();
+          return;
+        }
+        const rect = physicalToCssRect(r.rect);
+        hoverRect = rect;
+        showWindowHighlight(rect);
+      })
+      .catch(() => hideWindowHighlight())
+      .finally(() => {
+        hoverBusy = false;
+        if (hoverPending) {
+          hoverPending = false;
+          scheduleWindowHover();
+        }
+      });
+  }
+
   function onDown(ev) {
     if (ev.button !== 0 || busy || resultKind || editing) return;
     if (enhanced) {
@@ -247,6 +347,10 @@
       done = false;
       sel = null;
       magHex = "";
+      pressWindow = hoverRect ? { ...hoverRect } : null;
+      pressStart = { x: ev.clientX, y: ev.clientY };
+      hideWindowHighlight();
+      hoverSeq++;
     }
     dragging = true;
     sx = ev.clientX;
@@ -271,7 +375,15 @@
     }
     if (enhanced) updateMagnifier(ev);
     if (enhanced && done && !dragging) updateSelectionCursor(ev);
+    if (enhanced && !dragging && !done) scheduleWindowHover();
     if (!dragging) return;
+    if (
+      pressWindow &&
+      pressStart &&
+      Math.hypot(ev.clientX - pressStart.x, ev.clientY - pressStart.y) > 4
+    ) {
+      pressWindow = null;
+    }
     const x = Math.min(sx, ev.clientX);
     const y = Math.min(sy, ev.clientY);
     setBox(x, y, Math.abs(ev.clientX - sx), Math.abs(ev.clientY - sy));
@@ -328,9 +440,21 @@
     }
 
     if (w < 8 || h < 8) {
+      if (purpose === "shot" && pressWindow) {
+        const picked = pressWindow;
+        pressWindow = null;
+        pressStart = null;
+        setBox(picked.x, picked.y, picked.w, picked.h);
+        enterDone(picked);
+        return;
+      }
+      pressWindow = null;
+      pressStart = null;
       resetSelection();
       return;
     }
+    pressWindow = null;
+    pressStart = null;
     setBox(rect.x, rect.y, w, h);
     if (purpose === "scroll") {
       finishScroll(rect);
@@ -461,6 +585,9 @@
 
   function resetSelection() {
     stopEdit();
+    hideWindowHighlight();
+    pressWindow = null;
+    pressStart = null;
     done = false;
     sel = null;
     magHex = "";
@@ -569,6 +696,7 @@
   // ── 选区完成后的动作栏 ────────────────────────────────────────────────
   function enterDone(rect) {
     stopEdit();
+    hideWindowHighlight();
     done = true;
     resultKind = "";
     sel = rect;
@@ -808,6 +936,8 @@
       w: sel.w,
       h: sel.h,
       dpr: window.devicePixelRatio || 1,
+      scaleX: meta.snapW > 0 ? meta.snapW / window.innerWidth : null,
+      scaleY: meta.snapH > 0 ? meta.snapH / window.innerHeight : null,
     };
   }
 
@@ -849,7 +979,7 @@
         const map = { copy: "clipboard", save: "save_copy", pin: "pin", preview: "preview" };
         const action = map[act];
         if (!action) throw new Error("未知操作");
-        const r = await invoke("shot_action", { action, ...selectionArgs() });
+        const r = await invoke("shot_action", { action, sel: selectionArgs() });
         if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
         message = r.message || "完成";
       }
@@ -874,7 +1004,7 @@
       const cmd = isResult ? "result_action" : "shot_action";
       const args = isResult
         ? { action: act }
-        : { action: act, ...selectionArgs() };
+        : { action: act, sel: selectionArgs() };
       const r = await invoke(cmd, args);
       if (!r || !r.ok) {
         showToast((r && r.message) || "操作失败", true);

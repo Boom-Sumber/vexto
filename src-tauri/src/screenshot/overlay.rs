@@ -302,22 +302,34 @@ pub fn clear() {
 pub fn on_window_destroyed() {
     clear();
     clear_result();
+    crate::screenshot::window_pick::clear_cache();
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Selection {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub dpr: Option<f64>,
+    /// 快照物理尺寸 / 浮层逻辑尺寸；混合 DPI 时优先于 `dpr`。
+    pub scale: Option<(f64, f64)>,
 }
 
 fn crop_rect(
     img_w: u32,
     img_h: u32,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    dpr: Option<f64>,
+    sel: Selection,
 ) -> Result<(u32, u32, u32, u32), String> {
-    let dpr = dpr.filter(|d| d.is_finite() && *d > 0.0).unwrap_or(1.0);
-    let sx = (x * dpr).round().clamp(0.0, img_w as f64) as u32;
-    let sy = (y * dpr).round().clamp(0.0, img_h as f64) as u32;
-    let sw = ((w * dpr).round() as i64).clamp(0, (img_w - sx) as i64) as u32;
-    let sh = ((h * dpr).round() as i64).clamp(0, (img_h - sy) as i64) as u32;
+    let dpr = sel.dpr.filter(|d| d.is_finite() && *d > 0.0).unwrap_or(1.0);
+    let (scale_x, scale_y) = sel
+        .scale
+        .filter(|(x, y)| x.is_finite() && *x > 0.0 && y.is_finite() && *y > 0.0)
+        .unwrap_or((dpr, dpr));
+    let sx = (sel.x * scale_x).round().clamp(0.0, img_w as f64) as u32;
+    let sy = (sel.y * scale_y).round().clamp(0.0, img_h as f64) as u32;
+    let sw = ((sel.w * scale_x).round() as i64).clamp(0, (img_w - sx) as i64) as u32;
+    let sh = ((sel.h * scale_y).round() as i64).clamp(0, (img_h - sy) as i64) as u32;
     if sw < 2 || sh < 2 {
         return Err("选区太小，请重新框选".into());
     }
@@ -346,21 +358,17 @@ fn show_crop_feedback(
     }
 }
 
-/// 对当前选区执行动作。坐标是浮层内的 CSS 像素，`dpr` 由前端上报。
-pub fn apply(
-    action: &str,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    dpr: Option<f64>,
-) -> Result<preview::ActionOutcome, String> {
+/// 对当前选区执行动作。坐标是浮层内的 CSS 像素，`dpr` / `scale` 由前端上报。
+///
+/// 单显示器时 `scale` 与 `dpr` 相同；混合 DPI 时前端按
+/// 「快照物理尺寸 / 窗口逻辑尺寸」传 `scale`，保证所见即所得。
+pub fn apply(action: &str, selection: Selection) -> Result<preview::ActionOutcome, String> {
     let (src, img_w, img_h) = {
         let g = lock();
         let s = g.as_ref().ok_or_else(|| "没有截图快照，请重新截图".to_string())?;
         (s.path.clone(), s.width, s.height)
     };
-    let (sx, sy, sw, sh) = crop_rect(img_w, img_h, x, y, w, h, dpr)?;
+    let (sx, sy, sw, sh) = crop_rect(img_w, img_h, selection)?;
     let cfg = crate::config::load();
     match action {
         "save_as" => {
@@ -488,14 +496,52 @@ mod tests {
 
     #[test]
     fn crop_rect_maps_css_to_physical() {
-        assert_eq!(crop_rect(100, 80, 10.0, 20.0, 30.0, 40.0, Some(1.0)), Ok((10, 20, 30, 40)));
+        let s = |x, y, w, h, dpr, scale| Selection {
+            x,
+            y,
+            w,
+            h,
+            dpr,
+            scale,
+        };
+        assert_eq!(
+            crop_rect(100, 80, s(10.0, 20.0, 30.0, 40.0, Some(1.0), None)),
+            Ok((10, 20, 30, 40))
+        );
         // 150% 缩放
-        assert_eq!(crop_rect(200, 120, 10.0, 20.0, 30.0, 40.0, Some(1.5)), Ok((15, 30, 45, 60)));
+        assert_eq!(
+            crop_rect(200, 120, s(10.0, 20.0, 30.0, 40.0, Some(1.5), None)),
+            Ok((15, 30, 45, 60))
+        );
         // 超出边界会被夹回
-        assert_eq!(crop_rect(100, 80, 90.0, 70.0, 30.0, 40.0, Some(1.0)), Ok((90, 70, 10, 10)));
+        assert_eq!(
+            crop_rect(100, 80, s(90.0, 70.0, 30.0, 40.0, Some(1.0), None)),
+            Ok((90, 70, 10, 10))
+        );
         // 太小
-        assert!(crop_rect(100, 80, 0.0, 0.0, 1.0, 1.0, Some(1.0)).is_err());
+        assert!(crop_rect(100, 80, s(0.0, 0.0, 1.0, 1.0, Some(1.0), None)).is_err());
         // 非法 dpr 按 1 处理
-        assert_eq!(crop_rect(100, 80, 0.0, 0.0, 10.0, 10.0, Some(f64::NAN)), Ok((0, 0, 10, 10)));
+        assert_eq!(
+            crop_rect(100, 80, s(0.0, 0.0, 10.0, 10.0, Some(f64::NAN), None)),
+            Ok((0, 0, 10, 10))
+        );
+        // 混合 DPI：显式 scale 优先于 dpr
+        assert_eq!(
+            crop_rect(
+                300,
+                200,
+                s(10.0, 20.0, 30.0, 40.0, Some(1.0), Some((1.5, 2.0)))
+            ),
+            Ok((15, 40, 45, 80))
+        );
+        // 非法 scale 回退 dpr
+        assert_eq!(
+            crop_rect(
+                100,
+                80,
+                s(10.0, 20.0, 30.0, 40.0, Some(1.0), Some((0.0, f64::NAN)))
+            ),
+            Ok((10, 20, 30, 40))
+        );
     }
 }
