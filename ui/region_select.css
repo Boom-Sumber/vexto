@@ -186,9 +186,10 @@ body[data-purpose="scroll"] #box {
   display: none;
   padding: 0;
   border-radius: 10px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-default);
-  box-shadow: var(--shadow-float);
+  /* 放大镜固定浅色外观，不跟随页面明暗主题 */
+  background: #f6f7f9;
+  border: 1px solid #d5d9e0;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .14);
   overflow: hidden;
   pointer-events: none;
 }
@@ -199,9 +200,9 @@ body[data-purpose="scroll"] #box {
   width: 128px;
   height: 128px;
   image-rendering: pixelated;
-  /* 放大画面与下方信息区之间加一道下边框，并给画面一点投影层次 */
-  border-bottom: 1px solid var(--border-default);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, .28);
+  /* 画面与信息区的分隔线；投影比之前更浅、范围更小 */
+  border-bottom: 1px solid #d5d9e0;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, .10);
   position: relative;
   z-index: 1;
 }
@@ -212,7 +213,7 @@ body[data-purpose="scroll"] #box {
   gap: 6px;
   padding: 8px 10px 9px;
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: #4b5563;
 }
 
 .mag-row {
@@ -222,11 +223,11 @@ body[data-purpose="scroll"] #box {
   gap: 14px;
 }
 
-.mag-label { color: var(--text-muted); }
+.mag-label { color: #6b7280; }
 
 .mag-value {
   font-family: var(--font-mono);
-  color: var(--text-primary);
+  color: #111827;
   font-variant-numeric: tabular-nums;
 }
 
@@ -236,16 +237,16 @@ body[data-purpose="scroll"] #box {
   height: 10px;
   display: inline-block;
   border-radius: 2px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid #9ca3af;
   background: #000;
 }
 
 .mag-hint {
   margin-top: 2px;
   font-size: 10px;
-  color: var(--text-dim);
+  color: #6b7280;
 }
-.mag-hint.copied { color: var(--success); }
+.mag-hint.copied { color: #15803d; }
 
 /* 选区下方的动作栏 */
 #toolbar {
