@@ -322,9 +322,11 @@ fn hit_json(entry: &Entry, kind: &str, child: Option<&ChildEntry>) -> Value {
 fn pick_at(x: i32, y: i32) -> Option<Value> {
     let entries = snapshot();
     let mut hit: Option<Entry> = None;
+    let mut use_cache = true;
 
     // 浮层通常在最上面，WindowFromPoint 会先拿到本进程窗口；只有拿到外部窗口时
-    // 才用它（能反映实时的 Z 序）。否则按 EnumWindows 的 Z 序缓存找第一个包含点。
+    // 才用它（能反映实时的 Z 序）。外部窗口被过滤掉（任务栏 / 桌面等）时不要
+    // 再回落到缓存，否则会选中它下面那个最大化窗口。
     unsafe {
         let under = WindowFromPoint(POINT { x, y });
         if !under.0.is_null() {
@@ -333,22 +335,35 @@ fn pick_at(x: i32, y: i32) -> Option<Value> {
             if pid != GetCurrentProcessId() {
                 let root = GetAncestor(under, GA_ROOT);
                 if !root.0.is_null() {
-                    hit = entries
-                        .iter()
-                        .find(|e| e.hwnd == root.0 as isize)
-                        .cloned()
-                        .or_else(|| inspect(root));
+                    let mut root_pid = 0u32;
+                    GetWindowThreadProcessId(root, Some(&mut root_pid));
+                    if root_pid == GetCurrentProcessId() {
+                        // WebView2 子窗口属于 msedgewebview2.exe，但根窗口是浮层：
+                        // 仍然按「鼠标在浮层上」处理，走缓存矩形。
+                        use_cache = true;
+                    } else {
+                        use_cache = false;
+                        hit = entries
+                            .iter()
+                            .find(|e| e.hwnd == root.0 as isize)
+                            .cloned()
+                            .or_else(|| inspect(root));
+                    }
                 }
             }
         }
     }
 
-    let entry = hit.or_else(|| {
+    let entry = if let Some(entry) = hit {
+        entry
+    } else if use_cache {
         entries
             .iter()
             .find(|e| rect_contains(e.rect, x, y))
-            .cloned()
-    })?;
+            .cloned()?
+    } else {
+        return None;
+    };
     if !rect_contains(entry.rect, x, y) {
         return None;
     }

@@ -253,6 +253,38 @@
     node.classList.add("on");
   }
 
+  function hideSizeLabel() {
+    const node = el("size-label");
+    if (node) node.style.display = "none";
+  }
+
+  function updateSizeLabel(rect) {
+    if (!enhanced || purpose !== "shot") return;
+    const node = el("size-label");
+    if (!node) return;
+    if (rect.w < 2 || rect.h < 2) {
+      hideSizeLabel();
+      return;
+    }
+    const scaleX = meta.snapW > 0 ? meta.snapW / window.innerWidth : (window.devicePixelRatio || 1);
+    const scaleY = meta.snapH > 0 ? meta.snapH / window.innerHeight : (window.devicePixelRatio || 1);
+    const pw = Math.max(1, Math.round(rect.w * scaleX));
+    const ph = Math.max(1, Math.round(rect.h * scaleY));
+    node.textContent = pw + " × " + ph;
+    node.style.display = "block";
+    const pad = 6;
+    const lw = node.offsetWidth || 72;
+    const lh = node.offsetHeight || 22;
+    let left = Math.max(8, Math.min(window.innerWidth - lw - 8, rect.x));
+    let top = rect.y - lh - pad;
+    if (top < 8) {
+      left = Math.max(8, Math.min(window.innerWidth - lw - 8, rect.x + pad));
+      top = rect.y + pad;
+    }
+    node.style.left = left + "px";
+    node.style.top = Math.max(8, Math.min(window.innerHeight - lh - 8, top)) + "px";
+  }
+
   function scheduleWindowHover() {
     if (
       !enhanced ||
@@ -356,6 +388,8 @@
     sx = ev.clientX;
     sy = ev.clientY;
     setBox(sx, sy, 0, 0);
+    el("box").classList.add("drawing");
+    hideSizeLabel();
   }
 
   window.addEventListener("mousemove", (ev) => {
@@ -387,6 +421,7 @@
     const x = Math.min(sx, ev.clientX);
     const y = Math.min(sy, ev.clientY);
     setBox(x, y, Math.abs(ev.clientX - sx), Math.abs(ev.clientY - sy));
+    updateSizeLabel({ x, y, w: Math.abs(ev.clientX - sx), h: Math.abs(ev.clientY - sy) });
   });
 
   window.addEventListener("mouseup", (ev) => {
@@ -412,6 +447,8 @@
     }
     if (!dragging) return;
     dragging = false;
+    el("box").classList.remove("drawing");
+    hideSizeLabel();
     const w = Math.abs(ev.clientX - sx);
     const h = Math.abs(ev.clientY - sy);
     const rect = {
@@ -586,6 +623,8 @@
   function resetSelection() {
     stopEdit();
     hideWindowHighlight();
+    hideSizeLabel();
+    el("box").classList.remove("drawing");
     pressWindow = null;
     pressStart = null;
     done = false;
@@ -697,6 +736,8 @@
   function enterDone(rect) {
     stopEdit();
     hideWindowHighlight();
+    hideSizeLabel();
+    el("box").classList.remove("drawing");
     done = true;
     resultKind = "";
     sel = rect;

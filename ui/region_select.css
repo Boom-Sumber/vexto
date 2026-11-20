@@ -90,19 +90,35 @@ html, body {
   display: none;
 }
 
-/* 区域截图：悬停窗口高亮。位于快照之上、选框（z4）之下，不接收鼠标。 */
+/* 区域截图：悬停窗口高亮。内部完全透明，外部压暗；边框与控制点只做提示。 */
 #window-highlight {
   position: absolute;
   z-index: 3;
   display: none;
   box-sizing: border-box;
-  border: 2px solid var(--accent);
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35);
+  border: 3px solid var(--accent);
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), 0 0 0 100vmax rgba(0, 0, 0, .45);
   pointer-events: none;
 }
 #window-highlight.on {
   display: block;
+}
+
+/* 绘制选区时的实时尺寸；默认贴着选区外左上角，顶部放不下时进选区内。 */
+#size-label {
+  position: fixed;
+  z-index: 5;
+  display: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(18, 18, 22, .92);
+  color: #eee;
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 body[data-purpose="shot"] .snap,
@@ -111,12 +127,10 @@ body[data-purpose="scroll"] .snap { display: block; }
 body[data-purpose="shot"] #hit,
 body[data-purpose="scroll"] #hit { display: block; }
 
-/* 截图模式下暗幕只负责「未开始时」的整屏变暗，事件交给 #hit */
+/* 截图 / 滚动模式初始保持全透明；只有选框出现后，box-shadow 才压暗外部。 */
 body[data-purpose="shot"] #dim,
 body[data-purpose="scroll"] #dim {
-  z-index: 1;
-  pointer-events: none;
-  background: rgba(0, 0, 0, .45);
+  display: none;
 }
 
 /* 选区：内部完全透明，只有跟随主色调的边框；box-shadow 把选区外压暗 */
@@ -139,29 +153,31 @@ body[data-purpose="scroll"] #box {
   border-radius: 0;
 }
 .edit-canvas[hidden] { display: none; }
-#box.editing .h { display: none; }
 
-/* 八个控制点（视觉对齐参考图；本期只读，不做拖拽缩放） */
-#box .h {
+/* 八个控制点：绘制中、完成态、窗口悬停都显示；12px（比原 8px 放大 50%） */
+.h {
   display: none;
   position: absolute;
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
   box-sizing: border-box;
   background: var(--accent);
   border: 1px solid rgba(255, 255, 255, .92);
-  border-radius: 1px;
+  border-radius: 2px;
   pointer-events: none;
 }
-#box.done .h { display: block; }
-.h-tl { left: -5px; top: -5px; }
-.h-tc { left: 50%; top: -5px; margin-left: -4px; }
-.h-tr { right: -5px; top: -5px; }
-.h-ml { left: -5px; top: 50%; margin-top: -4px; }
-.h-mr { right: -5px; top: 50%; margin-top: -4px; }
-.h-bl { left: -5px; bottom: -5px; }
-.h-bc { left: 50%; bottom: -5px; margin-left: -4px; }
-.h-br { right: -5px; bottom: -5px; }
+#box.done .h,
+#box.drawing .h,
+#window-highlight.on .h { display: block; }
+#box.editing .h { display: none; }
+.h-tl { left: -6px; top: -6px; }
+.h-tc { left: 50%; top: -6px; margin-left: -6px; }
+.h-tr { right: -6px; top: -6px; }
+.h-ml { left: -6px; top: 50%; margin-top: -6px; }
+.h-mr { right: -6px; top: 50%; margin-top: -6px; }
+.h-bl { left: -6px; bottom: -6px; }
+.h-bc { left: 50%; bottom: -6px; margin-left: -6px; }
+.h-br { right: -6px; bottom: -6px; }
 
 /* 放大取色镜：画面与面板边框之间不留内边距；背景与文字跟随主题 */
 #magnifier {
