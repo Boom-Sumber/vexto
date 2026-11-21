@@ -181,6 +181,8 @@ impl Tool for Download {
                     Field::group("GitHub"),
                     Field::password("github_token", "访问令牌")
                         .help("可选。填入后接口限额从 60 次/小时升到 5000 次/小时；只用于 api.github.com，不写日志，也不会带进下载任务。"),
+                    Field::switch("github_mirror", "镜像加速")
+                        .help("没有配置下载代理时，公开仓库资产经 gh-proxy 镜像下载，直连作为备用；配置了下载代理时自动让位给代理。"),
                     Field::group("请求"),
                     Field::text_presets(
                         "default_user_agent",

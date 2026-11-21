@@ -55,6 +55,10 @@ pub struct NewTask {
     /// 同样不写日志、不回显。
     #[serde(default)]
     pub authorization: String,
+    /// 同一文件的其他下载地址（GitHub 镜像 / 直连兜底）。aria2 会把它们
+    /// 当成 mirrors 依次尝试；不展示在新建页，也不写日志。
+    #[serde(default)]
+    pub mirrors: Vec<String>,
 }
 
 /// 「种子任务」页提交的一条。

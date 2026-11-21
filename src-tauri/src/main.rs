@@ -2322,20 +2322,31 @@ fn github_open_task(
     size: u64,
 ) -> Result<(), String> {
     crate::download::github::validate_asset_url(&url)?;
-    if !config::load().enable_download {
+    let cfg = config::load();
+    if !cfg.enable_download {
         return Err("下载工具还没启用：右键托盘 → 设置… → 下载 → 打开开关".to_string());
     }
     let name = crate::download::naming::sanitize(&filename);
     if name.is_empty() {
         return Err("GitHub 资源的文件名无效".to_string());
     }
+    // 没有下载代理时走 gh-proxy 镜像；配置了代理就让位给代理。备用地址
+    // 由新建页原样带回 aria2，任务失败时会自动换一个。
+    let has_proxy = crate::download::proxy::resolve(&cfg).is_some();
+    let mut candidates = crate::download::github::asset_candidates(
+        &url,
+        cfg.github_mirror,
+        has_proxy,
+    );
+    let display_url = candidates.remove(0);
     let p = crate::popup::NewTaskPrefill {
-        url,
+        url: display_url,
         filename: Some(name),
         size: (size > 0).then_some(size),
         referer: None,
         user_agent: None,
         cookie: None,
+        mirrors: candidates,
     };
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(300));

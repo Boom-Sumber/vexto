@@ -272,7 +272,18 @@ pub fn add_task(
         }
     }
 
-    let gid = rpc.add_uri(&t.uri, serde_json::Value::Object(opts))?;
+    // 主地址 + 备用镜像（GitHub 镜像加速）：aria2 会把同一个任务的多个 URI
+    // 当成 mirrors，主地址失败时自动换下一个。备用地址只接受 http(s)。
+    let mut uris = vec![t.uri.trim().to_string()];
+    for m in &t.mirrors {
+        let m = m.trim();
+        if (m.starts_with("http://") || m.starts_with("https://"))
+            && !uris.iter().any(|u| u == m)
+        {
+            uris.push(m.to_string());
+        }
+    }
+    let gid = rpc.add_uris(&uris, serde_json::Value::Object(opts))?;
     let st = rpc.tell_status(&gid)?;
     // `totalLength` 为 0 时 progress_ratio 返回 0，绝不会在这里除零（任务书 §S3.10 坑 2）。
     let pct = crate::download::rpc::progress_ratio(st.completed_length, st.total_length) * 100.0;
@@ -749,7 +760,7 @@ mod tests {
             let r = ensure_running(&cfg)?;
             let v = r.get_version()?;
             assert!(!v.is_empty(), "getVersion 不能返回空版本");
-            let gid = r.add_uri(&uri, serde_json::json!({}))?;
+            let gid = r.add_uris(&[uri.clone()], serde_json::json!({}))?;
 
             // S3b：一次 system.multicall 拿全量快照，刚入队的 gid 必须在里面。
             let snap = r.snapshot()?;

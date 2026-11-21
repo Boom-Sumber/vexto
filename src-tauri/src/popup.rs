@@ -52,6 +52,10 @@ pub struct NewTaskPrefill {
     pub user_agent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cookie: Option<String>,
+    /// 同一文件的其他下载地址（镜像 / 直连兜底）。新建页不展示，提交时
+    /// 一起交给 aria2；为空时序列化里不出现。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<String>,
 }
 
 impl NewTaskPrefill {
@@ -64,6 +68,7 @@ impl NewTaskPrefill {
             referer: None,
             user_agent: None,
             cookie: None,
+            mirrors: Vec::new(),
         }
     }
 }

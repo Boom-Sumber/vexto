@@ -150,6 +150,23 @@ fn valid_segment(s: &str, max: usize, allow_dot: bool) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || (allow_dot && c == '.'))
 }
 
+/// 资产下载线路。与更新模块的线路保持一致：v4 优先，gh-proxy 次之。
+pub const MIRRORS: [&str; 2] = ["https://v4.gh-proxy.org/", "https://gh-proxy.org/"];
+
+/// 给一个 GitHub 资产地址生成下载候选。
+///
+/// - 配置了下载代理，或用户关掉镜像：只用原始地址，让 aria2 的 `all-proxy` 生效；
+/// - 否则：镜像 → 镜像 → 直连，第一个填进新建页地址栏，其余作为 aria2 的
+///   备用 URI（同一个任务的 mirrors，失败时自动换）。
+pub fn asset_candidates(url: &str, mirror: bool, has_proxy: bool) -> Vec<String> {
+    if !mirror || has_proxy {
+        return vec![url.to_string()];
+    }
+    let mut out: Vec<String> = MIRRORS.iter().map(|p| format!("{p}{url}")).collect();
+    out.push(url.to_string());
+    out
+}
+
 /// 资产下载地址必须是 GitHub 的 release 下载路径；新建任务命令会再校验一次。
 pub fn validate_asset_url(url: &str) -> Result<(), String> {
     let u = url.trim();
@@ -764,6 +781,23 @@ mod tests {
         assert!(validate_asset_url("https://github.com/o/r/archive/v1.zip").is_err());
         assert!(validate_asset_url("https://example.com/o/r/releases/download/v1/a.zip").is_err());
         assert!(validate_asset_url("https://github.com/o/r/releases/download/v1").is_err());
+    }
+
+    #[test]
+    fn asset_candidates_prefer_mirrors_without_proxy() {
+        let raw = "https://github.com/o/r/releases/download/v1/a.zip";
+        let c = asset_candidates(raw, true, false);
+        assert_eq!(c.len(), 3);
+        assert!(c[0].starts_with("https://v4.gh-proxy.org/"));
+        assert!(c[1].starts_with("https://gh-proxy.org/"));
+        assert_eq!(c[2], raw);
+    }
+
+    #[test]
+    fn asset_candidates_use_direct_with_proxy_or_disabled() {
+        let raw = "https://github.com/o/r/releases/download/v1/a.zip";
+        assert_eq!(asset_candidates(raw, true, true), vec![raw.to_string()]);
+        assert_eq!(asset_candidates(raw, false, false), vec![raw.to_string()]);
     }
 
     #[test]

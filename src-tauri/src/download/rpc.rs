@@ -355,8 +355,12 @@ impl Rpc {
     ///
     /// `options` 是 aria2 的 per-task 选项（`out` / `dir` / 限速 / UA / Referer）：
     /// 新建任务允许逐条覆盖目录与文件名，所以不能再只靠 conf 里的全局 `dir`。
-    pub fn add_uri(&self, uri: &str, options: Value) -> Result<String, String> {
-        let r = self.call("aria2.addUri", vec![json!([uri]), options])?;
+    /// 加一个 HTTP/FTP 任务，返回 gid。
+    ///
+    /// `uris` 的第一个是主地址，其余是同一文件的镜像 / 备用地址；aria2 会
+    /// 把它们当成 mirrors 依次尝试（GitHub 镜像加速用这个能力做直连兜底）。
+    pub fn add_uris(&self, uris: &[String], options: Value) -> Result<String, String> {
+        let r = self.call("aria2.addUri", vec![json!(uris), options])?;
         r.as_str()
             .map(str::to_string)
             .ok_or_else(|| "aria2.addUri 没返回 gid".to_string())

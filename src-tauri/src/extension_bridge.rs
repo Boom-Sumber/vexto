@@ -389,6 +389,7 @@ fn prefill_from_add(body: &[u8]) -> Result<crate::popup::NewTaskPrefill, String>
         referer: text("referer"),
         user_agent: text("userAgent"),
         cookie: text("cookie"),
+        mirrors: Vec::new(),
     })
 }
 
