@@ -163,6 +163,10 @@ pub struct Field {
     /// 字段旁的「?」悬浮说明。设置页不再单独画说明行。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help: Option<&'static str>,
+    /// true = `help` 只在标题后的「?」气泡里显示，不占说明行。
+    /// 默认 false（设置页 v2 的可见说明文案）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub help_tip: bool,
     /// true = 改完**立即保存生效**，不进设置页的「未保存」列表（会话 57 用户裁定：
     /// 外观类字段所见即所得，不该再弹保存/放弃）。数据驱动，前端不认 key 名。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -180,6 +184,7 @@ impl Field {
             kind,
             show_if: None,
             help: None,
+            help_tip: false,
             auto_apply: false,
             wide: false,
         }
@@ -188,6 +193,12 @@ impl Field {
     /// 给字段挂一段「?」悬浮说明。设置页不再用独立的说明行。
     pub fn help(mut self, text: &'static str) -> Self {
         self.help = Some(text);
+        self
+    }
+
+    /// 把 `help` 收进标题后的「?」气泡，不再占说明行。
+    pub fn help_tip(mut self) -> Self {
+        self.help_tip = true;
         self
     }
 

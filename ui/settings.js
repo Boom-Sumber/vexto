@@ -369,8 +369,11 @@ function metaNode(f) {
   const t = document.createElement("div");
   t.className = "t";
   t.textContent = f.label || "";
+  if (f.help && f.help_tip) {
+    t.append(helpIcon(f.help));
+  }
   m.append(t);
-  if (f.help) {
+  if (f.help && !f.help_tip) {
     const d = document.createElement("div");
     d.className = "d";
     d.textContent = f.help;
