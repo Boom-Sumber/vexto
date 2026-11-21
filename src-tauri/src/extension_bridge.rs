@@ -248,6 +248,22 @@ fn handle(mut stream: TcpStream, app: AppHandle, secret: String) {
                 &json!({ "product": "rayburst", "protocolVersion": 3 }),
             );
         }
+        // Rayburst Connect 2.2.x 在下载前会先 `GET /version` 判断桌面引擎
+        // 是否 ready（`engine === "running"`）。没有这个端点时 isReady 永远
+        // false，扩展会判定 desktop-unavailable 并把下载还给浏览器。
+        // Vexto 的 aria2 是按需启动的，只要下载工具启用就视为可用。
+        ("GET", "/version") => {
+            let enabled = crate::config::load().enable_download;
+            let _ = write_json(
+                &mut stream,
+                200,
+                origin,
+                &json!({
+                    "app": "Vexto",
+                    "engine": if enabled { "running" } else { "failed" },
+                }),
+            );
+        }
         ("POST", "/add") => add_download(&mut stream, &app, origin, &req.body),
         _ => {
             let _ = write_json(&mut stream, 404, origin, &json!({ "error": "not found" }));
@@ -324,9 +340,12 @@ fn cors_origin(origin: &str) -> Option<&str> {
     }
 }
 
-/// `/ping` 是产品发现，扩展不会带产品头；其余接口必须带。
+/// `/ping` 是产品发现，扩展不会带产品头；`/version` 是引擎就绪探针，
+/// Rayburst Connect 2.2.x 调用 `engineState()` 时**也不带**产品头/密钥。
+/// 其余接口必须带。
 fn product_ok(req: &Request) -> bool {
     req.path == "/ping"
+        || req.path == "/version"
         || req
             .header("x-rayburst-client")
             .map(|v| v.eq_ignore_ascii_case("rayburst-connect"))
@@ -335,7 +354,7 @@ fn product_ok(req: &Request) -> bool {
 
 /// 密钥为空 = 不校验（与 Rayburst 语义一致）。
 fn bearer_ok(req: &Request, secret: &str) -> bool {
-    if secret.is_empty() || req.path == "/ping" {
+    if secret.is_empty() || req.path == "/ping" || req.path == "/version" {
         return true;
     }
     req.header("authorization")
@@ -553,8 +572,9 @@ mod tests {
     }
 
     #[test]
-    fn product_header_required_except_ping() {
+    fn product_header_required_except_ping_and_version() {
         assert!(product_ok(&req("GET", "/ping", &[])));
+        assert!(product_ok(&req("GET", "/version", &[])));
         assert!(!product_ok(&req("GET", "/stat", &[])));
         assert!(product_ok(&req(
             "GET",
@@ -578,6 +598,8 @@ mod tests {
             "s3cret"
         ));
         assert!(bearer_ok(&req("GET", "/ping", &[]), "s3cret"));
+        // engineState() 不带 Authorization：密钥启用时也不能把它挡掉。
+        assert!(bearer_ok(&req("GET", "/version", &[]), "s3cret"));
     }
 
     #[test]
