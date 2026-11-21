@@ -610,7 +610,20 @@ pub fn fetch(
     refresh: bool,
 ) -> Result<ReleasesOut, String> {
     let repo = parse_repo(input)?;
-    let page = page.clamp(1, MAX_PAGE);
+    if page > MAX_PAGE {
+        return Ok(ReleasesOut {
+            repo: repo.full_name(),
+            releases: Vec::new(),
+            page: MAX_PAGE,
+            has_more: false,
+            rate_limit: None,
+            rate_remaining: None,
+            rate_reset: None,
+            cached: false,
+            message: Some("已到加载上限（最多 600 个版本）".to_string()),
+        });
+    }
+    let page = page.max(1);
     let token_mode = if cfg.github_token.trim().is_empty() {
         "anon"
     } else {
@@ -624,7 +637,7 @@ pub fn fetch(
                 repo: repo.full_name(),
                 releases: parse_body(&hit.body, all)?,
                 page,
-                has_more: hit.has_more,
+                has_more: hit.has_more && page < MAX_PAGE,
                 rate_limit: hit.rate_limit,
                 rate_remaining: hit.rate_remaining,
                 rate_reset: hit.rate_reset,
@@ -671,7 +684,7 @@ pub fn fetch(
         repo: repo.full_name(),
         releases,
         page,
-        has_more: fetched.has_more,
+        has_more: fetched.has_more && page < MAX_PAGE,
         rate_limit: fetched.rate_limit,
         rate_remaining: fetched.rate_remaining,
         rate_reset: fetched.rate_reset,
