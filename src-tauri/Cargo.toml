@@ -30,6 +30,9 @@ reqwest = { version = "0.13", default-features = false, features = [
     "form",
     "json",
     "native-tls",
+    # GitHub 解析要复用下载代理；用户常填 socks5（Clash 默认），没有这个
+    # feature 时 Proxy::all 接得住但连接时才失败。
+    "socks",
 ] }
 md-5 = "0.11"
 

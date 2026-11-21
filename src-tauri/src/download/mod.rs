@@ -6,6 +6,7 @@
 //! `notify` 必须拿 `AppHandle` 才能发系统通知，是唯一的例外。
 
 pub mod engine;
+pub mod github;
 pub mod history;
 pub mod naming;
 pub mod notify;

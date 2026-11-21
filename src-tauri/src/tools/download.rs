@@ -178,6 +178,9 @@ impl Tool for Download {
                     Field::text_hint("proxy_url", "代理地址", "http://127.0.0.1:7890")
                         .show_if("proxy_mode", "manual")
                         .wide(),
+                    Field::group("GitHub"),
+                    Field::password("github_token", "访问令牌")
+                        .help("可选。填入后接口限额从 60 次/小时升到 5000 次/小时；只用于 api.github.com，不写日志，也不会带进下载任务。"),
                     Field::group("请求"),
                     Field::text_presets(
                         "default_user_agent",
@@ -259,5 +262,21 @@ mod tests {
         for (name, ua) in UA_PRESETS {
             assert!(ua.starts_with("Mozilla/5.0"), "{name} 的 UA 不合法：{ua}");
         }
+    }
+
+    /// GitHub 令牌属于「网络」页；它是密码框，且必须在配置里有对应字段。
+    #[test]
+    fn network_tab_has_github_token_password() {
+        let network = Download
+            .sections()
+            .into_iter()
+            .find(|s| s.id == "network")
+            .expect("网络页签");
+        let f = network
+            .fields
+            .iter()
+            .find(|f| f.key == "github_token")
+            .expect("github_token 字段");
+        assert!(matches!(f.kind, FieldKind::Password));
     }
 }

@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="base.css" />
 <link rel="stylesheet" href="toast.css" />
 <link rel="stylesheet" href="main.css" />
+<link rel="stylesheet" href="github.css" />
 </head>
 <body data-theme="dark">
 <div class="win">
@@ -51,6 +52,8 @@
           <button class="cat" type="button" data-cat="failed">失败 <span id="c-failed">0</span></button>
           <button class="cat" type="button" data-cat="complete">已完成 <span id="c-complete">0</span></button>
           <button class="cat" type="button" data-cat="deleted">已删除 <span id="c-deleted">0</span></button>
+          <div class="cat-sep" role="separator"></div>
+          <button class="cat cat-github" type="button" data-cat="github">GitHub 加速</button>
         </nav>
       </div>
 
@@ -84,9 +87,58 @@
         还没有下载任务。<br />按下载热键，或点右上角「新建」开始。
       </div>
 
-      <footer class="foot">
+      <footer class="foot" id="taskFoot">
         <span id="counts" class="num">0 个任务 · 0 个活动</span>
       </footer>
+
+      <!-- GitHub 加速：独立视图，不参与任务分类过滤 -->
+      <main id="githubView" class="gh hidden">
+        <div class="gh-scroll">
+          <section class="gh-search">
+            <label class="gh-label" for="ghRepo">GitHub 仓库</label>
+            <div class="gh-input-row">
+              <input id="ghRepo" class="gh-input" type="text" spellcheck="false"
+                     autocomplete="off" placeholder="https://github.com/owner/repo 或 owner/repo" />
+              <button id="ghParse" class="btn btn-primary" type="button">解析</button>
+            </div>
+            <div class="gh-options">
+              <label class="gh-check"><input id="ghLatest" type="checkbox" checked /><span>最新版本</span></label>
+              <label class="gh-check"><input id="ghDevice" type="checkbox" checked /><span>仅显示本设备</span></label>
+              <span id="ghRate" class="gh-rate"></span>
+            </div>
+            <div id="ghError" class="notice notice-danger hidden"></div>
+          </section>
+
+          <section id="ghIntro" class="gh-intro">
+            <span class="gh-intro-ico" data-icon="download" data-icon-size="20"></span>
+            <div>
+              <div class="gh-intro-title">从 GitHub Release 直接取文件</div>
+              <div class="gh-intro-text">粘贴公开仓库地址后点「解析」。下载会打开新建任务页，目录与限速由你确认；实际下载走「设置 → 下载 → 网络」里的代理。</div>
+            </div>
+          </section>
+
+          <section id="ghResult" class="gh-result hidden">
+            <header class="gh-repo">
+              <div class="gh-repo-main">
+                <span class="gh-repo-name" id="ghRepoName"></span>
+                <span class="gh-repo-meta" id="ghRepoMeta"></span>
+              </div>
+              <button id="ghRefresh" class="btn btn-ghost gh-refresh" type="button" title="忽略缓存重新解析">
+                <span data-icon="refresh" data-icon-size="14"></span>刷新
+              </button>
+            </header>
+            <div id="ghReleases" class="gh-releases"></div>
+            <div class="gh-more-wrap">
+              <button id="ghMore" class="btn hidden" type="button">加载更多</button>
+            </div>
+          </section>
+
+          <div id="ghEmpty" class="gh-empty hidden">
+            <span class="gh-intro-ico" data-icon="search" data-icon-size="20"></span>
+            <div>没有找到可下载的资源。</div>
+          </div>
+        </div>
+      </main>
     </div>
 
     <!-- 局域网互传视图（S4b）：发送 / 接收两个子页 -->
@@ -306,6 +358,7 @@
 <script src="toast.js"></script>
 <script src="controls.js"></script>
 <script src="titlebar.js"></script>
+<script src="github.js"></script>
 <script src="main.js"></script>
 <script>TitleBar.mount();</script>
 </body>

@@ -2288,6 +2288,63 @@ fn download_task_defaults() -> TaskDefaultsOut {
     }
 }
 
+/// 下载页「GitHub 加速」：查询一个公开仓库的 Releases。
+///
+/// 网络请求放 `spawn_blocking`，不占 Tauri 的异步执行线程；配置在进线程前
+/// 读一次，避免请求过程中用户改设置导致前后不一致。
+#[tauri::command]
+async fn github_releases(
+    repo: String,
+    all: bool,
+    page: u32,
+    refresh: bool,
+) -> Result<crate::download::github::ReleasesOut, String> {
+    let cfg = config::load();
+    match tauri::async_runtime::spawn_blocking(move || {
+        crate::download::github::fetch(&cfg, &repo, all, page, refresh)
+    })
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => Err(format!("GitHub 解析失败：{e}")),
+    }
+}
+
+/// GitHub 资源的「下载」：把地址、文件名、大小推进新建任务预填队列。
+///
+/// 走现有新建页而不是直接入队：目录、限速、UA 仍由用户在新建页确认。
+/// 与 `open_new_task` 一样排到下一个事件循环 tick 再建第二个窗口。
+#[tauri::command]
+fn github_open_task(
+    app: AppHandle,
+    url: String,
+    filename: String,
+    size: u64,
+) -> Result<(), String> {
+    crate::download::github::validate_asset_url(&url)?;
+    if !config::load().enable_download {
+        return Err("下载工具还没启用：右键托盘 → 设置… → 下载 → 打开开关".to_string());
+    }
+    let name = crate::download::naming::sanitize(&filename);
+    if name.is_empty() {
+        return Err("GitHub 资源的文件名无效".to_string());
+    }
+    let p = crate::popup::NewTaskPrefill {
+        url,
+        filename: Some(name),
+        size: (size > 0).then_some(size),
+        referer: None,
+        user_agent: None,
+        cookie: None,
+    };
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || crate::popup::open_new_task(&a, Some(p)));
+    });
+    Ok(())
+}
+
 /// 新建页取热键 / 扩展预填的条目（取走后清空）。
 #[tauri::command]
 fn take_new_task_prefill() -> Vec<crate::popup::NewTaskPrefill> {
@@ -2878,6 +2935,8 @@ fn main() {
             download_add,
             download_add_torrent,
             download_task_defaults,
+            github_releases,
+            github_open_task,
             notify_test,
             download_ui_flags,
             download_engine_restart,

@@ -399,6 +399,10 @@ pub struct Config {
     /// 允许带 `user:pass@`，写进 conf 时会拆成 aria2 的独立选项。
     #[serde(default)]
     pub proxy_url: String,
+    /// GitHub 访问令牌（可选）。只用于下载页「GitHub 加速」查询 Releases：
+    /// 匿名接口 60 次/小时，填入后 5000 次/小时。**不写日志、不进下载任务**。
+    #[serde(default)]
+    pub github_token: String,
 
     // ---- 浏览器插件接管（兼容 Rayburst-Connect v3）----
     /// 是否在本机启动 HTTP 接口，让浏览器扩展把下载交过来。
@@ -683,6 +687,7 @@ impl Default for Config {
             notify_click_action: d_click_folder(),
             proxy_mode: d_proxy_mode(),
             proxy_url: String::new(),
+            github_token: String::new(),
             extension_bridge_enabled: true,
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),

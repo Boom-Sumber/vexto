@@ -34,6 +34,7 @@ const TITLES = {
   failed: "失败",
   complete: "已完成",
   deleted: "已删除",
+  github: "GitHub 加速",
 };
 
 // 空态图标（icons.js 注册名；会话 55：空态从纯文字升级为图标 + 文案）
@@ -96,7 +97,7 @@ function showError(msg) {
   lastError = msg || "";
   const box = el("error");
   box.textContent = lastError;
-  box.classList.toggle("hidden", !lastError);
+  box.classList.toggle("hidden", !lastError || filter === "github");
 }
 
 // ── 分类 ────────────────────────────────────────────────────────────────
@@ -117,11 +118,28 @@ function countByCat(tasks) {
 
 function setFilter(cat) {
   filter = cat;
+  const isGithub = cat === "github";
   for (const b of document.querySelectorAll("button.cat")) {
     b.classList.toggle("active", b.dataset.cat === cat);
   }
   el("title").textContent = TITLES[cat] || "全部";
-  render(lastSnap);
+  // GitHub 是独立视图，不是任务过滤器：切换时把任务列表的头部按钮、
+  // 空态、底栏一起藏起来，避免两套界面叠在一起。
+  el("list").classList.toggle("hidden", isGithub);
+  el("githubView").classList.toggle("hidden", !isGithub);
+  el("newTask").classList.toggle("hidden", isGithub);
+  el("clear").classList.toggle("hidden", isGithub);
+  el("taskFoot").classList.toggle("hidden", isGithub);
+  if (isGithub) {
+    el("empty").classList.add("hidden");
+    el("error").classList.add("hidden");
+    window.GithubView?.show();
+  } else {
+    el("error").classList.toggle("hidden", !lastError);
+    render(lastSnap);
+  }
+  const tb = document.querySelector(".tb-title");
+  if (tb) tb.textContent = isGithub ? "GitHub 加速" : "任务列表";
 }
 
 // ── 行节点：只在任务首次出现时创建一次 ──────────────────────────────────
@@ -251,6 +269,13 @@ function render(snap) {
   const g = snap.global || {};
   el("global").textContent = "↓ " + fmtSpeed(g.download_speed) + "　↑ " + fmtSpeed(g.upload_speed);
   el("counts").textContent = snap.tasks.length + " 个任务 · " + (g.num_active || 0) + " 个活动";
+
+  // GitHub 视图打开时，任务列表整体隐藏；不要让这里的空态/可见数把
+  // `#empty` 又翻出来盖在解析页上。
+  if (filter === "github") {
+    el("empty").classList.add("hidden");
+    return;
+  }
 }
 
 // ── 命令：失败一律显示中文原因，不静默吞掉 ─────────────────────────────
@@ -404,6 +429,9 @@ function setView(v) {
     refreshPeers();
     refreshPending();
     refreshLocalInfo();
+  } else {
+    // 从互传切回来时恢复上次的下载分类（可能是 GitHub 加速视图）。
+    setFilter(filter);
   }
 }
 
