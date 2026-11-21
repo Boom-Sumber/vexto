@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::Read;
+use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -76,6 +77,14 @@ pub struct Release {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CloneInfo {
+    pub raw: String,
+    pub url: String,
+    pub command: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleasesOut {
     pub repo: String,
     pub releases: Vec<Release>,
@@ -87,6 +96,8 @@ pub struct ReleasesOut {
     pub cached: bool,
     /// 兜底提示（例如「没有正式版，以下为预发布」）。
     pub message: Option<String>,
+    /// 仓库 clone 信息；线路按当前配置现算，不进 API 缓存。
+    pub clone: CloneInfo,
 }
 
 // ── 输入解析 ────────────────────────────────────────────────────────────
@@ -153,18 +164,164 @@ fn valid_segment(s: &str, max: usize, allow_dot: bool) -> bool {
 /// 资产下载线路。与更新模块的线路保持一致：v4 优先，gh-proxy 次之。
 pub const MIRRORS: [&str; 2] = ["https://v4.gh-proxy.org/", "https://gh-proxy.org/"];
 
-/// 给一个 GitHub 资产地址生成下载候选。
-///
-/// - 配置了下载代理，或用户关掉镜像：只用原始地址，让 aria2 的 `all-proxy` 生效；
-/// - 否则：镜像 → 镜像 → 直连，第一个填进新建页地址栏，其余作为 aria2 的
-///   备用 URI（同一个任务的 mirrors，失败时自动换）。
-pub fn asset_candidates(url: &str, mirror: bool, has_proxy: bool) -> Vec<String> {
-    if !mirror || has_proxy {
-        return vec![url.to_string()];
+/// 把用户填的自定义前缀规范成 `https://host/` 形式。
+fn normalize_prefix(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let lower = s.to_ascii_lowercase();
+    let rest = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"))?;
+    if rest.is_empty() {
+        return None;
     }
-    let mut out: Vec<String> = MIRRORS.iter().map(|p| format!("{p}{url}")).collect();
-    out.push(url.to_string());
-    out
+    let mut out = s.to_string();
+    if !out.ends_with('/') {
+        out.push('/');
+    }
+    Some(out)
+}
+
+/// 按「下载线路」配置生成候选。
+///
+/// - `auto`：v4 → gh-proxy → 直连；
+/// - `direct`：原始地址；
+/// - `custom`：自定义前缀 + 原始地址（与更新模块同语义）。
+pub fn line_candidates(url: &str, source: &str, custom: &str) -> Result<Vec<String>, String> {
+    match source.trim().to_ascii_lowercase().as_str() {
+        "direct" => Ok(vec![url.to_string()]),
+        "custom" => {
+            let prefix = normalize_prefix(custom)
+                .ok_or_else(|| "自定义代理地址需要以 http:// 或 https:// 开头".to_string())?;
+            Ok(vec![format!("{prefix}{url}")])
+        }
+        _ => {
+            let mut out: Vec<String> = MIRRORS.iter().map(|p| format!("{p}{url}")).collect();
+            out.push(url.to_string());
+            Ok(out)
+        }
+    }
+}
+
+/// 下载线路：配置了下载代理时让位给代理，否则按 GitHub 线路配置。
+pub fn download_candidates(url: &str, cfg: &config::Config) -> Result<Vec<String>, String> {
+    if crate::download::proxy::resolve(cfg).is_some() {
+        return Ok(vec![url.to_string()]);
+    }
+    line_candidates(url, &cfg.update_download_source, &cfg.update_custom_proxy)
+}
+
+/// 仓库 clone 的展示信息与复制命令。线路按当前配置现算。
+pub fn clone_info(repo: &RepoRef, cfg: &config::Config) -> CloneInfo {
+    let raw = format!("https://github.com/{}.git", repo.full_name());
+    let url = line_candidates(&raw, &cfg.update_download_source, &cfg.update_custom_proxy)
+        .ok()
+        .and_then(|v| v.into_iter().next())
+        .unwrap_or_else(|| raw.clone());
+    CloneInfo {
+        raw,
+        command: format!("git clone {url}"),
+        url,
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneResult {
+    pub path: String,
+    pub url: String,
+}
+
+/// 后台 clone 一个公开仓库到 `<parent>/<repo>`。
+///
+/// 线路依次尝试（auto 时 v4 → gh-proxy → 直连）；每一轮失败都清理本轮
+/// 创建的半成品目录，再换下一个地址。git 输出不落盘、不进日志，失败时
+/// 只把最后一段 stderr 返回给界面。
+pub fn clone_repo(
+    repo: &RepoRef,
+    parent: &Path,
+    cfg: &config::Config,
+) -> Result<CloneResult, String> {
+    if !parent.is_dir() {
+        return Err("所选位置不是文件夹".to_string());
+    }
+    let dest = parent.join(&repo.repo);
+    if dest.exists() {
+        return Err(format!("目标目录已存在：{}", dest.display()));
+    }
+    let raw = format!("https://github.com/{}.git", repo.full_name());
+    let candidates = line_candidates(&raw, &cfg.update_download_source, &cfg.update_custom_proxy)?;
+    ensure_git()?;
+
+    let mut last = String::new();
+    for url in candidates {
+        match run_git_clone(&url, &dest) {
+            Ok(()) => {
+                return Ok(CloneResult {
+                    path: dest.display().to_string(),
+                    url,
+                })
+            }
+            Err(e) => {
+                last = e;
+                if dest.exists() {
+                    let _ = std::fs::remove_dir_all(&dest);
+                }
+            }
+        }
+    }
+    Err(format!("clone 失败：{last}"))
+}
+
+fn git_command() -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+fn ensure_git() -> Result<(), String> {
+    let out = git_command()
+        .arg("--version")
+        .output()
+        .map_err(|_| "未找到 git，请先安装 Git for Windows".to_string())?;
+    if !out.status.success() {
+        return Err("git 无法正常运行，请检查 Git for Windows 安装".to_string());
+    }
+    Ok(())
+}
+
+fn run_git_clone(url: &str, dest: &Path) -> Result<(), String> {
+    let out = git_command()
+        .arg("clone")
+        .arg("--progress")
+        .arg(url)
+        .arg(dest)
+        // 公开仓库遇到需要认证时直接失败，不要卡在凭据输入上。
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GCM_INTERACTIVE", "never")
+        .output()
+        .map_err(|e| format!("启动 git 失败：{e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let text = stderr.trim();
+    if text.is_empty() {
+        return Err(format!("git 退出码 {}", out.status));
+    }
+    let tail: String = text
+        .chars()
+        .rev()
+        .take(1200)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    Err(tail)
 }
 
 /// 资产下载地址必须是 GitHub 的 release 下载路径；新建任务命令会再校验一次。
@@ -638,6 +795,7 @@ pub fn fetch(
             rate_reset: None,
             cached: false,
             message: Some("已到加载上限（最多 600 个版本）".to_string()),
+            clone: clone_info(&repo, cfg),
         });
     }
     let page = page.max(1);
@@ -660,6 +818,7 @@ pub fn fetch(
                 rate_reset: hit.rate_reset,
                 cached: true,
                 message: None,
+                clone: clone_info(&repo, cfg),
             });
         }
     }
@@ -690,6 +849,7 @@ pub fn fetch(
                 rate_reset: fallback.rate_reset,
                 cached: false,
                 message: Some(message.to_string()),
+                clone: clone_info(&repo, cfg),
             });
         }
         Err(e) => return Err(e.message),
@@ -707,6 +867,7 @@ pub fn fetch(
         rate_reset: fetched.rate_reset,
         cached: false,
         message: None,
+        clone: clone_info(&repo, cfg),
     })
 }
 
@@ -784,20 +945,35 @@ mod tests {
     }
 
     #[test]
-    fn asset_candidates_prefer_mirrors_without_proxy() {
+    fn line_candidates_follow_source() {
         let raw = "https://github.com/o/r/releases/download/v1/a.zip";
-        let c = asset_candidates(raw, true, false);
-        assert_eq!(c.len(), 3);
-        assert!(c[0].starts_with("https://v4.gh-proxy.org/"));
-        assert!(c[1].starts_with("https://gh-proxy.org/"));
-        assert_eq!(c[2], raw);
+        let auto = line_candidates(raw, "auto", "").unwrap();
+        assert_eq!(auto.len(), 3);
+        assert!(auto[0].starts_with("https://v4.gh-proxy.org/"));
+        assert!(auto[1].starts_with("https://gh-proxy.org/"));
+        assert_eq!(auto[2], raw);
+        assert_eq!(
+            line_candidates(raw, "direct", "").unwrap(),
+            vec![raw.to_string()]
+        );
+        let custom = line_candidates(raw, "custom", "https://gh-proxy.org").unwrap();
+        assert_eq!(custom, vec![format!("https://gh-proxy.org/{raw}")]);
+        assert!(line_candidates(raw, "custom", "127.0.0.1:7890").is_err());
     }
 
     #[test]
-    fn asset_candidates_use_direct_with_proxy_or_disabled() {
-        let raw = "https://github.com/o/r/releases/download/v1/a.zip";
-        assert_eq!(asset_candidates(raw, true, true), vec![raw.to_string()]);
-        assert_eq!(asset_candidates(raw, false, false), vec![raw.to_string()]);
+    fn clone_info_uses_the_same_line_config() {
+        let repo = RepoRef {
+            owner: "o".to_string(),
+            repo: "r".to_string(),
+        };
+        let cfg = crate::config::Config::default();
+        let info = clone_info(&repo, &cfg);
+        assert_eq!(info.raw, "https://github.com/o/r.git");
+        assert!(info.url.starts_with("https://v4.gh-proxy.org/"));
+        assert!(info
+            .command
+            .starts_with("git clone https://v4.gh-proxy.org/"));
     }
 
     #[test]

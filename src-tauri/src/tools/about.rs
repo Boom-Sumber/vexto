@@ -7,13 +7,6 @@ use serde::Serialize;
 
 use super::{Field, Section, Tool};
 
-/// 更新下载线路。`auto` 对国内网络最友好（先走 gh-proxy，最后才直连）。
-const UPDATE_SOURCES: &[(&str, &str)] = &[
-    ("auto", "自动（代理优先）"),
-    ("direct", "直连 GitHub"),
-    ("custom", "自定义代理"),
-];
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AboutInfo {
@@ -243,14 +236,6 @@ impl Tool for About {
             "关于",
             vec![
                 Field::about_top("about_top", "关于"),
-                Field::group("更新"),
-                Field::select("update_download_source", "下载线路", UPDATE_SOURCES),
-                Field::text_hint(
-                    "update_custom_proxy",
-                    "自定义代理",
-                    "例如 https://gh-proxy.org/",
-                )
-                .show_if("update_download_source", "custom"),
                 Field::about_legal("about_legal", "许可"),
             ],
         )]

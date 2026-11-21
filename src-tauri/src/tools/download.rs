@@ -7,6 +7,16 @@
 use super::{Field, Section, Tool};
 use crate::config;
 
+/// GitHub 下载 / clone 线路。`auto` 先走 gh-proxy，最后才直连。
+///
+/// 与关于页原来的「更新下载线路」共用 `update_download_source` /
+/// `update_custom_proxy` 两个配置键：应用自身更新仍读同一份值，不迁移配置。
+const GITHUB_SOURCES: &[(&str, &str)] = &[
+    ("auto", "自动（镜像优先）"),
+    ("direct", "直连 GitHub"),
+    ("custom", "自定义代理"),
+];
+
 /// 默认 User-Agent 的四条预设。
 ///
 /// **是固定快照，不是动态版本号**：站点要求更新的版本时，用户直接在文本框里改。
@@ -179,10 +189,17 @@ impl Tool for Download {
                         .show_if("proxy_mode", "manual")
                         .wide(),
                     Field::group("GitHub"),
+                    Field::select("update_download_source", "GitHub 下载线路", GITHUB_SOURCES)
+                        .help("GitHub 加速下载与 clone 共用；没有单独配置下载代理时按这里的线路走，配置了下载代理时下载优先走代理。"),
+                    Field::text_hint(
+                        "update_custom_proxy",
+                        "自定义代理",
+                        "例如 https://gh-proxy.org/",
+                    )
+                    .show_if("update_download_source", "custom")
+                    .wide(),
                     Field::password("github_token", "访问令牌")
                         .help("可选。填入后接口限额从 60 次/小时升到 5000 次/小时；只用于 api.github.com，不写日志，也不会带进下载任务。"),
-                    Field::switch("github_mirror", "镜像加速")
-                        .help("没有配置下载代理时，公开仓库资产经 gh-proxy 镜像下载，直连作为备用；配置了下载代理时自动让位给代理。"),
                     Field::group("请求"),
                     Field::text_presets(
                         "default_user_agent",

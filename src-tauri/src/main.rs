@@ -2310,17 +2310,12 @@ async fn github_releases(
     }
 }
 
-/// GitHub 资源的「下载」：把地址、文件名、大小推进新建任务预填队列。
+/// GitHub 资源的「下载」：直接入队，不再打开新建任务页。
 ///
-/// 走现有新建页而不是直接入队：目录、限速、UA 仍由用户在新建页确认。
-/// 与 `open_new_task` 一样排到下一个事件循环 tick 再建第二个窗口。
+/// 目录 / 限速 / UA 使用下载设置里的默认值；主地址与备用镜像一起交给
+/// aria2。前端收到成功后自己切到「全部」分类。
 #[tauri::command]
-fn github_open_task(
-    app: AppHandle,
-    url: String,
-    filename: String,
-    size: u64,
-) -> Result<(), String> {
+fn github_download(url: String, filename: String) -> Result<(), String> {
     crate::download::github::validate_asset_url(&url)?;
     let cfg = config::load();
     if !cfg.enable_download {
@@ -2330,30 +2325,40 @@ fn github_open_task(
     if name.is_empty() {
         return Err("GitHub 资源的文件名无效".to_string());
     }
-    // 没有下载代理时走 gh-proxy 镜像；配置了代理就让位给代理。备用地址
-    // 由新建页原样带回 aria2，任务失败时会自动换一个。
-    let has_proxy = crate::download::proxy::resolve(&cfg).is_some();
-    let mut candidates = crate::download::github::asset_candidates(
-        &url,
-        cfg.github_mirror,
-        has_proxy,
-    );
-    let display_url = candidates.remove(0);
-    let p = crate::popup::NewTaskPrefill {
-        url: display_url,
-        filename: Some(name),
-        size: (size > 0).then_some(size),
-        referer: None,
-        user_agent: None,
-        cookie: None,
+    let mut candidates = crate::download::github::download_candidates(&url, &cfg)?;
+    let uri = candidates.remove(0);
+    let task = crate::download::NewTask {
+        uri,
+        name,
         mirrors: candidates,
+        ..Default::default()
     };
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        let a = app.clone();
-        let _ = app.run_on_main_thread(move || crate::popup::open_new_task(&a, Some(p)));
-    });
+    crate::download::add_task(&cfg, &task)?;
     Ok(())
+}
+
+/// GitHub「clone 仓库」：选父目录，后台 git clone，完成后返回路径。
+///
+/// `None` 表示用户取消了文件夹选择。clone 可能跑几十秒到几分钟，
+/// 前端用常驻 toast 展示进度，命令本身不阻塞 UI。
+#[tauri::command]
+async fn github_clone(
+    repo: String,
+) -> Result<Option<crate::download::github::CloneResult>, String> {
+    let cfg = config::load();
+    let repo = crate::download::github::parse_repo(&repo)?;
+    let parent = tauri::async_runtime::spawn_blocking(crate::fileops::pick_folder)
+        .await
+        .map_err(|e| format!("打开文件夹选择框失败：{e}"))??;
+    let Some(parent) = parent else {
+        return Ok(None);
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::download::github::clone_repo(&repo, &parent, &cfg)
+    })
+    .await
+    .map_err(|e| format!("clone 线程失败：{e}"))??;
+    Ok(Some(result))
 }
 
 /// 新建页取热键 / 扩展预填的条目（取走后清空）。
@@ -2947,7 +2952,8 @@ fn main() {
             download_add_torrent,
             download_task_defaults,
             github_releases,
-            github_open_task,
+            github_download,
+            github_clone,
             notify_test,
             download_ui_flags,
             download_engine_restart,

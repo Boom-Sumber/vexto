@@ -403,10 +403,6 @@ pub struct Config {
     /// 匿名接口 60 次/小时，填入后 5000 次/小时。**不写日志、不进下载任务**。
     #[serde(default)]
     pub github_token: String,
-    /// 没有配置下载代理时，GitHub 资产是否走 gh-proxy 镜像。
-    /// 默认开：国内直连 release 资产经常超时。配置了下载代理时会让位给代理。
-    #[serde(default = "d_true")]
-    pub github_mirror: bool,
 
     // ---- 浏览器插件接管（兼容 Rayburst-Connect v3）----
     /// 是否在本机启动 HTTP 接口，让浏览器扩展把下载交过来。
@@ -692,7 +688,6 @@ impl Default for Config {
             proxy_mode: d_proxy_mode(),
             proxy_url: String::new(),
             github_token: String::new(),
-            github_mirror: true,
             extension_bridge_enabled: true,
             extension_bridge_port: d_bridge_port(),
             extension_bridge_secret: String::new(),

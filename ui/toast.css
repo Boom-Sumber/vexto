@@ -46,6 +46,26 @@
   color: var(--accent);
 }
 
+.vx-toast .vx-toast-ico {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* 常驻加载态：clone 等长任务期间显示，不自动消失，完成后原地更新。 */
+.vx-toast .vx-spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: vx-spin .8s linear infinite;
+}
+
+@keyframes vx-spin {
+  to { transform: rotate(360deg); }
+}
+
 .vx-toast.error {
   border-color: var(--danger-border);
   color: var(--danger);
@@ -53,6 +73,15 @@
 
 .vx-toast.error .ico-svg {
   color: var(--danger);
+}
+
+.vx-toast.success {
+  border-color: var(--success-border);
+  color: var(--success);
+}
+
+.vx-toast.success .ico-svg {
+  color: var(--success);
 }
 
 .vx-toast span {

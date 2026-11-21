@@ -38,8 +38,8 @@ pub fn delete(path: &str, recycle: bool) -> Result<(), String> {
 fn to_recycle_bin(path: &str) -> Result<(), String> {
     use windows::core::PCWSTR;
     use windows::Win32::UI::Shell::{
-        SHFileOperationW, SHFILEOPSTRUCTW, FO_DELETE, FOF_ALLOWUNDO, FOF_NOERRORUI,
-        FOF_NOCONFIRMATION, FOF_SILENT,
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE,
+        SHFILEOPSTRUCTW,
     };
 
     // `pFrom` 要求「若干个以 NUL 结尾的路径 + 末尾再一个 NUL」，少一个就会
@@ -151,8 +151,8 @@ pub fn pick_files() -> Result<Vec<String>, String> {
     use windows::core::{PCWSTR, PWSTR};
     // windows 0.62 里 commdlg 在 `UI::Controls::Dialogs`（不在 Shell）。
     use windows::Win32::UI::Controls::Dialogs::{
-        GetOpenFileNameW, OPENFILENAMEW, OFN_ALLOWMULTISELECT, OFN_EXPLORER, OFN_FILEMUSTEXIST,
-        OFN_PATHMUSTEXIST,
+        GetOpenFileNameW, OFN_ALLOWMULTISELECT, OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_PATHMUSTEXIST,
+        OPENFILENAMEW,
     };
 
     // 多选结果是「目录\0文件\0文件\0\0」，64K 缓冲够几千个文件。
@@ -165,10 +165,7 @@ pub fn pick_files() -> Result<Vec<String>, String> {
         lpstrFile: PWSTR(buffer.as_mut_ptr()),
         nMaxFile: buffer.len() as u32,
         lpstrFilter: PCWSTR(filter.as_ptr()),
-        Flags: OFN_ALLOWMULTISELECT
-            | OFN_EXPLORER
-            | OFN_FILEMUSTEXIST
-            | OFN_PATHMUSTEXIST,
+        Flags: OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST,
         ..Default::default()
     };
 
@@ -208,8 +205,8 @@ pub fn pick_files() -> Result<Vec<String>, String> {
 pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, String> {
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::UI::Controls::Dialogs::{
-        CommDlgExtendedError, GetSaveFileNameW, OPENFILENAMEW, OFN_EXPLORER, OFN_NOCHANGEDIR,
-        OFN_OVERWRITEPROMPT, OFN_PATHMUSTEXIST,
+        CommDlgExtendedError, GetSaveFileNameW, OFN_EXPLORER, OFN_NOCHANGEDIR, OFN_OVERWRITEPROMPT,
+        OFN_PATHMUSTEXIST, OPENFILENAMEW,
     };
 
     let mut buffer = vec![0u16; 32 * 1024];
@@ -219,7 +216,9 @@ pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, 
     }
     buffer[..init.len()].copy_from_slice(&init);
 
-    let filter: Vec<u16> = "PNG 图片\0*.png\0所有文件\0*.*\0\0".encode_utf16().collect();
+    let filter: Vec<u16> = "PNG 图片\0*.png\0所有文件\0*.*\0\0"
+        .encode_utf16()
+        .collect();
     let ext: Vec<u16> = "png\0".encode_utf16().collect();
     let mut ofn = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
@@ -227,10 +226,7 @@ pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, 
         nMaxFile: buffer.len() as u32,
         lpstrFilter: PCWSTR(filter.as_ptr()),
         lpstrDefExt: PCWSTR(ext.as_ptr()),
-        Flags: OFN_OVERWRITEPROMPT
-            | OFN_PATHMUSTEXIST
-            | OFN_EXPLORER
-            | OFN_NOCHANGEDIR,
+        Flags: OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_EXPLORER | OFN_NOCHANGEDIR,
         ..Default::default()
     };
 
@@ -246,6 +242,57 @@ pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, 
     Ok(Some(std::path::PathBuf::from(String::from_utf16_lossy(
         &buffer[..n],
     ))))
+}
+
+/// 系统原生「选择文件夹」对话框。返回 `None` 表示用户取消。
+///
+/// 用 `SHBrowseForFolderW`（`windows` crate 已在树上，不引 tauri-plugin-dialog）。
+/// `BIF_NEWDIALOGSTYLE` 需要当前线程初始化 COM；`RPC_E_CHANGED_MODE` 时
+/// 说明调用线程已经是别的套间模型，照样继续，只是不做配对的反初始化。
+pub fn pick_folder() -> Result<Option<std::path::PathBuf>, String> {
+    use windows::core::{PCWSTR, PWSTR};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        SHBrowseForFolderW, SHGetPathFromIDListW, BIF_EDITBOX, BIF_NEWDIALOGSTYLE,
+        BIF_RETURNONLYFSDIRS, BROWSEINFOW,
+    };
+
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let initialized = hr.is_ok();
+    let title: Vec<u16> = "选择 clone 保存位置\0".encode_utf16().collect();
+    let mut display = [0u16; 260];
+    let bi = BROWSEINFOW {
+        pszDisplayName: PWSTR(display.as_mut_ptr()),
+        lpszTitle: PCWSTR(title.as_ptr()),
+        ulFlags: BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE | BIF_EDITBOX,
+        ..Default::default()
+    };
+
+    let pidl = unsafe { SHBrowseForFolderW(&bi) };
+    if pidl.is_null() {
+        if initialized {
+            unsafe { CoUninitialize() };
+        }
+        return Ok(None);
+    }
+    let mut buf = [0u16; 260];
+    let ok = unsafe { SHGetPathFromIDListW(pidl, &mut buf) };
+    unsafe { CoTaskMemFree(Some(pidl as *const core::ffi::c_void)) };
+    if initialized {
+        unsafe { CoUninitialize() };
+    }
+    if !ok.as_bool() {
+        return Err("无法读取所选文件夹路径".into());
+    }
+    let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    let s = String::from_utf16_lossy(&buf[..n]);
+    if s.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(std::path::PathBuf::from(s)))
+    }
 }
 
 /// 把 `src` 移到 `dst`（跨盘时复制后删源）。目标已存在会被覆盖

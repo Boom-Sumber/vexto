@@ -142,6 +142,9 @@ function setFilter(cat) {
   if (tb) tb.textContent = isGithub ? "GitHub 加速" : "任务列表";
 }
 
+// GitHub 视图下载成功后切回任务列表的「全部」分类。
+window.DownloadView = { showAll: () => setFilter("all") };
+
 // ── 行节点：只在任务首次出现时创建一次 ──────────────────────────────────
 
 function createRow(t) {

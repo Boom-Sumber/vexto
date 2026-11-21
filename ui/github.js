@@ -1,8 +1,8 @@
 // GitHub 加速下载视图：数据来自后端 `github_releases`。
 //
 // 分类里的「GitHub 加速」不是任务过滤器，而是独立视图：main.js 负责在
-// 任务列表和本视图之间切换，本文件只处理解析与展示。下载按钮走
-// `github_open_task`，预填现有新建任务页，不在前端直接调下载引擎。
+// 任务列表和本视图之间切换，本文件只处理解析与展示。下载按钮直接入队
+// 并切到「全部」；clone 由后端弹文件夹选择框、后台执行 git clone。
 
 window.GithubView = (function () {
   const T = window.__TAURI__;
@@ -20,6 +20,9 @@ window.GithubView = (function () {
     input: "",
     releases: [],
     rate: null,
+    clone: null,
+    cloneBusy: false,
+    cloneResult: "",
     openTags: new Set(),
   };
 
@@ -97,6 +100,7 @@ window.GithubView = (function () {
     el("ghRefresh").disabled = on;
     el("ghLatest").disabled = on;
     el("ghDevice").disabled = on;
+    el("ghClone").disabled = on;
     el("ghMore").disabled = on;
     renderRate();
   }
@@ -117,6 +121,8 @@ window.GithubView = (function () {
       state.hasMore = false;
       state.openTags.clear();
       state.rate = null;
+      state.clone = null;
+      state.cloneResult = "";
       state.loaded = false;
       el("ghReleases").replaceChildren();
       el("ghResult").classList.add("hidden");
@@ -141,6 +147,7 @@ window.GithubView = (function () {
       state.repo = r.repo || state.input;
       state.page = r.page || state.page;
       state.hasMore = !!r.hasMore;
+      state.clone = r.clone || null;
       state.rate = {
         limit: r.rateLimit || null,
         remaining: r.rateRemaining == null ? null : r.rateRemaining,
@@ -183,6 +190,9 @@ window.GithubView = (function () {
 
     const box = el("ghReleases");
     box.replaceChildren();
+    if (el("ghClone").checked && state.repo && state.clone) {
+      box.appendChild(cloneCard());
+    }
     state.releases.forEach((rel, i) => box.appendChild(releaseNode(rel, i)));
     el("ghMore").classList.toggle("hidden", !has || !state.hasMore);
   }
@@ -268,15 +278,115 @@ window.GithubView = (function () {
     return row;
   }
 
+  function cloneCard() {
+    const card = document.createElement("article");
+    card.className = "gh-clone-card";
+
+    const head = document.createElement("div");
+    head.className = "gh-clone-head";
+    head.appendChild(span("gh-clone-title", "仓库 clone"));
+    head.appendChild(span("gh-clone-url", state.clone.raw));
+
+    const acts = document.createElement("div");
+    acts.className = "gh-clone-actions";
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "btn gh-copy-clone";
+    const copyIco = document.createElement("span");
+    if (window.Icons) Icons.fill(copyIco, "copy", 14);
+    copy.appendChild(copyIco);
+    copy.appendChild(document.createTextNode("代理 clone"));
+    copy.title = "复制当前线路的完整 git clone 命令";
+    copy.addEventListener("click", copyClone);
+
+    const run = document.createElement("button");
+    run.type = "button";
+    run.className = "btn btn-primary gh-clone-run";
+    run.textContent = state.cloneBusy ? "正在 clone…" : "clone 仓库";
+    run.disabled = state.cloneBusy;
+    run.addEventListener("click", cloneRepo);
+
+    acts.append(copy, run);
+    card.append(head, acts);
+
+    if (state.cloneResult) {
+      const result = document.createElement("div");
+      result.className = "gh-clone-result";
+      result.appendChild(span("", "已 clone 到 " + state.cloneResult));
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "btn";
+      open.textContent = "打开目录";
+      open.addEventListener("click", () => {
+        invoke("open_path", { path: state.cloneResult }).catch((e) =>
+          showError(errText(e))
+        );
+      });
+      result.appendChild(open);
+      card.appendChild(result);
+    } else {
+      card.appendChild(
+        note(
+          state.cloneBusy
+            ? "正在 clone，完成后会在标题栏下方提示；期间可以继续浏览版本。"
+            : "代理 clone 复制当前线路的完整命令；clone 仓库会先选择父目录。"
+        )
+      );
+    }
+    return card;
+  }
+
+  async function copyClone() {
+    const text = state.clone && state.clone.command;
+    if (!text) return;
+    try {
+      await invoke("copy_text", { text });
+      window.Toast?.show?.("已复制 clone 命令");
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(text);
+        window.Toast?.show?.("已复制 clone 命令");
+      } catch (e2) {
+        showError("复制失败：" + errText(e2));
+      }
+    }
+  }
+
+  async function cloneRepo() {
+    if (state.cloneBusy || !state.repo) return;
+    state.cloneBusy = true;
+    state.cloneResult = "";
+    showError("");
+    const t = window.Toast?.loading?.("正在 clone " + state.repo + "…");
+    render();
+    try {
+      const r = await invoke("github_clone", { repo: state.repo });
+      if (r == null) {
+        t?.close?.();
+        return;
+      }
+      state.cloneResult = r.path || "";
+      t?.update?.("clone 已完成", { kind: "success", duration: 2000 });
+      if (!t && state.cloneResult) {
+        window.Toast?.show?.("clone 已完成：" + state.cloneResult);
+      }
+    } catch (e) {
+      const msg = errText(e);
+      t?.update?.("clone 失败：" + msg, { kind: "error" });
+      showError(msg);
+    } finally {
+      state.cloneBusy = false;
+      render();
+    }
+  }
+
   async function download(a, btn) {
     btn.disabled = true;
     try {
-      await invoke("github_open_task", {
-        url: a.url,
-        filename: a.name,
-        size: Number(a.size) || 0,
-      });
-      window.Toast?.show?.("已打开新建任务：" + a.name);
+      await invoke("github_download", { url: a.url, filename: a.name });
+      window.Toast?.show?.("已加入下载：" + a.name);
+      window.DownloadView?.showAll?.();
     } catch (e) {
       showError(errText(e));
     } finally {
@@ -296,6 +406,7 @@ window.GithubView = (function () {
     });
     el("ghLatest").addEventListener("change", () => load(true, false));
     el("ghDevice").addEventListener("change", render);
+    el("ghClone").addEventListener("change", render);
     el("ghMore").addEventListener("click", () => load(false, false));
     el("ghRefresh").addEventListener("click", () => load(true, true));
     render();

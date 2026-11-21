@@ -317,8 +317,6 @@ async function submitLinks() {
       http_user: base.http_user,
       http_passwd: base.http_passwd,
       authorization: base.authorization,
-      // GitHub 镜像加速：地址栏只显示主地址，备用地址随任务一起交给 aria2。
-      mirrors: Array.isArray(ex.mirrors) ? ex.mirrors : [],
     };
   });
 
@@ -401,9 +399,6 @@ function addPrefill(payload) {
       referer: String(item.referer || "").trim(),
       userAgent: String(item.user_agent || item.userAgent || "").trim(),
       cookie: String(item.cookie || ""),
-      mirrors: Array.isArray(item.mirrors)
-        ? item.mirrors.map((u) => String(u || "").trim()).filter(Boolean)
-        : [],
     });
   }
   if (!fresh.length) return;

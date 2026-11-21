@@ -313,6 +313,79 @@
   color: var(--text-dim);
 }
 
+/* ── Clone 卡片 ───────────────────────────────────────────────────────── */
+
+.gh-clone-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+}
+
+.gh-clone-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.gh-clone-title {
+  flex: none;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gh-clone-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.gh-clone-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.gh-copy-clone,
+.gh-clone-run {
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--fs-xs);
+}
+
+.gh-copy-clone .ico { margin-right: 5px; }
+
+.gh-clone-result {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.gh-clone-result span {
+  min-width: 0;
+}
+
+.gh-clone-result .btn {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  font-size: var(--fs-xs);
+}
+
 /* ── 加载更多 ─────────────────────────────────────────────────────────── */
 
 .gh-more-wrap {
