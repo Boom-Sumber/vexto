@@ -27,9 +27,9 @@
 
 ## 安装
 
-运行 [Vexto_0.3.11_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.11/Vexto_0.3.11_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.3.20_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.20/Vexto_0.3.20_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
-当前安装包 **21.16 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
+当前安装包 **21.22 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
 浏览器接管下载需要另装配套扩展，见下方「浏览器接管下载」。
 
@@ -88,7 +88,7 @@ Vexto 本身不直接注入浏览器。要让网页下载进入 Vexto，需要�
 | 打开设置页 | 约 6–7 MB | 约 87 MB | 约 93 MB |
 | 关闭窗口（轻量模式开） | 约 1–2 MB | 0 | 约 1–2 MB |
 | 关闭窗口（轻量模式关） | 约 6–7 MB | 约 87 MB（挂起） | 约 93 MB |
-| 安装包 | — | — | **21.16 MiB** |
+| 安装包 | — | — | **21.22 MiB** |
 
 任务管理器会把 WebView2 子进程归入「WebView2 管理器」组，主程序与它分开显示。开启「轻量模式」后，关闭窗口会释放 WebView2，内存更低，下次打开稍慢；不开启时窗口会挂起复用，再次打开更快。
 
