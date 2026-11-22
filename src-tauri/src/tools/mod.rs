@@ -577,12 +577,12 @@ mod tests {
         let v: Value = serde_json::to_value(Field::color(
             "accent_color",
             "主色调",
-            &[("#7c5cff", "高级紫")],
+            &[("#11a780", "翡翠绿")],
         ))
         .unwrap();
         assert_eq!(v["type"], "color");
-        assert_eq!(v["presets"][0][0], "#7c5cff");
-        assert_eq!(v["presets"][0][1], "高级紫");
+        assert_eq!(v["presets"][0][0], "#11a780");
+        assert_eq!(v["presets"][0][1], "翡翠绿");
     }
 
     /// auto_apply 只该出现在显式标记的字段上（外观类），其余字段不带这个键。

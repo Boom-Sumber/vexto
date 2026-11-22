@@ -451,11 +451,11 @@ pub struct Config {
     /// 不参与任何后端行为（外观功能会话）。
     #[serde(default = "d_appearance_theme", skip_serializing_if = "String::is_empty")]
     pub appearance_theme: String,
-    /// 主色调 `#rrggbb`。空串 = 跟随默认 #7c5cff（高级紫）。
-    /// 前端把它覆盖到 `--theme`，按钮渐变 / 光晕 / LOGO 全部联动。
+    /// 主色调 `#rrggbb`。默认 #11a780（翡翠绿）；空串 = 跟随主题 CSS 的同一默认。
+    /// 前端把它覆盖到 `--theme`，按钮渐变 / 光晕 / 选中态全部联动。
     /// **不 skip 空串**：main.rs 有个守卫测试要求每个 schema 字段都能在
     /// 序列化后的 Config 里找到（config_map_covers_all_tool_keys）。
-    #[serde(default)]
+    #[serde(default = "d_accent_color")]
     pub accent_color: String,
 
     // ---- 版本 ----
@@ -595,6 +595,9 @@ fn d_version() -> u32 {
 fn d_appearance_theme() -> String {
     "system".to_string()
 }
+fn d_accent_color() -> String {
+    "#11a780".to_string()
+}
 fn d_log_level() -> String {
     "info".to_string()
 }
@@ -697,7 +700,7 @@ impl Default for Config {
             update_custom_proxy: String::new(),
             lite_mode: false,
             appearance_theme: d_appearance_theme(),
-            accent_color: String::new(),
+            accent_color: d_accent_color(),
             version: d_version(),
         }
     }
@@ -1611,11 +1614,12 @@ mod tests {
 
     /// 外观字段（外观功能会话）：老配置缺省 → 跟随系统 + 默认主色；
     /// 显式值原样读写。ADR-013：只增字段不破坏旧配置。会话 90 起默认主题
-    /// 由 `dark` 改为 `system`（ADR-067）。
+    /// 由 `dark` 改为 `system`（ADR-067）；会话 107 起默认主色为 #11a780。
     #[test]
-    fn appearance_fields_default_and_roundtrip() {        let c: Config = serde_json::from_str("{}").unwrap();
+    fn appearance_fields_default_and_roundtrip() {
+        let c: Config = serde_json::from_str("{}").unwrap();
         assert_eq!(c.appearance_theme, "system");
-        assert!(c.accent_color.is_empty());
+        assert_eq!(c.accent_color, "#11a780");
 
         let c2: Config = serde_json::from_str(
             r##"{"appearance_theme":"system","accent_color":"#3b82f6"}"##,
@@ -1623,6 +1627,14 @@ mod tests {
         .unwrap();
         assert_eq!(c2.appearance_theme, "system");
         assert_eq!(c2.accent_color, "#3b82f6");
+    }
+
+    /// 会话 107：默认主色必须与色板第一位一致。
+    #[test]
+    fn accent_default_is_first_preset() {
+        let first = crate::tools::general::ACCENT_PRESETS[0];
+        assert_eq!(first.0, "#11a780");
+        assert_eq!(Config::default().accent_color, first.0);
     }
 
     /// 会话 90：轻量模式默认值改为关（ADR-067）。老配置缺字段同样按关处理，

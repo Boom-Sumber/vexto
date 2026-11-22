@@ -16,7 +16,7 @@
 // 窗口本就「先建隐藏、数据就绪才 show」，这里同步设变量，无首帧闪烁。
 
 const Theme = (() => {
-  const ACCENT_DEFAULT = ""; // 空 = 跟随 theme-dark.css 里的默认 #7c5cff
+  const ACCENT_DEFAULT = ""; // 空 = 跟随主题 CSS 里的默认 #11a780
 
   let mql = null;
 
@@ -82,7 +82,7 @@ const Theme = (() => {
       lastMode = currentMode(v.appearance_theme);
       applyValues(v.appearance_theme, v.accent_color || ACCENT_DEFAULT);
     } catch {
-      // 后端没就绪 / 旧版本：保持 theme-dark.css 的默认样子（body 上已有 data-theme）
+      // 后端没就绪 / 旧版本：保持主题 CSS 的默认样子（body 上已有 data-theme）
       lastMode = "dark";
     }
     listenBroadcast();

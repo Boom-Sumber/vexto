@@ -1313,7 +1313,7 @@ function fieldColor(f) {
   custom.title = "自定义";
   const pick = document.createElement("input");
   pick.type = "color";
-  pick.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : "#7c5cff";
+  pick.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : "#11a780";
   pick.addEventListener("input", () => commit(f.key, pick.value, { autoApply: !!f.auto_apply }));
   custom.append(pick);
   row.append(custom);

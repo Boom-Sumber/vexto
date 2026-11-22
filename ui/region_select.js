@@ -64,7 +64,7 @@
   let sel = null;
   let magHex = "";
   let meta = { border: 3, originX: 0, originY: 0, zoom: 8, snapW: 0, snapH: 0 };
-  let accent = "#22c55e";
+  let accent = "#11a780";
   let toastTimer = 0;
   let copiedTimer = 0;
   // 悬停窗口高亮：物理矩形 → CSS；pressWindow 记录按下时的高亮窗口，用于「单击整窗选中」。

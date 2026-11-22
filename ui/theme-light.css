@@ -47,9 +47,9 @@
   --bg-input: var(--c-gray-800);
   --bg-hover: var(--c-gray-750);
   --bg-active: var(--c-gray-700);
-  --bg-selected: rgba(124, 92, 255, .12);
+  --bg-selected: rgba(17, 167, 128, .12);
   --bg-overlay: rgba(30, 30, 40, .4);
-  --selection-bg: rgba(124, 92, 255, .30);
+  --selection-bg: rgba(17, 167, 128, .30);
 
   /* ── 文字 ─────────────────────────────────────────────────────────── */
   --text-primary: var(--c-gray-50);
@@ -65,15 +65,15 @@
   --border-strong: rgba(20, 20, 30, .16);
 
   /* ── 主题色：与暗色同源 --theme，只调透明度适配浅底 ────────────────── */
-  --theme: var(--c-violet-500);
+  --theme: #11a780;
   --accent: var(--theme);
-  --accent-2: var(--c-violet-600);
-  --accent-hover: var(--c-violet-400);
-  --accent-active: var(--c-violet-600);
-  --accent-soft: rgba(124, 92, 255, .12);
-  --accent-soft-2: rgba(124, 92, 255, .18);
-  --accent-border: rgba(124, 92, 255, .40);
-  --accent-ring: rgba(124, 92, 255, .14);
+  --accent-2: #009468;
+  --accent-hover: #46c79e;
+  --accent-active: #008e69;
+  --accent-soft: rgba(17, 167, 128, .12);
+  --accent-soft-2: rgba(17, 167, 128, .18);
+  --accent-border: rgba(17, 167, 128, .40);
+  --accent-ring: rgba(17, 167, 128, .14);
   --accent-text: #ffffff;
 
   /* ── 状态色：加深一档保白底对比度 ─────────────────────────────────── */
@@ -93,7 +93,7 @@
   /* 与 popup.css #card 的 12/8/16 透明边距匹配；blur 超过 12 会被窗口边缘裁成方框 */
   --shadow-popup: 0 4px 12px rgba(20, 20, 30, .16);
   --shadow-window: 0 12px 44px rgba(20, 20, 30, .20);
-  --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(124, 92, 255, .20);
+  --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(17, 167, 128, .20);
 
   /* ── 原生控件图标：亮色箭头 ───────────────────────────────────────── */
   --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%2385858f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");

@@ -76,7 +76,7 @@
     function accent() {
       return (
         getComputedStyle(document.body).getPropertyValue("--accent").trim() ||
-        "#7c5cff"
+        "#11a780"
       );
     }
 

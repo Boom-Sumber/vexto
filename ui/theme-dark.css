@@ -54,9 +54,9 @@
   --bg-active: var(--c-gray-700);
   /* 选中行（主题色 14% 透明）与文本选中（42%，深色下一眼可见）：
      静态值兜底，相对色版在文末 @supports。 */
-  --bg-selected: rgba(124, 92, 255, .14);
+  --bg-selected: rgba(17, 167, 128, .14);
   --bg-overlay: rgba(0, 0, 0, .5);
-  --selection-bg: rgba(124, 92, 255, .42);
+  --selection-bg: rgba(17, 167, 128, .42);
 
   /* ── 文字 ─────────────────────────────────────────────────────────── */
   --text-primary: var(--c-gray-50);
@@ -71,20 +71,20 @@
   --border-default: rgba(255, 255, 255, .07);
   --border-strong: rgba(255, 255, 255, .12);
 
-  /* ── 主题色：改 --theme 一处，UI / Vexto.svg / LOGO 全联动 ────────── */
-  --theme: var(--c-violet-500);
+  /* ── 主题色：改 --theme 一处，按钮 / 光晕 / 选中态全联动 ───────────── */
+  --theme: #11a780;
   --accent: var(--theme);
-  --accent-2: var(--c-violet-600);      /* 渐变端；相对色版在文末 @supports */
-  --accent-hover: var(--c-violet-400);
-  --accent-active: var(--c-violet-600);
-  --accent-soft: rgba(124, 92, 255, .16);
-  --accent-soft-2: rgba(124, 92, 255, .22);
-  --accent-border: rgba(124, 92, 255, .45);
+  --accent-2: #009468;      /* 渐变端；相对色版在文末 @supports */
+  --accent-hover: #46c79e;
+  --accent-active: #008e69;
+  --accent-soft: rgba(17, 167, 128, .16);
+  --accent-soft-2: rgba(17, 167, 128, .22);
+  --accent-border: rgba(17, 167, 128, .45);
   /* 焦点环：主题色边框本身已经足够标示焦点，外圈只做「一点点晕」。
      第一层 1px / 12% 只用来补一层色温，第二层 8px 柔光负责过渡；
      环再宽就会和 1px 边框叠成一条粗边（用户反馈「边框很宽」）。
      demo 的 3px 实心晕不采纳。 */
-  --accent-ring: rgba(124, 92, 255, .12);
+  --accent-ring: rgba(17, 167, 128, .12);
   --accent-text: #ffffff;
 
   /* ── 状态色：与主题色分开，不要混用 ───────────────────────────────── */
@@ -104,7 +104,7 @@
   /* 与 popup.css #card 的 12/8/16 透明边距匹配；blur 超过 12 会被窗口边缘裁成方框 */
   --shadow-popup: 0 4px 12px rgba(0, 0, 0, .5);
   --shadow-window: 0 12px 44px rgba(0, 0, 0, .55);
-  --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(124, 92, 255, .22);
+  --ring: 0 0 0 1px var(--accent-ring), 0 0 8px rgba(17, 167, 128, .22);
 
   /* ── 原生控件用的图标（data URI 不能引用 CSS 变量，颜色只能在这里写死） ──
    * select 的箭头改成自绘后不再受系统白色箭头影响；换主题时改这一行。 */
