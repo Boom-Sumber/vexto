@@ -625,7 +625,7 @@ struct ApiError {
 
 fn user_agent() -> String {
     format!(
-        "Vexto/{} (+https://github.com/Boom-Sumber/vexto)",
+        "Vexto/{} (+https://github.com/Ruxsmiles/vexto)",
         env!("CARGO_PKG_VERSION")
     )
 }
@@ -895,29 +895,29 @@ mod tests {
     #[test]
     fn parse_repo_accepts_common_forms() {
         assert_eq!(
-            full("https://github.com/Boom-Sumber/vexto"),
-            "Boom-Sumber/vexto"
+            full("https://github.com/Ruxsmiles/vexto"),
+            "Ruxsmiles/vexto"
         );
         assert_eq!(
-            full("https://github.com/Boom-Sumber/vexto/releases/tag/v0.3.9"),
-            "Boom-Sumber/vexto"
+            full("https://github.com/Ruxsmiles/vexto/releases/tag/v0.3.9"),
+            "Ruxsmiles/vexto"
         );
         assert_eq!(
-            full("https://github.com/Boom-Sumber/vexto/"),
-            "Boom-Sumber/vexto"
+            full("https://github.com/Ruxsmiles/vexto/"),
+            "Ruxsmiles/vexto"
         );
         assert_eq!(
-            full("https://github.com/Boom-Sumber/vexto.git"),
-            "Boom-Sumber/vexto"
+            full("https://github.com/Ruxsmiles/vexto.git"),
+            "Ruxsmiles/vexto"
         );
-        assert_eq!(full("Boom-Sumber/vexto"), "Boom-Sumber/vexto");
+        assert_eq!(full("Ruxsmiles/vexto"), "Ruxsmiles/vexto");
         assert_eq!(
-            full("git@github.com:Boom-Sumber/vexto.git"),
-            "Boom-Sumber/vexto"
+            full("git@github.com:Ruxsmiles/vexto.git"),
+            "Ruxsmiles/vexto"
         );
         assert_eq!(
-            full("ssh://git@github.com/Boom-Sumber/vexto.git"),
-            "Boom-Sumber/vexto"
+            full("ssh://git@github.com/Ruxsmiles/vexto.git"),
+            "Ruxsmiles/vexto"
         );
         assert_eq!(full("https://www.github.com/o/r?tab=readme#top"), "o/r");
     }

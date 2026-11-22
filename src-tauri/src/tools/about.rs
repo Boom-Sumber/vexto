@@ -146,7 +146,7 @@ pub fn info() -> AboutInfo {
         attribution: "本项目在功能与设计上借鉴了 Pot、ShareX、Rayburst、LocalSend 等\
                       开源项目，未拷贝其源代码；相关版权与商标归各自作者所有。",
         footer: "本程序按「现状」提供，不对使用后果作任何担保。\n\
-                 © 2026 Boom-Sumber · GNU GPL-3.0",
+                 © 2026 Ruxsmiles · GNU GPL-3.0",
         update: AboutUpdate {
             check: "update_check",
             download: "update_download",
@@ -163,10 +163,10 @@ pub fn info() -> AboutInfo {
 /// 只允许打开固定入口，不接受任意 URL。
 pub fn open_link(kind: &str) -> Result<(), String> {
     let url = match kind {
-        "repo" => "https://github.com/Boom-Sumber/vexto",
-        "issues" => "https://github.com/Boom-Sumber/vexto/issues",
-        "releases" => "https://github.com/Boom-Sumber/vexto/releases",
-        "license" => "https://github.com/Boom-Sumber/vexto/blob/main/LICENSE",
+        "repo" => "https://github.com/Ruxsmiles/vexto",
+        "issues" => "https://github.com/Ruxsmiles/vexto/issues",
+        "releases" => "https://github.com/Ruxsmiles/vexto/releases",
+        "license" => "https://github.com/Ruxsmiles/vexto/blob/main/LICENSE",
         _ => return Err("未知的链接".to_string()),
     };
     crate::update::open_url(url)

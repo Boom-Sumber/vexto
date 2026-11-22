@@ -11,7 +11,7 @@
 | 划词翻译 | 选中文字按热键，光标旁出译文卡片；默认内置微软翻译；也可添加百度 / 有道 / OpenAI 兼容实例 |
 | 截图 | 区域 / 全屏 / 活动窗口截图；框选区域 OCR 翻译；滚动长图；钉屏；选框内直接标注（矩形 / 椭圆 / 箭头 / 画笔 / 文字 / 马赛克，支持选中 / 移动 / 缩放 / 文字编辑）并预览裁头尾；全屏截图右下角缩略图反馈 |
 | 下载 | HTTPS / BT / magnet 下载，aria2c sidecar，空闲自动退出 |
-| 浏览器接管 | 安装 [Vexto Connect](https://github.com/Boom-Sumber/vexto-connect) 后，Edge / Chrome / Firefox 与国内 Chromium 套壳浏览器的下载可交给 Vexto |
+| 浏览器接管 | 安装 [Vexto Connect](https://github.com/Ruxsmiles/vexto-connect) 后，Edge / Chrome / Firefox 与国内 Chromium 套壳浏览器的下载可交给 Vexto |
 | 局域网传文件 | 与官方 LocalSend 互通，接收 / 发送 / 历史 / 校验 |
 | 外观 | 明亮 / 暗色 / 跟随系统，六种主色调 + 取色器 |
 
@@ -27,7 +27,7 @@
 
 ## 安装
 
-运行 [Vexto_0.3.20_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.20/Vexto_0.3.20_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.3.20_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.3.20/Vexto_0.3.20_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
 当前安装包 **21.22 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
@@ -44,7 +44,7 @@ Vexto 本身不直接注入浏览器。要让网页下载进入 Vexto，需要�
 - Mozilla Firefox 115+
 - 多款国内 Chromium 套壳浏览器（360、QQ、搜狗等基于 Chromium 的版本）
 
-扩展仓库与安装说明：<https://github.com/Boom-Sumber/vexto-connect>
+扩展仓库与安装说明：<https://github.com/Ruxsmiles/vexto-connect>
 
 安装扩展后，在扩展选项页确认主机 `127.0.0.1`、端口 `29110`；如果 Vexto 设置了插件密钥，两边保持一致。之后网页下载会自动交给 Vexto，Vexto 不可用时回落到浏览器下载。
 
@@ -136,9 +136,9 @@ ui/                纯静态前端
 
 ## 项目地址
 
-- 代码仓库：<https://github.com/Boom-Sumber/vexto>
-- 下载：<https://github.com/Boom-Sumber/vexto/releases>
-- 浏览器扩展：<https://github.com/Boom-Sumber/vexto-connect>
+- 代码仓库：<https://github.com/Ruxsmiles/vexto>
+- 下载：<https://github.com/Ruxsmiles/vexto/releases>
+- 浏览器扩展：<https://github.com/Ruxsmiles/vexto-connect>
 
 开发文档单独维护，不随本仓库发布。
 

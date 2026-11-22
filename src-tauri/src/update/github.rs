@@ -10,8 +10,8 @@ use serde::Deserialize;
 
 use crate::dlog;
 
-pub const REPO: &str = "Boom-Sumber/vexto";
-const API_URL: &str = "https://api.github.com/repos/Boom-Sumber/vexto/releases/latest";
+pub const REPO: &str = "Ruxsmiles/vexto";
+const API_URL: &str = "https://api.github.com/repos/Ruxsmiles/vexto/releases/latest";
 /// 下载线路候选（`auto` 模式按此顺序）。前缀拼接完整 GitHub URL。
 pub const PROXIES: [&str; 2] = ["https://v4.gh-proxy.org/", "https://gh-proxy.org/"];
 
@@ -376,12 +376,12 @@ mod tests {
         let body = r#"{
             "tag_name": "v0.3.0",
             "body": "更新说明",
-            "html_url": "https://github.com/Boom-Sumber/vexto/releases/tag/v0.3.0",
+            "html_url": "https://github.com/Ruxsmiles/vexto/releases/tag/v0.3.0",
             "assets": [
                 {"name": "source.tar.gz", "size": 10, "browser_download_url": "https://github.com/x/source.tar.gz"},
                 {"name": "Vexto_0.3.0_x64-setup.exe", "size": 22154793,
                  "digest": "sha256:acd7081b729453de5d2524e6564f4166b906621fd588a29d8708e7294d06f749",
-                 "browser_download_url": "https://github.com/Boom-Sumber/vexto/releases/download/v0.3.0/Vexto_0.3.0_x64-setup.exe"}
+                 "browser_download_url": "https://github.com/Ruxsmiles/vexto/releases/download/v0.3.0/Vexto_0.3.0_x64-setup.exe"}
             ]
         }"#;
         let info = parse_release(body).unwrap();
