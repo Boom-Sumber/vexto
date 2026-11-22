@@ -14,6 +14,16 @@
 | 局域网传文件 | 与官方 LocalSend 互通，接收 / 发送 / 历史 / 校验 |
 | 外观 | 明亮 / 暗色 / 跟随系统，六种主色调 + 取色器 |
 
+## 界面预览
+
+![Vexto 关于页](assets/screenshots/about.png)
+
+*关于页：版本、功能入口与更新检查*
+
+![Vexto 常规设置](assets/screenshots/general-settings.png)
+
+*常规设置：主题、主色调、启动与性能*
+
 ## 安装
 
 运行 [Vexto_0.3.11_x64-setup.exe](https://github.com/Boom-Sumber/vexto/releases/download/v0.3.11/Vexto_0.3.11_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
