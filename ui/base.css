@@ -428,16 +428,11 @@ input[type="radio"]:disabled { opacity: .45; cursor: default; }
 /* 图标统一：不参与基线对齐，避免行高被撑开 */
 .ico { display: inline-flex; flex: 0 0 auto; }
 
-/* ── 品牌 LOGO 磁贴 ─────────────────────────────────────────────────────
- * 形状来自 ui/Vexto.svg（CSS 蒙版，与接收页 .rv-logo 同机制），颜色取
- * --theme 渐变——换主色调时 LOGO 同步变。页面里不写内联 <svg>（§13.5）。
- * 尺寸与外发光由使用方给定（如 .brand .logo { width:30px; height:30px }）。
- * 注意：Vexto.svg 内不能出现外链资源（@import 等），否则 Chromium 在
- * image 模式下拒绝加载整个文件。 */
-.logo-mask {
-  background: linear-gradient(150deg, var(--accent), var(--accent-2));
-  -webkit-mask: url("Vexto.svg") center / contain no-repeat;
-  mask: url("Vexto.svg") center / contain no-repeat;
+/* ── 品牌 LOGO ─────────────────────────────────────────────────────────
+ * 统一使用 ui/Vexto.svg 徽标；尺寸与布局由使用方给定
+ * （如 .brand .logo { width:30px; height:30px }）。 */
+.logo-badge {
+  background: url("Vexto.svg") center / contain no-repeat;
 }
 
 /* ── 提示条 ───────────────────────────────────────────────────────────── */

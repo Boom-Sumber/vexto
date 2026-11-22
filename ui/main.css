@@ -30,7 +30,7 @@
   border-right: 1px solid var(--border-default);
 }
 
-/* 品牌磁贴（与设置页同款）：Vexto.svg 蒙版 + 渐变跟随 --theme */
+/* 品牌磁贴（与设置页同款）：Vexto.svg 徽标 */
 .brand {
   display: flex;
   align-items: center;
@@ -1115,30 +1115,12 @@
   align-items: center;
   gap: var(--sp-3);
 }
-/* 接收页 LOGO：形状取 ui/Vexto.svg 的矢量轮廓，颜色从 --theme 现算。
-   外链 SVG 拿不到父文档的 CSS 变量，所以用蒙版 + CSS 渐变；改 theme-dark.css
-   的 --theme 一处，SVG 渐变与这里的程序 LOGO 同步变化。 */
+/* 接收页 LOGO：使用 ui/Vexto.svg 徽标。 */
 .rv-logo {
   width: 96px;
   height: 96px;
-  border-radius: var(--r-xl);
   margin-bottom: var(--sp-2);
-  background: linear-gradient(90deg, var(--theme), var(--accent-hover));
-  -webkit-mask-image: url("Vexto.svg");
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  mask-image: url("Vexto.svg");
-  mask-position: center;
-  mask-size: contain;
-  mask-repeat: no-repeat;
-}
-@supports (color: oklch(from red l c h)) {
-  .rv-logo {
-    background: linear-gradient(90deg,
-      var(--theme),
-      oklch(from var(--theme) calc(l + 0.12) calc(c * 1.0) calc(h + 3)));
-  }
+  background: url("Vexto.svg") center / contain no-repeat;
 }
 .rv-name {
   font-size: 28px;

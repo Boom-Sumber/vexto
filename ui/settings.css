@@ -21,7 +21,7 @@
   padding: var(--sp-4) 14px var(--sp-2);
 }
 
-/* 品牌磁贴：Vexto.svg 蒙版（.logo-mask 在 base.css），渐变跟随 --theme */
+/* 品牌磁贴：Vexto.svg 徽标（.logo-badge 在 base.css） */
 .brand {
   display: flex;
   align-items: center;
@@ -1020,7 +1020,6 @@ input.capturing {
   width: 64px;
   height: 64px;
   flex: none;
-  border-radius: 16px;
 }
 .about-name-row {
   display: flex;
@@ -1209,5 +1208,5 @@ input.capturing {
 @media (max-width: 720px) {
   .about-features { grid-template-columns: 1fr; }
   .about-name { font-size: 23px; }
-  .about-logo { width: 52px; height: 52px; border-radius: 13px; }
+  .about-logo { width: 52px; height: 52px; }
 }

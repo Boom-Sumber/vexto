@@ -71,7 +71,7 @@ window.TitleBar = (function () {
     }
   }
 
-  /// 标题左侧的程序图标（与侧栏 brand 同一份 Vexto.svg 蒙版）。
+  /// 标题左侧的程序图标（与侧栏 brand 同一份 Vexto.svg 徽标）。
   function mountBrand() {
     const tb = document.querySelector(".tb");
     const title = tb && tb.querySelector(".tb-title");
@@ -80,7 +80,7 @@ window.TitleBar = (function () {
     lead.className = "tb-lead";
     lead.dataset.tauriDragRegion = "";
     const logo = document.createElement("span");
-    logo.className = "tb-logo logo-mask";
+    logo.className = "tb-logo logo-badge";
     logo.setAttribute("aria-hidden", "true");
     logo.dataset.tauriDragRegion = "";
     tb.insertBefore(lead, title);

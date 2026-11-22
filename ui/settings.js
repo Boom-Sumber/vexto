@@ -1985,7 +1985,7 @@ function renderAboutPart(box, info, part) {
   }
 
   const hero = aboutEl("div", "about-hero");
-  const logo = aboutEl("span", "about-logo logo-mask");
+  const logo = aboutEl("span", "about-logo logo-badge");
   const titleBox = document.createElement("div");
   const nameRow = aboutEl("div", "about-name-row");
   nameRow.append(aboutEl("h1", "about-name", info.name));
