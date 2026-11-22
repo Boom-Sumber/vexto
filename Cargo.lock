@@ -2906,7 +2906,7 @@ dependencies = [
 
 [[package]]
 name = "lightbox"
-version = "0.3.20"
+version = "0.3.21"
 dependencies = [
  "arboard",
  "if-addrs 0.13.4",
