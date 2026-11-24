@@ -11,6 +11,7 @@
     "maximize": "",
     "toggleTheme": "",
     "openFolder": "",
+    "settings": "",
     "unknownError": "",
     "listSeparator": ""
   },
@@ -81,5 +82,19 @@
   },
   "settings": {},
   "download": {},
-  "popup": {}
+  "popup": {
+    "pin": "",
+    "pinned": "",
+    "srcPlaceholder": "",
+    "copySource": "",
+    "langTitle": "",
+    "auto": "",
+    "translate": "",
+    "engineTitle": "",
+    "engineUnset": "",
+    "loading": "",
+    "copyDst": "",
+    "copied": "",
+    "failed": ""
+  }
 }

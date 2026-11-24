@@ -3,8 +3,8 @@
  * 颜色 / 字号 / 圆角一律取 tokens.css + theme-dark.css，
  * 结构件（按钮 / 勾选 / 输入框）取自 base.css。
  *
- * 阴影边距（#card 的 margin）必须和 popup.rs 的 CARD_PAD_X/TOP/BOTTOM
- * 以及 popup.js 的 PAD_TOP/PAD_X/PAD_BOTTOM 三处一致：
+ * 阴影边距（#card 的 margin）必须和 popup.rs 的 CARD_PAD_X/TOP/BOTTOM 一致；
+ * 前端（popup/App.vue）直接读 computed margin，不再硬编码 PAD_*：
  * box-shadow: 0 4px 12px → 需要左右 12、上 8（12-4）、下 16（12+4）。 */
 
 /* base.css 给 body 铺了不透明底色；弹窗窗口是透明的，必须盖回去 */
@@ -15,6 +15,9 @@ html, body {
   overflow: hidden;
   user-select: none;
 }
+
+/* Vue 挂载点不参与布局，让 #card 仍像直接挂在 body 下（margin 不折叠变化） */
+#app { display: contents; }
 
 #card {
   position: relative;

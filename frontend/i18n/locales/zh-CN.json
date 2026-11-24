@@ -11,6 +11,7 @@
     "maximize": "最大化 / 还原",
     "toggleTheme": "切换明暗主题",
     "openFolder": "打开所在文件夹",
+    "settings": "设置",
     "unknownError": "未知错误",
     "listSeparator": "，"
   },
@@ -81,5 +82,19 @@
   },
   "settings": {},
   "download": {},
-  "popup": {}
+  "popup": {
+    "pin": "钉住（不自动关闭）",
+    "pinned": "已钉住（不自动关闭，点此取消）",
+    "srcPlaceholder": "在这里输入要翻译的文字，回车翻译",
+    "copySource": "复制原文",
+    "langTitle": "检测到的源语言",
+    "auto": "自动",
+    "translate": "翻译",
+    "engineTitle": "点击切换翻译引擎",
+    "engineUnset": "未配置引擎",
+    "loading": "翻译中",
+    "copyDst": "复制译文",
+    "copied": "已复制",
+    "failed": "翻译失败"
+  }
 }
