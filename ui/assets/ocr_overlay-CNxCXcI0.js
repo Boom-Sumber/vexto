@@ -1,0 +1,1 @@
+import{t as e}from"./app-z4-u7GEc.js";import"./theme-EtFMGHAn.js";import{t}from"./App-abyz9sT7.js";import"./Icon-B7WePGSu.js";document.body.dataset.purpose=`ocr`,e(t).mount(`#app`);

@@ -16,6 +16,8 @@
 run.out
 run.err
 build*.log
+/node_modules
+/ui-dist
 
 # ── WebView2 调试残留（MVP 时期踩过坑，别带进来）──────
 wv2data*

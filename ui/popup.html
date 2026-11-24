@@ -3,67 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <title>Vexto</title>
-<link rel="stylesheet" href="tokens.css" />
-<link rel="stylesheet" href="theme-dark.css" />
-<link rel="stylesheet" href="theme-light.css" />
-<link rel="stylesheet" href="base.css" />
-<link rel="stylesheet" href="popup.css" />
+  <script type="module" crossorigin src="./assets/popup-BqEVySCE.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-z4-u7GEc.js">
+  <link rel="modulepreload" crossorigin href="./assets/theme-EtFMGHAn.js">
+  <link rel="modulepreload" crossorigin href="./assets/Icon-B7WePGSu.js">
+  <link rel="modulepreload" crossorigin href="./assets/useTheme-DAzbtAkn.js">
+  <link rel="stylesheet" crossorigin href="./assets/theme-vP2fd1n4.css">
+  <link rel="stylesheet" crossorigin href="./assets/Icon-CPc1RSp4.css">
+  <link rel="stylesheet" crossorigin href="./assets/popup-BeMoV3Zf.css">
 </head>
 <body data-theme="dark">
-  <!-- 窗口是透明 + 无边框的，圆角和阴影全靠这一层 CSS 画。
-       图标由 icons.js 注入，页面里不写 SVG（docs/13-UI-DESIGN-SYSTEM.md §13.5）。 -->
-  <div id="card">
-
-    <!-- 标题栏：只放图钉和关闭。按住这里可以拖动整个弹窗 -->
-    <div id="titlebar">
-      <button id="pin" class="icon" type="button" title="钉住（不自动关闭）" aria-pressed="false"></button>
-      <span id="title-spacer"></span>
-      <button id="close" class="icon" type="button" title="关闭"></button>
-    </div>
-
-    <!-- 源文本：两种模式都可编辑，但划词模式点进来才抢焦点（见 popup.rs 注释） -->
-    <div id="src-wrap">
-      <textarea id="src" rows="1" spellcheck="false"
-                placeholder="在这里输入要翻译的文字，回车翻译"></textarea>
-    </div>
-
-    <!-- 源文本工具栏：复制原文 / 语种胶囊 / 翻译按钮 -->
-    <div id="src-tools">
-      <button id="copy-src" class="icon" type="button" title="复制原文"></button>
-      <span id="lang-pill" class="pill" title="检测到的源语言">自动</span>
-      <span id="tools-spacer"></span>
-      <button id="translate-btn" class="primary" type="button">翻译</button>
-    </div>
-
-    <!-- 引擎选择：固定宽度的小选择框（不带下拉箭头）。
-         点它弹出引擎菜单，菜单在文档流里，卡片随之变高。 -->
-    <button id="engine-row" type="button" title="点击切换翻译引擎">
-      <span id="engine-name">未配置引擎</span>
-    </button>
-    <div id="engine-menu" class="hidden"></div>
-
-    <div id="divider"></div>
-
-    <div id="loading" class="loading">
-      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="loading-text">翻译中</span>
-    </div>
-
-    <div id="dst" class="dst"></div>
-    <div id="error" class="error hidden"></div>
-
-    <div id="actions">
-      <button id="copy-dst" class="icon-text" type="button" title="复制译文">
-        <span>复制译文</span>
-      </button>
-      <span id="actions-spacer"></span>
-      <button id="open-settings" class="icon" type="button" title="设置"></button>
-    </div>
-
-  </div>
-  <script src="contextmenu.js"></script>
-  <script src="theme.js"></script>
-<script src="icons.js"></script>
-  <script src="popup.js"></script>
+  <div id="app"></div>
 </body>
 </html>

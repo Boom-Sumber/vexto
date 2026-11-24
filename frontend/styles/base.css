@@ -1,0 +1,459 @@
+/* 通用组件与重置。页面 CSS 只写布局，颜色 / 字号 / 圆角一律取令牌。
+ * 依赖：tokens.css → theme-dark.css → 本文件（顺序不能反）。
+ */
+
+/* ── 重置 ─────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+/* Vue 挂载点铺满窗口；legacy 页面没有 #app，不受影响 */
+#app { height: 100%; }
+
+body {
+  margin: 0;
+  /* v2 氛围光：两层紫红 radial 光晕铺在 app 底色上（demo 口径）。
+     第一条声明是不支持相对色引擎的兜底；颜色从 --theme 现算，
+     换主色调时光晕跟着变。透明窗口（popup / pin / feedback）在
+     自己的 CSS 里覆盖回 transparent，光晕不会漏进去。 */
+  background: var(--bg-app);
+  background:
+    radial-gradient(1200px 600px at 70% -10%,
+      oklch(from var(--theme) l c h / .10), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%,
+      oklch(from var(--theme) l c h / .06), transparent 55%),
+    var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 文本选中：用 42% 的主题色，不要用 --accent-soft（16%），深色下看不出来 */
+::selection {
+  background: var(--selection-bg);
+  color: var(--text-primary);
+}
+
+/* ── 滚动条：透明轨道、无两端箭头、细滑块 ───────────────────────────────
+ * 用户要求「无背景色、无箭头」：track 透明、button 尺寸归零；
+ * 滑块用 border + background-clip 做出内缩感，hover 变亮。
+ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+::-webkit-scrollbar {
+  width: var(--w-scrollbar);
+  height: var(--w-scrollbar);
+  background: transparent;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border: 2px solid transparent;
+  border-radius: var(--r-pill);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── 窗口骨架 ─────────────────────────────────────────────────────────── */
+
+.win {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tb {
+  flex: 0 0 var(--h-titlebar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: var(--sp-4);
+  background: var(--bg-bar);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+.tb-title {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+/* 标题左侧：程序图标 + 标题（titlebar.js 注入，窗口页面不用自己写） */
+.tb-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  height: 100%;
+}
+.tb-logo {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+body.win-blur .tb-logo { opacity: .55; }
+
+/* 明暗主题切换：与最小化 / 关闭同一套标题栏按钮尺寸 */
+.tb-theme { flex: none; }
+
+.tb-actions { display: flex; height: 100%; }
+
+.tb-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--w-titlebar-btn);
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.tb-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tb-btn:active { background: var(--bg-active); }
+.tb-btn.close:hover { background: var(--danger-hover); color: var(--text-inverse); }
+
+/* 窗口失去焦点：标题变暗，让用户知道哪个窗口在前 */
+body.win-blur .tb-title { color: var(--text-disabled); }
+
+/* ── 8 向缩放热区（无边框窗口自己实现的边缘拖拽） ─────────────────────── */
+
+.rz { position: absolute; z-index: var(--z-float); }
+.rz-n  { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.rz-s  { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.rz-w  { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.rz-e  { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.rz-nw { top: 0; left: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.rz-ne { top: 0; right: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.rz-sw { bottom: 0; left: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.rz-se { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+
+/* ── 输入框 / 下拉 / 多行文本 ─────────────────────────────────────────── */
+
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  width: 100%;
+  min-height: var(--h-control);
+  padding: 0 var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  /* 用 background-color 而不是简写：number / select 还要靠 background-image
+     画自绘箭头，简写会把图一起重置掉。 */
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+textarea {
+  padding: var(--sp-2) var(--sp-3);
+  line-height: var(--lh-normal);
+  resize: none;
+}
+select { cursor: pointer; }
+
+/* 鼠标滑过：边框提亮一档（不改变背景，避免闪） */
+input:not([type="checkbox"]):not([type="radio"]):hover,
+select:hover,
+textarea:hover {
+  border-color: var(--border-strong);
+}
+
+/* 获得焦点：主题色边框 + 轻微外发光 */
+input:not([type="checkbox"]):not([type="radio"]):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  background-color: var(--bg-panel);
+}
+
+::placeholder { color: var(--text-disabled); }
+
+input:disabled, select:disabled, textarea:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* ── 原生控件统一：不许出现系统自带的白色部件 ───────────────────────────
+ * 用户明确反馈「数字框后面的上下箭头是白色的，特别不协调」。系统部件
+ * （spinner / 勾选框 / 下拉箭头 / 日期按钮）无法改色，只能 appearance:none
+ * 之后自己画。这里是唯一允许写原生控件伪元素的地方。
+ */
+
+/* 数字输入：去掉系统 spinner，换成下面的 .num-steps 自绘步进 */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+/* 下拉框：去系统箭头，用主题色 chevron（图形定义在 theme-dark.css） */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: calc(var(--sp-2) * 2 + 12px);
+  background-image: var(--icon-select);
+  background-repeat: no-repeat;
+  background-position: right var(--sp-2) center;
+  background-size: 12px 12px;
+}
+
+/* 搜索框的清除按钮也归零，避免出现系统白叉 */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ── 数字步进区 ───────────────────────────────────────────────────────── */
+
+.has-stepper { position: relative; }
+
+.num-steps {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: var(--w-stepper);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border-default);
+  border-radius: 0 calc(var(--r-md) - 1px) calc(var(--r-md) - 1px) 0;
+}
+
+.num-step {
+  flex: 1 1 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.num-step:hover { background: var(--bg-hover); color: var(--text-primary); }
+.num-step:active { background: var(--bg-active); }
+.num-step:disabled { opacity: .35; cursor: default; background: transparent; }
+
+/* 三角用 border 画：不依赖字体，任何缩放下都清晰 */
+.num-step::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+.num-step.up::before { border-bottom: 5px solid currentColor; }
+.num-step.down::before { border-top: 5px solid currentColor; }
+
+/* 有步进区时给输入框留空间（带单位 / 后缀的再往里让一档） */
+.has-stepper > input { padding-right: calc(var(--w-stepper) + var(--sp-2)); }
+.has-stepper > input.has-suffix { padding-right: calc(var(--w-stepper) + 52px); }
+.num-row.has-unit.has-stepper > input { padding-right: calc(var(--w-stepper) + 40px); }
+.num-row.has-unit .num-unit { right: calc(var(--w-stepper) + var(--sp-2)); }
+.input-wrap.has-stepper .suffix { right: calc(var(--w-stepper) + var(--sp-2)); }
+
+/* ── 按钮 ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: var(--h-control);
+  padding: 0 var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.btn:hover { border-color: var(--border-strong); color: var(--text-primary); }
+.btn:active { background: var(--bg-active); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+/* 主按钮：主题色纵向渐变 + 顶部内高光 + 主题色投影（demo 口径）。
+   渐变端 --accent-2 与投影都从 --theme 派生（theme-dark.css 的 @supports
+   块），换主色自动联动；旧引擎下渐变端/投影取静态兜底值。 */
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  color: var(--accent-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18),
+              0 6px 16px oklch(from var(--theme) l c h / .35);
+}
+.btn-primary:hover {
+  filter: brightness(1.07);
+  color: var(--accent-text);
+}
+.btn-primary:active {
+  filter: brightness(.95);
+  border-color: transparent;
+}
+
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: var(--bg-hover); }
+
+/* 键盘焦点环：鼠标点击不显示，Tab 必须看得见 */
+.btn:focus-visible,
+.tb-btn:focus-visible,
+.icon-btn:focus-visible,
+.tool:focus-visible,
+.tab:focus-visible,
+.cat:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* ── 复选框 ───────────────────────────────────────────────────────────── */
+
+/* 勾选框 / 单选框：系统控件在深色主题下是白底，统一自绘。
+ * 方框与输入框同色系，选中用主题色填充 + 自绘勾；不使用 accent-color
+ * （它只改选中色，空态的白底改不掉）。 */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-content: center;
+  width: var(--sz-check);
+  height: var(--sz-check);
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+input[type="checkbox"]:hover,
+input[type="radio"]:hover { border-color: var(--text-dim); }
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  transform: scale(0);
+  background: var(--accent-text);
+  clip-path: polygon(14% 44%, 0 65%, 40% 100%, 100% 16%, 84% 0, 39% 61%);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+input[type="checkbox"]:checked::before { transform: scale(1); }
+
+input[type="radio"] { border-radius: 50%; }
+input[type="radio"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: scale(0);
+  background: var(--accent-text);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+input[type="radio"]:checked::before { transform: scale(1); }
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled { opacity: .45; cursor: default; }
+
+/* ── 图标按钮 ─────────────────────────────────────────────────────────── */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--w-icon-btn);
+  height: var(--w-icon-btn);
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.icon-btn:disabled { opacity: .45; cursor: default; }
+
+/* 图标统一：不参与基线对齐，避免行高被撑开 */
+.ico { display: inline-flex; flex: 0 0 auto; }
+
+/* ── 品牌 LOGO ─────────────────────────────────────────────────────────
+ * 统一使用 ui/Vexto.svg 徽标；尺寸与布局由使用方给定
+ * （如 .brand .logo { width:30px; height:30px }）。 */
+.logo-badge {
+  background: url("../assets/Vexto.svg") center / contain no-repeat;
+}
+
+/* ── 提示条 ───────────────────────────────────────────────────────────── */
+
+.notice {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.notice-info { background: var(--bg-panel); color: var(--text-secondary); }
+.notice-success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+.notice-warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+.notice-danger { background: var(--danger-bg); border-color: var(--danger-border); color: var(--danger); }
+
+/* ── 工具类 ───────────────────────────────────────────────────────────── */
+
+.hidden { display: none !important; }
+.num { font-variant-numeric: tabular-nums; }
