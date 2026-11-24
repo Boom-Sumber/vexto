@@ -1,3 +1,6 @@
 import "../shared/contextmenu.js";
 import "../shared/theme.js";
-import "../pages/scroll_control.js";
+import { createVextoApp } from "../app.js";
+import ScrollControlApp from "../scroll_control/App.vue";
+
+createVextoApp(ScrollControlApp).mount("#app");

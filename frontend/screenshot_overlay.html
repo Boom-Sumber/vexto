@@ -10,64 +10,8 @@
 <link rel="stylesheet" href="styles/annot_editor.css" />
 <link rel="stylesheet" href="styles/region_select.css" />
 </head>
-<body data-theme="dark" data-purpose="shot">
-  <img id="snap" class="snap" alt="" draggable="false" />
-  <div id="hit"></div>
-  <div id="window-highlight">
-    <span class="h h-tl"></span><span class="h h-tc"></span><span class="h h-tr"></span>
-    <span class="h h-ml"></span><span class="h h-mr"></span>
-    <span class="h h-bl"></span><span class="h h-bc"></span><span class="h h-br"></span>
-  </div>
-  <div id="size-label"></div>
-  <div id="dim"></div>
-  <div id="box">
-    <img id="result" class="result-img" alt="" draggable="false" />
-    <span class="h h-tl"></span><span class="h h-tc"></span><span class="h h-tr"></span>
-    <span class="h h-ml"></span><span class="h h-mr"></span>
-    <span class="h h-bl"></span><span class="h h-bc"></span><span class="h h-br"></span>
-  </div>
-  <canvas id="edit-canvas" class="edit-canvas" hidden></canvas>
-
-  <div id="magnifier">
-    <canvas id="mag-canvas" width="128" height="128"></canvas>
-    <div class="mag-info">
-      <div class="mag-row"><span class="mag-label">坐标</span><span class="mag-value" id="mag-pos">0, 0</span></div>
-      <div class="mag-row"><span class="mag-label">色值</span><span class="mag-value mag-color"><i id="mag-swatch"></i><span id="mag-hex">#000000</span></span></div>
-      <div class="mag-hint" id="mag-hint">按 Ctrl+C 复制色值</div>
-    </div>
-  </div>
-
-  <div id="toolbar">
-    <button class="tb-btn" type="button" data-tool="rect" title="矩形"></button>
-    <button class="tb-btn" type="button" data-tool="ellipse" title="椭圆"></button>
-    <button class="tb-btn" type="button" data-tool="arrow" title="箭头"></button>
-    <button class="tb-btn" type="button" data-tool="pen" title="画笔"></button>
-    <button class="tb-btn" type="button" data-tool="text" title="文字"></button>
-    <button class="tb-btn" type="button" data-tool="mosaic" title="马赛克"></button>
-    <span class="tb-sep"></span>
-    <button class="tb-btn" type="button" data-act="scroll" title="长截图"></button>
-    <span class="tb-sep"></span>
-    <button class="tb-btn" type="button" data-act="preview" title="预览"></button>
-    <button class="tb-btn" type="button" data-act="pin" title="钉屏"></button>
-    <button class="tb-btn" type="button" data-act="copy" title="复制到剪贴板"></button>
-    <button class="tb-btn" type="button" data-act="save" title="保存并复制"></button>
-    <button class="tb-btn tb-close" type="button" data-act="close" title="关闭（不保存不复制）"></button>
-  </div>
-  <div id="scroll-hint">按 L 键开始滚动截图</div>
-  <div id="toast" role="status" aria-live="polite"></div>
-
-  <div id="card">
-    <div id="card-tag" class="card-tag"></div>
-    <div id="card-original" class="original"></div>
-    <div id="card-text" class="translated"></div>
-    <div id="shotPath" class="shot-path" style="display:none"></div>
-    <div id="card-acts" class="card-acts">
-      <button id="pinBtn" class="btn" type="button" style="display:none">钉屏</button>
-      <button id="previewBtn" class="btn" type="button" style="display:none">预览</button>
-      <button id="copyBtn" class="btn" type="button">复制译文</button>
-      <button id="closeBtn" class="btn btn-primary" type="button">关闭</button>
-    </div>
-  </div>
+<body data-theme="dark">
+  <div id="app"></div>
 
   <script type="module" src="./entries/screenshot_overlay.js"></script>
 </body>

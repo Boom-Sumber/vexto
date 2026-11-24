@@ -11,6 +11,7 @@ const Icons = (function () {
     // 窗口控制
     minimize: '<path d="M5 12h14"/>',
     maximize: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     restore:
       '<rect x="4" y="8" width="12" height="12" rx="2"/>' +
       '<path d="M8 4h10a2 2 0 0 1 2 2v10"/>',

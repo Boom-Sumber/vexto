@@ -1,9 +1,11 @@
 // 滚动截图进度窗（S7 会话 62）。
 // 后端在工作线程跑主循环，这里只显示进度与三态结果；「停止」写一个
 // 原子标志，主循环在下一拍看到就收尾。
-(function () {
+import { t } from "../i18n/index.js";
+
+export function startScrollControl(root) {
   const invoke = window.__TAURI__.core.invoke;
-  const el = (id) => document.getElementById(id);
+  const el = (id) => root.querySelector("#" + id);
   let finished = false;
   let closeTimer = 0;
   let lastPath = "";
@@ -17,8 +19,8 @@
     const height = p.height || 0;
     el("scr-line").textContent =
       p.stage === "writing"
-        ? "正在写盘…"
-        : `已拼接 ${frames} 帧 · ${height} px`;
+        ? t("scroll.writing")
+        : t("scroll.progress", { frames, height });
     // 帧数上限是 100，用它当粗略进度；总高上限另看 height。
     const pct = Math.min(100, Math.max(4, Math.round((frames / 100) * 100)));
     el("scr-fill").style.width = pct + "%";
@@ -49,7 +51,7 @@
 
   el("scr-stop").addEventListener("click", () => {
     el("scr-stop").disabled = true;
-    el("scr-line").textContent = "正在停止…";
+    el("scr-line").textContent = t("scroll.stopping");
     invoke("scroll_stop").catch(() => {});
   });
 
@@ -64,4 +66,4 @@
       invoke("scroll_close").catch(() => {});
     }
   });
-})();
+}

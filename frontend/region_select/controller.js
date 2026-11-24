@@ -4,15 +4,12 @@
 // - 截图 / 滚动（会话 65 改版）：打开前由后端抓一张全屏快照，页面显示冻结画面；
 //   选区内部完全透明，只有绿色边框；鼠标旁有放大取色镜；松手后不保存，
 //   选区保留并在下方显示动作栏。
-(function () {
+import { t } from "../i18n/index.js";
+
+export function startRegionSelect(root, purposeName) {
   const invoke = window.__TAURI__.core.invoke;
-  const el = (id) => document.getElementById(id);
-  const purpose =
-    document.body.dataset.purpose === "shot"
-      ? "shot"
-      : document.body.dataset.purpose === "scroll"
-        ? "scroll"
-        : "ocr";
+  const el = (id) => root.querySelector("#" + id);
+  const purpose = purposeName === "shot" || purposeName === "scroll" ? purposeName : "ocr";
   const enhanced = purpose !== "ocr";
   const api =
     purpose === "scroll"
@@ -123,7 +120,7 @@
         }
         if (!s || !s.url) {
           invoke("window_ready").catch(() => {});
-          showToast("截图初始化失败，请按 Esc 重试", true, 0);
+          showToast(t("region.initFailed"), true, 0);
           return;
         }
         meta.border = Math.min(5, Math.max(3, Number(s.border) || 3));
@@ -142,13 +139,13 @@
         };
         img.onerror = () => {
           invoke("window_ready").catch(() => {});
-          showToast("截图快照加载失败，请按 Esc 重试", true, 0);
+          showToast(t("region.snapFailed"), true, 0);
         };
         img.src = s.url;
       })
       .catch(() => {
         invoke("window_ready").catch(() => {});
-        showToast("截图初始化失败，请按 Esc 重试", true, 0);
+        showToast(t("region.initFailed"), true, 0);
       });
     el("hit").addEventListener("mousedown", onDown);
     bindToolbar();
@@ -537,7 +534,7 @@
   }
 
   function updateScrollButton() {
-    const btn = document.querySelector('#toolbar [data-act="scroll"]');
+    const btn = root.querySelector('#toolbar [data-act="scroll"]');
     if (!btn) return;
     btn.disabled = !!resultKind || busy || (editor ? editor.hasAnnotations() : false);
   }
@@ -565,7 +562,7 @@
         const img = el("result");
         if (!img || !img.naturalWidth || !img.naturalHeight) return;
         if (img.naturalWidth * img.naturalHeight > 16000000) {
-          showToast("结果图太大（超过 1600 万像素），暂不支持标注", true);
+          showToast(t("region.tooLargeResult"), true);
           return;
         }
         const boxEl = el("box");
@@ -590,13 +587,13 @@
       } else {
         const dpr = window.devicePixelRatio || 1;
         if (Math.round(sel.w * dpr) * Math.round(sel.h * dpr) > 16000000) {
-          showToast("选区太大（超过 1600 万像素），暂不支持标注", true);
+          showToast(t("region.tooLargeSelection"), true);
           return;
         }
         const base = buildBaseCanvas();
         if (!base) return;
         if (base.width * base.height > 16000000) {
-          showToast("选区太大（超过 1600 万像素），暂不支持标注", true);
+          showToast(t("region.tooLargeSelection"), true);
           return;
         }
         editCanvas.hidden = false;
@@ -796,7 +793,7 @@
     sel = rect;
     busy = true;
     setBox(rect.x, rect.y, rect.w, rect.h);
-    enterCapture("滚动中… 用进度窗停止");
+    enterCapture(t("region.scrollCapturing"));
     invoke("scroll_start", {
       x: rect.x,
       y: rect.y,
@@ -814,13 +811,13 @@
   function startScrollFromShot() {
     if (!sel || busy || resultKind) return;
     if (editor && editor.hasAnnotations()) {
-      showToast("有标注时不能滚动截图，请先关闭重来", true);
+      showToast(t("region.scrollBlocked"), true);
       return;
     }
     stopEdit();
     hideHint();
     busy = true;
-    enterCapture("滚动中… 用进度窗停止");
+    enterCapture(t("region.scrollCapturing"));
     invoke("scroll_start", {
       x: sel.x,
       y: sel.y,
@@ -878,11 +875,11 @@
     el("toolbar").classList.add("on");
     setBarBusy(false);
     // 滚动完成后长截图按钮置灰；普通选区完成态仍可用（enterDone 会重新启用）。
-    const scrollBtn = document.querySelector('#toolbar [data-act="scroll"]');
+    const scrollBtn = root.querySelector('#toolbar [data-act="scroll"]');
     if (scrollBtn) scrollBtn.disabled = true;
     positionToolbar(sel || { x: 0, y: 0, w: 0, h: 0 });
     showToast(
-      kind === "full" ? "全屏截图 · 保存或关闭" : "滚动截图完成 · 保存或关闭",
+      kind === "full" ? t("region.fullShotDone") : t("region.scrollShotDone"),
       false,
       0
     );
@@ -892,7 +889,7 @@
     const p = e.payload || {};
     busy = false;
     if (!p.url) {
-      showToast(p.message || "滚动截图失败", true, 4000);
+      showToast(p.message || t("region.scrollFailed"), true, 4000);
       return;
     }
     showResultFrame("scroll", p.url);
@@ -956,7 +953,7 @@
       mosaic: "mosaic",
     };
     for (const [name, icon] of Object.entries(tools)) {
-      const btn = document.querySelector('#toolbar [data-tool="' + name + '"]');
+      const btn = root.querySelector('#toolbar [data-tool="' + name + '"]');
       if (btn) btn.innerHTML = Icons.svg(icon, 24);
     }
     const acts = {
@@ -968,7 +965,7 @@
       close: "trash",
     };
     for (const [name, icon] of Object.entries(acts)) {
-      const btn = document.querySelector('#toolbar [data-act="' + name + '"]');
+      const btn = root.querySelector('#toolbar [data-act="' + name + '"]');
       if (btn) btn.innerHTML = Icons.svg(icon, 24);
     }
   }
@@ -991,7 +988,7 @@
     if (!editor.hasAnnotations()) return null;
     const blob = await editor.composeBlob();
     const r = await invoke("shot_edited_commit", await blob.arrayBuffer());
-    if (!r || !r.ok) throw new Error((r && r.message) || "应用标注失败");
+    if (!r || !r.ok) throw new Error((r && r.message) || t("region.annotFailed"));
     return r.name;
   }
 
@@ -1003,29 +1000,29 @@
     }
     busy = true;
     setBarBusy(true);
-    showToast("处理中…", false, 0);
+    showToast(t("region.processing"), false, 0);
     let ok = false;
     try {
       let message = "";
       const name = await commitAnnotated();
       if (name) {
         const r = await invoke("shot_edited_action", { action: act, name });
-        if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
-        message = r.message || "完成";
+        if (!r || !r.ok) throw new Error((r && r.message) || t("region.actionFailed"));
+        message = r.message || t("region.done");
       } else if (resultKind) {
         const map = { copy: "clipboard", save: "save_copy", pin: "pin", preview: "preview" };
         const action = map[act];
-        if (!action) throw new Error("未知操作");
+        if (!action) throw new Error(t("region.unknownAction"));
         const r = await invoke("result_action", { action });
-        if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
-        message = r.message || "完成";
+        if (!r || !r.ok) throw new Error((r && r.message) || t("region.actionFailed"));
+        message = r.message || t("region.done");
       } else {
         const map = { copy: "clipboard", save: "save_copy", pin: "pin", preview: "preview" };
         const action = map[act];
-        if (!action) throw new Error("未知操作");
+        if (!action) throw new Error(t("region.unknownAction"));
         const r = await invoke("shot_action", { action, sel: selectionArgs() });
-        if (!r || !r.ok) throw new Error((r && r.message) || "操作失败");
-        message = r.message || "完成";
+        if (!r || !r.ok) throw new Error((r && r.message) || t("region.actionFailed"));
+        message = r.message || t("region.done");
       }
       showToast(message, false);
       ok = true;
@@ -1042,7 +1039,7 @@
   async function runLegacyAction(act) {
     busy = true;
     setBarBusy(true);
-    showToast("处理中…", false, 0);
+    showToast(t("region.processing"), false, 0);
     try {
       const isResult = resultKind === "scroll" || resultKind === "full";
       const cmd = isResult ? "result_action" : "shot_action";
@@ -1051,10 +1048,10 @@
         : { action: act, sel: selectionArgs() };
       const r = await invoke(cmd, args);
       if (!r || !r.ok) {
-        showToast((r && r.message) || "操作失败", true);
+        showToast((r && r.message) || t("region.actionFailed"), true);
         return;
       }
-      showToast(r.message || "完成", false);
+      showToast(r.message || t("region.done"), false);
       if (act === "save_as" && !r.path) return;
       if (act === "pin" || act === "preview" || act === "default" || act === "save_as") {
         setTimeout(cancel, 80);
@@ -1165,11 +1162,11 @@
         .then(() => {
           const hint = el("mag-hint");
           if (hint) {
-            hint.textContent = "已复制 " + magHex;
+            hint.textContent = t("region.copiedColor", { color: magHex });
             hint.classList.add("copied");
             if (copiedTimer) clearTimeout(copiedTimer);
             copiedTimer = setTimeout(() => {
-              hint.textContent = "按 Ctrl+C 复制色值";
+              hint.textContent = t("region.copyColorHint");
               hint.classList.remove("copied");
             }, 1100);
           }
@@ -1196,11 +1193,11 @@
   function showLoading(px, py) {
     anchorX = px + 14;
     anchorY = py + 18;
-    el("card-tag").textContent = "截图翻译";
+    el("card-tag").textContent = t("region.screenshotTranslate");
     el("card-original").textContent = "";
     el("card-original").style.display = "none";
     el("card-text").className = "loading-dots";
-    el("card-text").textContent = "识别中…";
+    el("card-text").textContent = t("region.recognizing");
     el("card-acts").style.display = "none";
     placeCard(anchorX, anchorY);
   }
@@ -1208,7 +1205,9 @@
   function showResult(p) {
     el("card-original").style.display = "";
     el("card-acts").style.display = "";
-    el("card-tag").textContent = p.ok ? "截图翻译 · " + (p.from || "") : "截图翻译";
+    el("card-tag").textContent = p.ok
+      ? t("region.screenshotTranslateFrom", { from: p.from || "" })
+      : t("region.screenshotTranslate");
     if (p.ok) {
       translated = p.translated || "";
       el("card-original").textContent = p.original || "";
@@ -1219,7 +1218,7 @@
       translated = "";
       el("card-original").textContent = "";
       el("card-text").className = "translated card-error";
-      el("card-text").textContent = p.error || "识别失败";
+      el("card-text").textContent = p.error || t("region.recognizeFailed");
       placeCard(anchorX, anchorY);
     }
   }
@@ -1228,4 +1227,4 @@
     if (translated) invoke("copy_text", { text: translated }).catch(() => {});
   });
   el("closeBtn").addEventListener("click", cancel);
-})();
+}

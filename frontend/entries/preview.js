@@ -2,7 +2,7 @@ import "../shared/contextmenu.js";
 import "../shared/theme.js";
 import "../shared/icons.js";
 import "../shared/annot_editor.js";
-import "../shared/titlebar.js";
-import "../pages/preview.js";
+import { createVextoApp } from "../app.js";
+import PreviewApp from "../preview/App.vue";
 
-TitleBar.mount();
+createVextoApp(PreviewApp).mount("#app");

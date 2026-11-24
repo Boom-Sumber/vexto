@@ -1,4 +1,8 @@
 import "../shared/contextmenu.js";
 import "../shared/theme.js";
 import "../shared/icons.js";
-import "../pages/region_select.js";
+import { createVextoApp } from "../app.js";
+import RegionApp from "../region_select/App.vue";
+
+document.body.dataset.purpose = "scroll";
+createVextoApp(RegionApp).mount("#app");

@@ -1,9 +1,11 @@
 // 钉屏（会话 63 / 66）：单窗多图。图片走自定义 vextoimg 协议，本页只换
 // <img> 的 src，不接收任何图片字节（ADR-040 / ADR-044）。
 // 悬停时显示顶部操作条；滚轮缩放由后端按窗口中心调整窗口大小。
-(function () {
+import { t } from "../i18n/index.js";
+
+export function startPin(root) {
   const invoke = window.__TAURI__.core.invoke;
-  const el = (id) => document.getElementById(id);
+  const el = (id) => root.querySelector("#" + id);
   let zoomBusy = false;
   let baseW = 0;
   let baseH = 0;
@@ -156,7 +158,7 @@
   el("stage").addEventListener("click", (ev) => {
     if (ev.target === el("stage")) setSelected(false);
   });
-  for (const h of document.querySelectorAll("#frame .ph")) {
+  for (const h of root.querySelectorAll("#frame .ph")) {
     h.addEventListener("pointerdown", beginResize);
   }
   window.addEventListener("resize", () => requestAnimationFrame(positionFrame));
@@ -179,10 +181,10 @@
     invoke("pin_preview")
       .then((r) => {
         if (r && r.ok) {
-          flash(r.message || "已打开预览");
+          flash(r.message || t("pin.previewOpened"));
           setTimeout(() => invoke("pin_close").catch(() => {}), 80);
         } else {
-          flash((r && r.message) || "打开预览失败", true);
+          flash((r && r.message) || t("pin.previewFailed"), true);
         }
       })
       .catch((e) => flash(String(e), true));
@@ -192,13 +194,13 @@
     invoke("pin_copy")
       .then((r) => {
         if (!r || !r.ok) {
-          flash((r && r.message) || "复制失败", true);
+          flash((r && r.message) || t("pin.copyFailed"), true);
           return;
         }
         const btn = el("copy");
         btn.classList.add("copied");
         setTimeout(() => btn.classList.remove("copied"), 700);
-        flash("已复制图片");
+        flash(t("pin.copiedImage"));
       })
       .catch((e) => flash(String(e), true));
   });
@@ -227,4 +229,4 @@
     else if (e.key === "ArrowLeft") step(-1);
     else if (e.key === "ArrowRight") step(1);
   });
-})();
+}

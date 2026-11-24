@@ -2,9 +2,11 @@
 // 完成。本页只负责显示与收集 head/tail，不接收图片字节（ADR-040 / ADR-044）。
 //
 // 会话 95 起标注能力抽到 ui/annot_editor.js，与截图选区工具条共用。
-(function () {
+import { t } from "../i18n/index.js";
+
+export function startPreview(root, { onReady } = {}) {
   const invoke = window.__TAURI__.core.invoke;
-  const el = (id) => document.getElementById(id);
+  const el = (id) => root.querySelector("#" + id);
   const img = el("pv-img");
   const headEl = el("pv-head");
   const tailEl = el("pv-tail");
@@ -53,7 +55,7 @@
 
   function applyState(p) {
     if (!p || !p.url) {
-      el("pv-info").textContent = "没有可预览的图片";
+      el("pv-info").textContent = t("preview.noImage");
       state = { url: "", width: 0, height: 0 };
       imgReady = false;
       editor.setEnabled(false);
@@ -176,11 +178,11 @@
     if (hintEl) {
       if (state.url && state.width && state.height && !imageEditable()) {
         hintEl.textContent =
-          "图片过大（" + state.width + "×" + state.height + "），暂不支持标注";
+          t("preview.tooLargeNote", { w: state.width, h: state.height });
       } else if (editor.tool) {
-        hintEl.textContent = "拖动绘制；点已有图形可移动 / 缩放";
+        hintEl.textContent = t("preview.editDraw");
       } else {
-        hintEl.textContent = "点图形可移动 / 缩放；选工具后拖动绘制";
+        hintEl.textContent = t("preview.editSelect");
       }
     }
   }
@@ -196,8 +198,8 @@
     if (!t) editor.closePopup();
     if (hintEl) {
       hintEl.textContent = t
-        ? "拖动绘制；点已有图形可移动 / 缩放"
-        : "点图形可移动 / 缩放；选工具后拖动绘制";
+        ? t("preview.editDraw")
+        : t("preview.editSelect");
     }
   }
 
@@ -220,7 +222,7 @@
   async function act(kind) {
     if (busy) return;
     if (!state.url) {
-      msg("没有可预览的图片", "error");
+      msg(t("preview.noImage"), "error");
       return;
     }
     editor.commitPending();
@@ -228,10 +230,10 @@
     try {
       if (editor.hasAnnotations()) {
         if (!imageEditable()) {
-          msg("图片过大，暂不支持标注", "error");
+          msg(t("preview.tooLarge"), "error");
           return;
         }
-        msg("正在应用标注…", "progress");
+        msg(t("preview.applyingAnnot"), "progress");
         let blob;
         try {
           blob = await editor.composeBlob({
@@ -246,7 +248,7 @@
         }
         const r = await invoke("preview_commit_edited", await blob.arrayBuffer());
         if (!r || !r.ok) {
-          msg((r && r.message) || "应用标注失败", "error");
+          msg((r && r.message) || t("preview.annotFailed"), "error");
           return;
         }
         applyState(r.state);
@@ -261,7 +263,7 @@
         labels();
       }
 
-      msg(kind === "ocr" ? "识别中…" : "处理中…", "progress");
+      msg(kind === "ocr" ? t("preview.recognizing") : t("preview.processing"), "progress");
       const r = await invoke("preview_action", {
         head,
         tail,
@@ -270,10 +272,10 @@
         action: kind,
       });
       if (!r || !r.ok) {
-        msg((r && r.message) || "操作失败", "error");
+        msg((r && r.message) || t("preview.actionFailed"), "error");
         return;
       }
-      msg(r.message || "完成");
+      msg(r.message || t("preview.done"));
       if (kind === "ocr") {
         el("pv-ocr-box").hidden = false;
         el("pv-ocr-text").textContent = r.text || "";
@@ -288,13 +290,13 @@
   async function translateOcr() {
     const text = el("pv-ocr-text").textContent.trim();
     if (!text) {
-      msg("没有可翻译的文字", "error");
+      msg(t("preview.noText"), "error");
       return;
     }
     try {
       const r = await invoke("translate_text", { text, mode: "select" });
       if (!r || !r.ok) {
-        msg((r && r.message) || "翻译失败", "error");
+        msg((r && r.message) || t("preview.translateFailed"), "error");
       }
     } catch (e) {
       msg(String(e));
@@ -304,7 +306,7 @@
   invoke("preview_state")
     .then(applyState)
     .catch(() => {})
-    .finally(() => window.TitleBar?.reveal?.());
+    .finally(() => onReady && onReady());
   window.__TAURI__.event.listen("preview:state", (e) => applyState(e.payload || {}));
 
   headEl.addEventListener("input", clamp);
@@ -368,7 +370,7 @@
   el("pv-open-dir").addEventListener("click", () => {
     invoke("preview_open_save_dir")
       .then((r) => {
-        if (!r || !r.ok) msg((r && r.message) || "打开目录失败", "error");
+        if (!r || !r.ok) msg((r && r.message) || t("preview.openDirFailed"), "error");
       })
       .catch((e) => msg(String(e)));
   });
@@ -400,4 +402,4 @@
       close();
     }
   });
-})();
+}
