@@ -74,6 +74,9 @@ png = "0.18"
 # 截图文件名 `$uuid$` 格式（会话 81）。lanflare 已传递依赖 uuid，
 # 这里只把它提升为直接依赖并开 v4，不新增下载。
 uuid = { version = "1", features = ["v4"] }
+# 首窗冷启动暗帧（风险 128）：设置 WebView2 的默认底色。webview2-com 已是
+# tauri-runtime-wry 的传递依赖（0.39），这里只提升为直接依赖，不新增下载。
+webview2-com = "0.39"
 
 # ── 实验分支 exp/ocr-paddle：PaddleOCR ONNX（只在本分支，不合并 main）──
 pure-onnx-ocr = "0.3"

@@ -2929,6 +2929,7 @@ dependencies = [
  "tokio-util",
  "uiautomation",
  "uuid",
+ "webview2-com",
  "whatlang",
  "windows",
  "windows-future",

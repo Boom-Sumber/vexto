@@ -137,6 +137,80 @@ const OUTSIDE_POLL_MS: u64 = 30;
 pub(crate) const WEBVIEW_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
 
+/// 首窗冷启动暗帧（风险 128）：窗口底色与 WebView2 默认底色都取当前主题的
+/// `--bg-app`。只给不透明窗口用；popup / pin / 截图浮层仍是透明窗，不能铺色。
+#[cfg(windows)]
+fn theme_bg() -> (u8, u8, u8) {
+    let mode = crate::config::load().appearance_theme;
+    theme_bg_for(&mode, system_prefers_light())
+}
+
+fn theme_bg_for(mode: &str, system_light: Option<bool>) -> (u8, u8, u8) {
+    let light = match mode {
+        "light" => true,
+        "dark" => false,
+        // system / 空值：跟 Windows 应用模式；读不到就按深色兜底。
+        _ => system_light.unwrap_or(false),
+    };
+    if light {
+        (0xf2, 0xf2, 0xf6)
+    } else {
+        (0x0b, 0x0b, 0x0f)
+    }
+}
+
+#[cfg(windows)]
+fn system_prefers_light() -> Option<bool> {
+    use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::System::Registry::{
+        RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD,
+    };
+    let sub = HSTRING::from(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+    let val = HSTRING::from("AppsUseLightTheme");
+    let mut data: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let r = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(sub.as_ptr()),
+            PCWSTR(val.as_ptr()),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut u32 as *mut core::ffi::c_void),
+            Some(&mut size),
+        )
+    };
+    r.is_ok().then_some(data != 0)
+}
+
+/// WebView2 自身也有一层默认底色；窗口底色之外再把它设成同一颜色，
+/// 避免首帧在「窗口已显示、页面尚未提交」时露出 WebView2 的白色默认面。
+#[cfg(windows)]
+fn apply_webview_background(win: &tauri::WebviewWindow, bg: (u8, u8, u8)) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_COLOR, ICoreWebView2Controller2,
+    };
+    use windows::core::Interface;
+    let color = COREWEBVIEW2_COLOR {
+        A: 255,
+        R: bg.0,
+        G: bg.1,
+        B: bg.2,
+    };
+    if let Err(e) = win.with_webview(move |webview| {
+        let controller = webview.controller();
+        let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() else {
+            crate::dlog::dlog("webview controller has no ICoreWebView2Controller2");
+            return;
+        };
+        if let Err(e) = unsafe { controller2.SetDefaultBackgroundColor(color) } {
+            crate::dlog::dlog(&format!("set webview background failed: {e}"));
+        }
+    }) {
+        crate::dlog::dlog(&format!("with_webview failed: {e}"));
+    }
+}
+
 /// 最近一次要渲染的内容。前端加载完成前发的 `popup-render` 会丢，留一份给它补发。
 static PENDING: std::sync::Mutex<Option<Value>> = std::sync::Mutex::new(None);
 
@@ -692,6 +766,7 @@ pub fn open_settings(app: &AppHandle) {
         return;
     }
 
+    let bg = theme_bg();
     let r = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
         .title("Vexto 设置")
         // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。设置页字段多、路径长，
@@ -708,12 +783,13 @@ pub fn open_settings(app: &AppHandle) {
         // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
         // 先藏着，等前端 load 完调 window_ready 再显示；深色窗口底色是双保险。
         .visible(false)
-        .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
+        .background_color(tauri::window::Color(bg.0, bg.1, bg.2, 255))
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
 
     match r {
         Ok(win) => {
+            apply_webview_background(&win, bg);
             // 窗口销毁后收缩工作集。必须是 destroy 语义（关闭即销毁），不能用 hide，
             // 否则 6 个 msedgewebview2.exe 会一直驻留（ADR-007）。
             win.on_window_event(|ev| {
@@ -740,6 +816,7 @@ pub fn open_main_window(app: &AppHandle) {
         return;
     }
 
+    let bg = theme_bg();
     let r = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("main.html".into()))
         .title("Vexto 下载")
         // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。任务列表可按
@@ -753,12 +830,13 @@ pub fn open_main_window(app: &AppHandle) {
         // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
         // 先藏着，等前端 load 完调 window_ready 再显示；深色窗口底色是双保险。
         .visible(false)
-        .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
+        .background_color(tauri::window::Color(bg.0, bg.1, bg.2, 255))
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
 
     match r {
         Ok(win) => {
+            apply_webview_background(&win, bg);
             // 新建的窗口要抢焦点：实测不调 set_focus() 时，热键入队后窗口会
             // 落在其它窗口后面，用户以为「没反应」（会话 14 实机取证）。
             // 只有已存在的分支会走上面的 set_focus，新建分支必须自己补。
@@ -866,6 +944,7 @@ pub fn open_scroll_control(app: &AppHandle, sel: (i32, i32, i32, i32), dpr: f64)
         .find(|(x, y)| !overlaps((*x, *y, pw, ph), (sx, sy, sw, sh)))
         .unwrap_or(candidates[0]);
 
+    let bg = theme_bg();
     let r = WebviewWindowBuilder::new(
         app,
         SCROLL_CONTROL_LABEL,
@@ -881,11 +960,13 @@ pub fn open_scroll_control(app: &AppHandle, sel: (i32, i32, i32, i32), dpr: f64)
     // 不抢焦点：抢了之后用户没法在目标窗口里继续滚（半自动模式）。
     .focused(false)
     .inner_size(logical_w, logical_h)
+    .background_color(tauri::window::Color(bg.0, bg.1, bg.2, 255))
     .additional_browser_args(WEBVIEW_ARGS)
     .build();
 
     match r {
         Ok(win) => {
+            apply_webview_background(&win, bg);
             let _ = win.set_position(tauri::PhysicalPosition::new(px, py));
         }
         Err(e) => crate::dlog::dlog(&format!("create scroll control failed: {e}")),
@@ -958,6 +1039,7 @@ pub fn open_preview_window(app: &AppHandle) {
         return;
     }
     // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md，项目内所有窗口统一）。
+    let bg = theme_bg();
     let r = WebviewWindowBuilder::new(
         app,
         PREVIEW_LABEL,
@@ -970,11 +1052,12 @@ pub fn open_preview_window(app: &AppHandle) {
     .min_inner_size(640.0, 480.0)
     .visible(false)
     .center()
-    .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
+    .background_color(tauri::window::Color(bg.0, bg.1, bg.2, 255))
     .additional_browser_args(WEBVIEW_ARGS)
     .build();
     match r {
         Ok(win) => {
+            apply_webview_background(&win, bg);
             win.on_window_event(|ev| {
                 if matches!(ev, tauri::WindowEvent::Destroyed) {
                     crate::screenshot::preview::on_window_destroyed();
@@ -1079,6 +1162,7 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<NewTaskPrefill>) {
         return;
     }
 
+    let bg = theme_bg();
     let r = WebviewWindowBuilder::new(app, NEW_TASK_LABEL, WebviewUrl::App("new_task.html".into()))
         .title("新建任务")
         // 无边框 + 自绘标题栏（用户要求）。系统标题栏去掉后，拖动只能靠前端
@@ -1093,12 +1177,13 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<NewTaskPrefill>) {
         // 会话 32：WebView2 首帧是白底，窗口一建出来就 show 会闪一下白屏。
         // 先藏着，等前端 load 完调 window_ready 再显示；深色窗口底色是双保险。
         .visible(false)
-        .background_color(tauri::window::Color(0x16, 0x18, 0x1d, 255))
+        .background_color(tauri::window::Color(bg.0, bg.1, bg.2, 255))
         .additional_browser_args(WEBVIEW_ARGS)
         .build();
 
     match r {
         Ok(win) => {
+            apply_webview_background(&win, bg);
             let _ = win.set_focus();
             win.on_window_event(|ev| {
                 if matches!(ev, tauri::WindowEvent::Destroyed) {
@@ -1154,6 +1239,19 @@ mod tests {
         assert_eq!(to_physical(POPUP_W, 2.0), 888.0);
         // 卡片边距也要同比例放大，否则“点外部关闭”会把可见卡片边缘算进去。
         assert_eq!(to_physical(CARD_PAD_X as f64, 1.5), 18.0);
+    }
+
+    /// 首窗冷启动暗帧（风险 128）：窗口 / WebView2 底色必须跟当前主题一致。
+    #[test]
+    fn theme_bg_matches_theme_and_system() {
+        assert_eq!(theme_bg_for("light", None), (0xf2, 0xf2, 0xf6));
+        assert_eq!(theme_bg_for("dark", Some(true)), (0x0b, 0x0b, 0x0f));
+        // system：跟注册表；读不到按深色兜底。
+        assert_eq!(theme_bg_for("system", Some(true)), (0xf2, 0xf2, 0xf6));
+        assert_eq!(theme_bg_for("system", Some(false)), (0x0b, 0x0b, 0x0f));
+        assert_eq!(theme_bg_for("system", None), (0x0b, 0x0b, 0x0f));
+        // 空值（旧配置缺字段）也按 system 处理。
+        assert_eq!(theme_bg_for("", Some(true)), (0xf2, 0xf2, 0xf6));
     }
 
     /// 开回极轻模式时只回收「别人」：设置窗口必须留着，用户正在里面点保存。
