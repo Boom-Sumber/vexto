@@ -437,7 +437,7 @@ function addPrefill(payload) {
 }
 
 (async function init() {
-  Theme.apply(); // 外观：主题三态 + 主色调
+  await Theme.apply(); // 外观：主题三态 + 主色调
   // 限速 / 连接数 / UA 的默认值来自设置（会话 25 用户要求）。
   // 一次取回：串四个 IPC 会让窗口先画出空框再一个个跳值。
   try {

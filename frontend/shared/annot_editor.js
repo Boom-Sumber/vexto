@@ -1,7 +1,7 @@
 // 共享标注编辑器（会话 95）：预览窗与截图选区工具条共用。
 // 只负责画布上的图元、选中/移动/缩放、文字、马赛克与合成 PNG；
 // 交付（存盘 / 剪贴板 / 钉屏 / 预览）由宿主页面决定。
-(function () {
+const AnnotEditor = (function () {
   const WIDTHS = [2, 4, 8];
   const TEXT_SIZES = [14, 20, 28];
   const COLORS = ["#f0566d", "#f59e0b", "#22c55e", "#3b82f6", "#ffffff", "#111111"];
@@ -1186,5 +1186,8 @@
     };
   }
 
-  window.AnnotEditor = { create };
+  return { create };
 })();
+
+window.AnnotEditor = AnnotEditor;
+export { AnnotEditor };

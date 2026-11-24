@@ -6,7 +6,7 @@
 // - 尺寸只用 14 / 16 / 20 三档（标题栏 14，正文 16，侧栏 / 强调 20）；
 // - 不写 fill，需要填充的单独标注。
 
-window.Icons = (function () {
+const Icons = (function () {
   const P = {
     // 窗口控制
     minimize: '<path d="M5 12h14"/>',
@@ -244,3 +244,6 @@ window.Icons = (function () {
 
   return { svg, raw, fill, has, names: () => Object.keys(P).concat(Object.keys(RAW)) };
 })();
+
+window.Icons = Icons;
+export { Icons };

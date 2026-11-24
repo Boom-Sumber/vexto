@@ -13,7 +13,7 @@
 // - 宿主加 `.has-stepper`，输入框的右内边距由 CSS 自动让出；
 // - 按钮 `tabindex="-1"`，键盘焦点始终留在输入框（Tab 顺序不变）。
 
-window.NumField = (function () {
+const NumField = (function () {
   /// 步长：显式 step 优先，否则 1；不合法一律当 1。
   function stepOf(input) {
     const s = parseFloat(input.step);
@@ -105,3 +105,6 @@ window.NumField = (function () {
 
   return { enhance, scan };
 })();
+
+window.NumField = NumField;
+export { NumField };

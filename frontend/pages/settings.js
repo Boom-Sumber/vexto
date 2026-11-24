@@ -2095,7 +2095,7 @@ async function aboutOpenDir(info) {
 // ── 启动 ─────────────────────────────────────────────────────────────────
 
 async function boot() {
-  Theme.apply(); // 外观：主题三态 + 主色调（本页改动经 commit 事件即时预览）
+  await Theme.apply(); // 外观：主题三态 + 主色调（本页改动经 commit 事件即时预览）
   await reloadTools();
 
   // 托盘点了某个工具、或从别处跳过来：定位到它
