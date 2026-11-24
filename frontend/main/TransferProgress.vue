@@ -94,7 +94,7 @@ function fileStatus(f) {
 </script>
 
 <template>
-  <section id="tp" class="tp" :class="{ hidden: !transfer.tpOpen.value }" aria-label="传输进度">
+  <section id="tp" class="tp" :class="{ hidden: !transfer.tpOpen.value }" :aria-label="$t('main.tpAriaLabel')">
     <header class="tp-head">
       <div class="tp-title">{{ title }}</div>
       <div class="tp-sub">{{ sub }}</div>

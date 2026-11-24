@@ -446,6 +446,11 @@ pub struct Config {
     pub lite_mode: bool,
 
     // ---- 外观 ----
+    /// 界面语言：`system` | `zh-CN` | `en` | `ja` | `ko` | `es`。
+    /// **默认跟随系统**；Windows 语言不在支持列表时回落英文。
+    /// 只影响界面文案，不影响翻译功能的目标语言。
+    #[serde(default = "d_ui_language")]
+    pub ui_language: String,
     /// 主题：`dark` | `light` | `system`（跟随 Windows 应用模式）。
     /// **默认跟随系统**（会话 90 用户要求，ADR-067）。只影响前端 `body[data-theme]`，
     /// 不参与任何后端行为（外观功能会话）。
@@ -592,6 +597,9 @@ fn d_click_folder() -> String {
 fn d_version() -> u32 {
     1
 }
+fn d_ui_language() -> String {
+    "system".to_string()
+}
 fn d_appearance_theme() -> String {
     "system".to_string()
 }
@@ -699,6 +707,7 @@ impl Default for Config {
             update_download_source: d_update_download_source(),
             update_custom_proxy: String::new(),
             lite_mode: false,
+            ui_language: d_ui_language(),
             appearance_theme: d_appearance_theme(),
             accent_color: d_accent_color(),
             version: d_version(),
@@ -1627,6 +1636,20 @@ mod tests {
         .unwrap();
         assert_eq!(c2.appearance_theme, "system");
         assert_eq!(c2.accent_color, "#3b82f6");
+    }
+
+    /// 界面语言（会话 111）：老配置缺省 → 跟随系统；显式值原样读写。
+    #[test]
+    fn ui_language_defaults_to_system_and_roundtrips() {
+        let c: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.ui_language, "system");
+
+        let c2: Config = serde_json::from_str(r#"{"ui_language":"ja"}"#).unwrap();
+        assert_eq!(c2.ui_language, "ja");
+        assert_eq!(
+            serde_json::to_value(c2).unwrap()["ui_language"],
+            serde_json::json!("ja")
+        );
     }
 
     /// 会话 107：默认主色必须与色板第一位一致。

@@ -12,6 +12,7 @@
 //! 菜单 id 约定：叶子项用固定字符串，子菜单只是容器。
 
 use crate::QUITTING;
+use rust_i18n::t;
 use std::sync::atomic::Ordering;
 use std::sync::Mutex;
 use tauri::menu::{IconMenuItem, Menu, PredefinedMenuItem, Submenu};
@@ -23,6 +24,8 @@ static TRANSLATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None
 static INPUT_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
 /// 「检查更新」项：发现新版本时改文字，给用户一个不打开设置页也能看到的提示。
 static UPDATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
+/// 上一次更新提示的状态：换语言重建菜单后要按这个状态重新套一遍。
+static UPDATE_HINT: Mutex<Option<(Option<String>, bool)>> = Mutex::new(None);
 
 /// 20×20 全透明占位图：只为撑出菜单的文字缩进。
 fn spacer() -> Option<tauri::image::Image<'static>> {
@@ -38,35 +41,36 @@ fn item(
     IconMenuItem::with_id(app, id, text, enabled, spacer(), None::<&str>)
 }
 
-pub fn build(app: &AppHandle) -> tauri::Result<()> {
+fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let translate_on = crate::tools::registry::by_id("translate")
         .map(|t| t.enabled())
         .unwrap_or(true);
 
-    let translate = item(app, "translate", "划词翻译", translate_on)?;
-    let input = item(app, "input_translate", "输入翻译", translate_on)?;
+    let translate = item(app, "translate", &t!("tray.translate"), translate_on)?;
+    let input = item(app, "input_translate", &t!("tray.inputTranslate"), translate_on)?;
     *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate.clone());
     *INPUT_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(input.clone());
 
-    let shot_full = item(app, "shot-full", "全屏截图", true)?;
-    let shot_region = item(app, "shot-region", "区域截图", true)?;
-    let shot_window = item(app, "shot-window", "活动窗口截图", true)?;
+    let shot_full = item(app, "shot-full", &t!("tray.fullScreen"), true)?;
+    let shot_region = item(app, "shot-region", &t!("tray.region"), true)?;
+    let shot_window = item(app, "shot-window", &t!("tray.activeWindow"), true)?;
     let shot_menu = Submenu::with_items(
         app,
-        "截图",
+        &t!("tray.screenshot"),
         true,
         &[&shot_full, &shot_region, &shot_window],
     )?;
 
-    let downloads = item(app, "downloads", "下载", true)?;
-    let transfer = item(app, "transfer", "互传", true)?;
-    let task_menu = Submenu::with_items(app, "任务窗口", true, &[&downloads, &transfer])?;
+    let downloads = item(app, "downloads", &t!("tray.downloads"), true)?;
+    let transfer = item(app, "transfer", &t!("tray.transfer"), true)?;
+    let task_menu =
+        Submenu::with_items(app, &t!("tray.taskWindows"), true, &[&downloads, &transfer])?;
 
-    let settings = item(app, "settings", "设置", true)?;
-    let check_update = item(app, "check-update", "检查更新", true)?;
+    let settings = item(app, "settings", &t!("tray.settings"), true)?;
+    let check_update = item(app, "check-update", &t!("tray.checkUpdate"), true)?;
     *UPDATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(check_update.clone());
-    let restart = item(app, "restart", "重启应用", true)?;
-    let quit = item(app, "quit", "退出程序", true)?;
+    let restart = item(app, "restart", &t!("tray.restart"), true)?;
+    let quit = item(app, "quit", &t!("tray.quit"), true)?;
 
     let separator = PredefinedMenuItem::separator(app)?;
     let items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
@@ -80,10 +84,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         &restart,
         &quit,
     ];
-    let menu = Menu::with_items(app, &items)?;
+    Menu::with_items(app, &items)
+}
 
+pub fn build(app: &AppHandle) -> tauri::Result<()> {
+    let menu = build_menu(app)?;
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Vexto — 工具箱")
+        .tooltip(t!("tray.tooltip"))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, ev| {
@@ -157,7 +164,37 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     }
 
     builder.build(app)?;
+    apply_update_hint_now(app);
     Ok(())
+}
+
+/// 语言切换后重建托盘菜单与 tooltip。
+///
+/// 菜单项 id 不变，事件回调挂在 tray icon 上，所以只换 menu 不会丢点击处理。
+pub fn apply_locale(app: &AppHandle) {
+    let handle = app.clone();
+    if let Err(e) = app.run_on_main_thread(move || {
+        let menu = match build_menu(&handle) {
+            Ok(menu) => menu,
+            Err(e) => {
+                crate::dlog::warn(&format!("tray: 重建菜单失败：{e}"));
+                return;
+            }
+        };
+        let Some(tray) = handle.tray_by_id("main") else {
+            crate::dlog::warn("tray: 找不到主托盘，无法切换语言");
+            return;
+        };
+        if let Err(e) = tray.set_menu(Some(menu)) {
+            crate::dlog::warn(&format!("tray: 换菜单失败：{e}"));
+        }
+        if let Err(e) = tray.set_tooltip(Some(t!("tray.tooltip"))) {
+            crate::dlog::warn(&format!("tray: 换 tooltip 失败：{e}"));
+        }
+        apply_update_hint_now(&handle);
+    }) {
+        crate::dlog::warn(&format!("tray: 切主线程换语言失败：{e}"));
+    }
 }
 
 /// 重启：起一个延迟 1 秒的 cmd 再退出当前进程。
@@ -212,24 +249,42 @@ pub fn set_translate_enabled(app: &AppHandle, on: bool) {
     let _ = app;
 }
 
+/// 「检查更新」项当前该显示的文字。
+fn update_hint_text(version: Option<&str>, required: bool) -> String {
+    match (version, required) {
+        (Some(v), true) => t!("tray.updateNowVersion", version = v).into_owned(),
+        (Some(v), false) => t!("tray.updateAvailableVersion", version = v).into_owned(),
+        (None, _) => t!("tray.checkUpdate").into_owned(),
+    }
+}
+
+/// 按最近一次状态刷新「检查更新」项；必须在主线程调用。
+fn apply_update_hint_now(_app: &AppHandle) {
+    let state = UPDATE_HINT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let Some((version, required)) = state else {
+        return;
+    };
+    let text = update_hint_text(version.as_deref(), required);
+    let guard = UPDATE_ITEM.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(item) = guard.as_ref() else {
+        return;
+    };
+    if let Err(e) = item.set_text(text) {
+        crate::dlog::warn(&format!("tray: 更新「检查更新」文案失败：{e}"));
+    }
+}
+
 /// 发现新版本时把托盘菜单项改成「检查更新（x.y.z 可用）」；没有则还原。
 ///
 /// 工作线程会调用它，菜单操作统一丢回主线程。
 pub fn set_update_hint(app: &AppHandle, version: Option<&str>, required: bool) {
-    let text = match (version, required) {
-        (Some(v), true) => format!("立即更新（{v}）"),
-        (Some(v), false) => format!("检查更新（{v} 可用）"),
-        (None, _) => "检查更新".to_string(),
-    };
-    if let Err(e) = app.run_on_main_thread(move || {
-        let guard = UPDATE_ITEM.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(item) = guard.as_ref() else {
-            return;
-        };
-        if let Err(e) = item.set_text(text) {
-            crate::dlog::warn(&format!("tray: 更新「检查更新」文案失败：{e}"));
-        }
-    }) {
+    *UPDATE_HINT.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some((version.map(str::to_string), required));
+    let handle = app.clone();
+    if let Err(e) = app.run_on_main_thread(move || apply_update_hint_now(&handle)) {
         crate::dlog::warn(&format!("tray: 切主线程更新菜单失败：{e}"));
     }
 }

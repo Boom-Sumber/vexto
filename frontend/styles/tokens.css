@@ -8,8 +8,8 @@
   /* ── 字体 ─────────────────────────────────────────────────────────── */
   /* v2：Segoe UI 前置——拉丁字形统一走 Segoe，中文落到雅黑；
      数字/版本号用 --font-mono + tabular-nums。不内嵌任何字体文件。 */
-  --font-ui: "Segoe UI", system-ui, -apple-system, "PingFang SC",
-             "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-ui: "Segoe UI", "Yu Gothic UI", "Malgun Gothic", system-ui, -apple-system,
+             "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
 
   /* ── 字号阶：只有这几档 ───────────────────────────────────────────── */

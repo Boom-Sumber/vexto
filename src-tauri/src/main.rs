@@ -9,6 +9,9 @@
 //! - 工作线程做完取词和翻译 → `app.run_on_main_thread()` 回主线程再碰窗口。
 //! - `setup()` 里不能建窗（实测 os error 5），要等 `RunEvent::Ready`。
 
+// 界面翻译：编译期从 src-tauri/locales/*.json 载入；缺失时先英文、再中文。
+rust_i18n::i18n!("locales", fallback = ["en", "zh-CN"]);
+
 mod autostart;
 mod capture;
 mod config;
@@ -17,6 +20,7 @@ mod download;
 mod extension_bridge;
 mod fileops;
 mod hotkey;
+mod i18n;
 mod lang;
 mod mem;
 mod ocr;
@@ -1331,22 +1335,33 @@ fn preview_close(app: AppHandle) {
 
 /// 设置页左列表的唯一数据源。
 #[tauri::command]
-fn list_tools() -> Vec<ToolOut> {
+fn list_tools() -> Vec<Value> {
     tools::registry::all()
         .into_iter()
-        .map(|t| ToolOut {
-            id: t.id(),
-            name: t.name(),
-            desc: t.desc(),
-            icon: t.icon(),
-            enabled: t.enabled(),
-            switchable: t.switchable(),
-            status_line: t.status_line(),
-            status_kind: t.status_kind(),
-            hide_header: t.hide_header(),
-            sections: t.sections(),
+        .map(|t| {
+            let mut out = serde_json::to_value(ToolOut {
+                id: t.id(),
+                name: t.name(),
+                desc: t.desc(),
+                icon: t.icon(),
+                enabled: t.enabled(),
+                switchable: t.switchable(),
+                status_line: t.status_line(),
+                status_kind: t.status_kind(),
+                hide_header: t.hide_header(),
+                sections: t.sections(),
+            })
+            .unwrap_or(Value::Null);
+            crate::i18n::localize_tool(&mut out);
+            out
         })
         .collect()
+}
+
+/// 前端挂载前问一次：把配置里的 `system` 解析成实际语言。
+#[tauri::command]
+fn get_ui_locale() -> String {
+    crate::i18n::current().to_string()
 }
 
 /// 取一个工具自己的字段值（只返回它声明过的 key）。
@@ -1616,6 +1631,18 @@ fn save_tool_config(
                 "theme": cfg.appearance_theme,
                 "accent": cfg.accent_color,
             }),
+        );
+    }
+
+    // 10b) 界面语言变了：更新 Rust 全局 locale、重建托盘、更新窗口标题，
+    //      再通知前端。前端收到后即时重渲染；controller 页面自行 reload。
+    if patch.contains_key("ui_language") {
+        crate::i18n::set_locale(&cfg.ui_language);
+        crate::tray::apply_locale(&app);
+        crate::i18n::apply_window_titles(&app);
+        let _ = app.emit(
+            "i18n:changed",
+            serde_json::json!({ "locale": crate::i18n::current() }),
         );
     }
 
@@ -2886,6 +2913,7 @@ fn main() {
             about_open_link,
             about_diagnostics,
             config_path,
+            get_ui_locale,
             hotkey_error,
             // 翻译弹窗 / 窗口首帧
             popup_ready,
@@ -2997,6 +3025,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let cfg = config::load();
+            crate::i18n::init(&cfg);
             dlog::configure(cfg.log_enabled, &cfg.log_level);
 
             // 开机自启自愈：配置是唯一真相，注册表只是它的投影。

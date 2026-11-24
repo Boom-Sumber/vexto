@@ -20,6 +20,7 @@ pub mod stitch;
 pub mod window_pick;
 
 use crate::ocr::CapturedImage;
+use rust_i18n::t;
 
 /// 一次抓图的模式（区域截图已改走框选快照，不再经过这里）。
 #[derive(Debug, Clone, Copy)]
@@ -110,7 +111,7 @@ pub fn notify_error(app: &tauri::AppHandle, msg: &str) {
     if let Err(e) = app
         .notification()
         .builder()
-        .title("Vexto 截图")
+        .title(t!("window.screenshot"))
         .body(msg)
         .show()
     {
@@ -123,7 +124,7 @@ pub fn show_error(msg: &str) {
     use windows::core::HSTRING;
     use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR};
     let text = HSTRING::from(msg);
-    let title = HSTRING::from("Vexto 截图");
+    let title = HSTRING::from(t!("window.screenshot").as_ref());
     unsafe {
         MessageBoxW(None, &text, &title, MB_ICONERROR);
     }

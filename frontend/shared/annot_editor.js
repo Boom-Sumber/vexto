@@ -1,6 +1,8 @@
 // 共享标注编辑器（会话 95）：预览窗与截图选区工具条共用。
 // 只负责画布上的图元、选中/移动/缩放、文字、马赛克与合成 PNG；
 // 交付（存盘 / 剪贴板 / 钉屏 / 预览）由宿主页面决定。
+import { t } from "../i18n/index.js";
+
 const AnnotEditor = (function () {
   const WIDTHS = [2, 4, 8];
   const TEXT_SIZES = [14, 20, 28];
@@ -227,7 +229,7 @@ const AnnotEditor = (function () {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "pop-dot";
-      b.title = ["细", "中", "粗"][level];
+      b.title = [t("annot.thin"), t("annot.medium"), t("annot.thick")][level];
       b.style.setProperty("--dot", [5, 8, 11][level] + "px");
       const cfg = settings[tool];
       const solidShape = (tool === "rect" || tool === "ellipse") && cfg.fill;
@@ -246,7 +248,7 @@ const AnnotEditor = (function () {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "pop-fill" + (cfg.fill ? " on" : "");
-      b.title = cfg.fill ? "实心（点击切换空心）" : "空心（点击切换实心）";
+      b.title = t(cfg.fill ? "annot.fill" : "annot.hollow");
       b.innerHTML =
         typeof Icons !== "undefined"
           ? Icons.svg(cfg.fill ? "square-solid" : "square-hollow", 18)
@@ -262,7 +264,7 @@ const AnnotEditor = (function () {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "pop-size" + (settings.text.level === level ? " on" : "");
-      b.textContent = ["小", "中", "大"][level];
+      b.textContent = [t("annot.sizeSmall"), t("annot.sizeMedium"), t("annot.sizeLarge")][level];
       b.addEventListener("click", () => {
         settings.text.level = level;
         renderPop();
@@ -274,7 +276,7 @@ const AnnotEditor = (function () {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "ae-color" + (color === hex ? " on" : "");
-      b.title = "颜色 " + hex;
+      b.title = t("annot.color", { hex });
       b.style.setProperty("--sw", hex);
       b.addEventListener("click", () => {
         color = hex;
@@ -1122,7 +1124,7 @@ const AnnotEditor = (function () {
         const w = baseW;
         const h = baseH;
         if (!w || !h || !base) {
-          reject(new Error("没有可合成的图片"));
+          reject(new Error(t("annot.noImage")));
           return;
         }
         const full = document.createElement("canvas");
@@ -1135,7 +1137,7 @@ const AnnotEditor = (function () {
         const c = crop || { x: 0, y: 0, w, h };
         if (c.x || c.y || c.w !== w || c.h !== h) {
           if (c.w <= 0 || c.h <= 0) {
-            reject(new Error("裁切范围不合法"));
+            reject(new Error(t("annot.invalidCrop")));
             return;
           }
           out = document.createElement("canvas");
@@ -1145,7 +1147,7 @@ const AnnotEditor = (function () {
         }
         out.toBlob((blob) => {
           if (blob) resolve(blob);
-          else reject(new Error("合成编辑结果失败"));
+          else reject(new Error(t("annot.composeFailed")));
         }, "image/png");
       });
     }

@@ -606,7 +606,10 @@ mod tests {
             .filter(|f| f.auto_apply)
             .map(|f| f.key)
             .collect();
-        assert_eq!(flagged, vec!["appearance_theme", "accent_color"]);
+        assert_eq!(
+            flagged,
+            vec!["ui_language", "appearance_theme", "accent_color"]
+        );
     }
 
     /// `show_if` 只在设置过时才出现，避免前端拿到 `null` 还要判空。

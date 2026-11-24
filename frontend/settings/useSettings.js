@@ -26,6 +26,7 @@ export function useSettings() {
   const autoApplyTimers = {};
   let unlistenGoto = null;
   let unlistenAppearance = null;
+  let unlistenI18n = null;
 
   const tool = computed(() => tools.value.find((x) => x.id === toolId.value) || null);
   const section = computed(
@@ -110,6 +111,17 @@ export function useSettings() {
       tools.value = await invoke("list_tools");
     } catch (e) {
       setStatus(t("settings.readToolsFailed", { message: errText(e) }), true);
+    }
+  }
+
+  /// 语言切换后只换 schema 文案，不重新读 values：
+  /// 用户可能还有未保存的输入，不能被一次语言切换冲掉。
+  function refreshSections() {
+    const found = tools.value.find((x) => x.id === toolId.value);
+    if (!found) return;
+    sections.value = found.sections || [];
+    if (!sections.value.some((s) => s.id === tabId.value)) {
+      tabId.value = sections.value[0]?.id || null;
     }
   }
 
@@ -328,6 +340,17 @@ export function useSettings() {
     } catch {
       /* 没有外观事件也能用 */
     }
+
+    // Rust 下发的 schema 文案（工具名 / 字段标签 / 选项）随语言变化，
+    // 重新拉一次并刷新当前分区；未保存的输入值不受影响。
+    try {
+      unlistenI18n = await listen("i18n:changed", async () => {
+        await reloadTools();
+        refreshSections();
+      });
+    } catch {
+      /* 没有语言事件也能用 */
+    }
   }
 
   // 「有 N 项未保存」常驻；值改回原值 / 保存 / 放弃后自动收掉。
@@ -345,6 +368,7 @@ export function useSettings() {
     for (const timer of Object.values(autoApplyTimers)) clearTimeout(timer);
     if (typeof unlistenGoto === "function") unlistenGoto();
     if (typeof unlistenAppearance === "function") unlistenAppearance();
+    if (typeof unlistenI18n === "function") unlistenI18n();
     if (window.__beforeClose) window.__beforeClose = null;
   });
 

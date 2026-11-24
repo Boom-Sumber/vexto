@@ -1,5 +1,5 @@
 import { onBeforeUnmount, reactive, ref, shallowRef } from "vue";
-import { t } from "../i18n/index.js";
+import { locale, t } from "../i18n/index.js";
 import { errText } from "../settings/utils.js";
 import { fmtBytes, fmtSpeed } from "./format.js";
 
@@ -15,24 +15,17 @@ function deviceIcon(type) {
   return DEVICE_ICON[type] || "device-desktop";
 }
 
-function pad2(n) {
-  return n < 10 ? "0" + n : String(n);
-}
-
 function fmtWhen(ms) {
   const d = new Date(ms || 0);
   if (Number.isNaN(d.getTime())) return "—";
-  return (
-    d.getFullYear() +
-    "-" +
-    pad2(d.getMonth() + 1) +
-    "-" +
-    pad2(d.getDate()) +
-    " " +
-    pad2(d.getHours()) +
-    ":" +
-    pad2(d.getMinutes())
-  );
+  return new Intl.DateTimeFormat(locale.value, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d);
 }
 
 export function useTransfer({ toast, setView, setSub }) {

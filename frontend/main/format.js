@@ -1,13 +1,16 @@
+import { locale } from "../i18n/index.js";
+
 export function fmtBytes(n) {
   n = Number(n) || 0;
-  if (n < 1024) return n + " B";
+  if (n < 1024) return new Intl.NumberFormat(locale.value).format(n) + " B";
   const units = ["KB", "MB", "GB", "TB"];
   let i = -1;
   do {
     n /= 1024;
     i++;
   } while (n >= 1024 && i < units.length - 1);
-  return n.toFixed(n < 10 ? 1 : 0) + " " + units[i];
+  const value = Number(n.toFixed(n < 10 ? 1 : 0));
+  return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value) + " " + units[i];
 }
 
 export function fmtSpeed(n) {
@@ -16,9 +19,10 @@ export function fmtSpeed(n) {
 
 export function fmtCount(n) {
   n = Number(n) || 0;
-  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
-  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
-  return String(n);
+  return new Intl.NumberFormat(locale.value, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(n);
 }
 
 export function fmtEta(seconds, t) {

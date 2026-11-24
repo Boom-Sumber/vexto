@@ -12,6 +12,7 @@
 // - 宿主元素必须是 position:relative（.input-wrap / .num-row / 自定义容器）；
 // - 宿主加 `.has-stepper`，输入框的右内边距由 CSS 自动让出；
 // - 按钮 `tabindex="-1"`，键盘焦点始终留在输入框（Tab 顺序不变）。
+import { t } from "../i18n/index.js";
 
 const NumField = (function () {
   /// 步长：显式 step 优先，否则 1；不合法一律当 1。
@@ -75,8 +76,8 @@ const NumField = (function () {
       return b;
     };
 
-    const up = mk("up", "增加", 1);
-    const down = mk("down", "减少", -1);
+    const up = mk("up", t("common.increase"), 1);
+    const down = mk("down", t("common.decrease"), -1);
     box.append(up, down);
     host.appendChild(box);
 

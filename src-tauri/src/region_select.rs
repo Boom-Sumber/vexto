@@ -7,6 +7,7 @@
 //! **OCR 的行为与事件名不变**（ADR-041 / 风险 109）：本模块只是把 S5 的建窗
 //! 代码搬过来，参数、藏窗时序、坐标换算逐字保留。
 
+use rust_i18n::t;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
@@ -38,11 +39,11 @@ impl Purpose {
         }
     }
 
-    fn title(self) -> &'static str {
+    fn title(self) -> String {
         match self {
-            Purpose::Ocr => "截图翻译",
-            Purpose::Shot => "截图",
-            Purpose::Scroll => "滚动截图",
+            Purpose::Ocr => t!("window.ocrTranslate").into_owned(),
+            Purpose::Shot => t!("window.feedback").into_owned(),
+            Purpose::Scroll => t!("window.scroll").into_owned(),
         }
     }
 }

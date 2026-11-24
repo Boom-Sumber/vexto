@@ -63,6 +63,19 @@ impl Tool for General {
             vec![
                 Field::group("外观"),
                 Field::select(
+                    "ui_language",
+                    "界面语言",
+                    &[
+                        ("system", "跟随系统"),
+                        ("zh-CN", "简体中文"),
+                        ("en", "English"),
+                        ("ja", "日本語"),
+                        ("ko", "한국어"),
+                        ("es", "Español"),
+                    ],
+                )
+                .auto_apply(),
+                Field::select(
                     "appearance_theme",
                     "主题",
                     &[

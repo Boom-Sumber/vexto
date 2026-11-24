@@ -1,4 +1,4 @@
-import { t } from "../i18n/index.js";
+import { locale, t } from "../i18n/index.js";
 
 export function stableJson(v) {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
@@ -38,14 +38,15 @@ export function itemShowIf(fld, item) {
 export function fmtBytes(n) {
   n = Number(n) || 0;
   if (!n) return "";
-  if (n < 1024) return n + " B";
+  if (n < 1024) return new Intl.NumberFormat(locale.value).format(n) + " B";
   const u = ["KB", "MB", "GB", "TB"];
   let i = -1;
   do {
     n /= 1024;
     i++;
   } while (n >= 1024 && i < u.length - 1);
-  return n.toFixed(1).replace(/\.0$/, "") + " " + u[i];
+  const value = Number(n.toFixed(1));
+  return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value) + " " + u[i];
 }
 
 /** 「翻译模式」动态候选项；值写法与 active_engine 一致。

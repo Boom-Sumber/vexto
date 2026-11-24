@@ -11,7 +11,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import TitleBar from "../components/TitleBar.vue";
 import Icon from "../components/Icon.vue";
 import { vNumField } from "../directives/numField.js";
-import { t } from "../i18n/index.js";
+import { t, locale } from "../i18n/index.js";
 
 const invoke = window.__TAURI__.core.invoke;
 const listen = window.__TAURI__.event.listen;
@@ -78,7 +78,7 @@ function cleanUa(s) {
 function fmtBytes(n) {
   n = Number(n) || 0;
   if (!n) return "";
-  if (n < 1024) return n + " B";
+  if (n < 1024) return new Intl.NumberFormat(locale.value).format(n) + " B";
   const u = ["KB", "MB", "GB", "TB"];
   let i = -1;
   do {
@@ -86,7 +86,8 @@ function fmtBytes(n) {
     i++;
   } while (n >= 1024 && i < u.length - 1);
   // 统一 1 位小数：153.3 GB / 1.3 KB / 12 MB（去掉无意义的 .0）
-  return n.toFixed(1).replace(/\.0$/, "") + " " + u[i];
+  const value = Number(n.toFixed(1));
+  return new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(value) + " " + u[i];
 }
 
 const nameSizeText = computed(() => (lastSize.value ? fmtBytes(lastSize.value) : ""));

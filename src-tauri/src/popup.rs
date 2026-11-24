@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::Duration;
 
 use serde_json::Value;
+use rust_i18n::t;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
@@ -768,7 +769,7 @@ pub fn open_settings(app: &AppHandle) {
 
     let bg = theme_bg();
     let r = WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("settings.html".into()))
-        .title("Vexto 设置")
+        .title(t!("window.settings"))
         // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。设置页字段多、路径长，
         // 仍然 resizable(true)，边缘缩放由前端 `titlebar.js` 的 8 向热区接管。
         .decorations(false)
@@ -818,7 +819,7 @@ pub fn open_main_window(app: &AppHandle) {
 
     let bg = theme_bg();
     let r = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("main.html".into()))
-        .title("Vexto 下载")
+        .title(t!("window.downloads"))
         // 无边框 + 自绘标题栏（docs/13-UI-DESIGN-SYSTEM.md）。任务列表可按
         // 文件名长短拉宽，所以保留 resizable，边缘缩放由 titlebar.js 接管。
         .decorations(false)
@@ -950,7 +951,7 @@ pub fn open_scroll_control(app: &AppHandle, sel: (i32, i32, i32, i32), dpr: f64)
         SCROLL_CONTROL_LABEL,
         WebviewUrl::App("scroll_control.html".into()),
     )
-    .title("滚动截图")
+    .title(t!("window.scroll"))
     .decorations(false)
     .always_on_top(true)
     .resizable(false)
@@ -1000,7 +1001,7 @@ pub fn open_pin_window_for(app: &AppHandle, label: &str) {
     }
     let label_owned = label.to_string();
     let r = WebviewWindowBuilder::new(app, label, WebviewUrl::App("pin.html".into()))
-        .title("钉屏")
+        .title(t!("window.pin"))
         .decorations(false)
         .shadow(false)
         .transparent(true)
@@ -1045,7 +1046,7 @@ pub fn open_preview_window(app: &AppHandle) {
         PREVIEW_LABEL,
         WebviewUrl::App("preview.html".into()),
     )
-    .title("截图预览")
+    .title(t!("window.preview"))
     .decorations(false)
     .shadow(true)
     .inner_size(980.0, 780.0)
@@ -1091,7 +1092,7 @@ pub fn open_feedback_window(app: &AppHandle) {
         FEEDBACK_LABEL,
         WebviewUrl::App("feedback.html".into()),
     )
-    .title("截图")
+    .title(t!("window.feedback"))
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
@@ -1164,7 +1165,7 @@ pub fn open_new_task(app: &AppHandle, prefill: Option<NewTaskPrefill>) {
 
     let bg = theme_bg();
     let r = WebviewWindowBuilder::new(app, NEW_TASK_LABEL, WebviewUrl::App("new_task.html".into()))
-        .title("新建任务")
+        .title(t!("window.newTask"))
         // 无边框 + 自绘标题栏（用户要求）。系统标题栏去掉后，拖动只能靠前端
         // 标题栏上的 `data-tauri-drag-region`；最小化 / 关闭也由自绘按钮接管。
         .decorations(false)

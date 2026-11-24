@@ -125,5 +125,6 @@ windows = { version = "0.62", features = [
     "Media_Ocr",
     "Storage_Streams",
 ] }
+rust-i18n = "4"
 
 # release profile 在 workspace 根 Cargo.toml —— 写在成员包里不生效。
