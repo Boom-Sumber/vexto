@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { t } from "../i18n/index.js";
 import { useToast } from "../composables/useToast.js";
 import { errText, stableJson } from "./utils.js";
+import { useUpdate } from "./useUpdate.js";
 
 export function useSettings() {
   const invoke = window.__TAURI__.core.invoke;
@@ -248,6 +249,8 @@ export function useSettings() {
       invoke("window_action", { action: "close" }).catch(() => {});
     } else if (intent.kind === "switch") {
       selectTool(intent.toolId, { skipGuard: true });
+    } else if (intent.kind === "update") {
+      update.run(intent.cmd);
     }
   }
 
@@ -273,7 +276,16 @@ export function useSettings() {
     }
   }
 
+  const update = useUpdate({
+    pendingCount: () => pendingCount.value,
+    currentToolId: () => toolId.value,
+    selectTool,
+    showDirtyModal,
+    showToast,
+  });
+
   async function init() {
+    await update.init();
     await reloadTools();
     let wanted = null;
     try {
@@ -353,6 +365,7 @@ export function useSettings() {
     fields,
     pendingCount,
     modalText,
+    update,
     val,
     commit,
     selectTool,

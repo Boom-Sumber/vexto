@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import Icon from "../components/Icon.vue";
 import HelpIcon from "./HelpIcon.vue";
+import ListField from "./ListField.vue";
+import AboutPage from "./AboutPage.vue";
 import { vNumField } from "../directives/numField.js";
 import { t } from "../i18n/index.js";
 import { engineChoices, errText, showIfMatch } from "./utils.js";
@@ -260,15 +262,15 @@ onBeforeUnmount(() => {
 
   <div v-else-if="field.type === 'group'" class="group-title">{{ field.title }}</div>
 
-  <div
-    v-else-if="field.type === 'list' || field.type === 'about'"
-    class="field"
-    :class="field.type"
+  <ListField
+    v-else-if="field.type === 'list'"
     v-show="visible"
-  >
-    <div class="subhead">{{ field.label }}</div>
-    <div v-if="field.help" class="subhead-desc">{{ field.help }}</div>
-    <div class="list-empty">{{ $t("settings.pendingMigration") }}</div>
+    :field="field"
+    :settings="settings"
+  />
+
+  <div v-else-if="field.type === 'about'" class="field about" v-show="visible">
+    <AboutPage :field="field" :settings="settings" />
   </div>
 
   <div v-else-if="field.type === 'button'" class="field action" v-show="visible">

@@ -48,7 +48,9 @@ export function fmtBytes(n) {
   return n.toFixed(1).replace(/\.0$/, "") + " " + u[i];
 }
 
-/** 「翻译模式」动态候选项；值写法与 active_engine 一致。 */
+/** 「翻译模式」动态候选项；值写法与 active_engine 一致。
+ *  这里是 ADR-015 零分支红线的有意例外之一（另外两处：删除后的顺位、
+ *  弹窗认 name/vendor/model），三处都与 legacy 设置页保持同一口径。 */
 export function engineChoices(getVal) {
   const listOf = (k) => {
     const v = getVal(k);
@@ -83,7 +85,15 @@ export function summaryParts(f, item) {
       const hit = (fld.options || []).find((o) => String(o[0]) === String(v));
       if (hit) v = hit[1];
     } else if (fld && fld.type === "switch") {
-      v = k === "use_llm" ? (v ? "大模型" : "机翻") : v ? "开" : "关";
+      // use_llm 的「机翻 / 大模型」也是上述有意例外：只在摘要文案里用。
+      v =
+        k === "use_llm"
+          ? v
+            ? t("settings.listLlm")
+            : t("settings.listMachine")
+          : v
+            ? t("settings.listOn")
+            : t("settings.listOff");
     }
     if (v != null && String(v).trim() !== "") parts.push(String(v));
   }

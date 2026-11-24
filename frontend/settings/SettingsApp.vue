@@ -25,6 +25,7 @@ const {
 
 const tb = ref(null);
 const enableChecked = ref(false);
+const badge = s.update.badge;
 
 const blocks = computed(() => {
   const out = [];
@@ -111,6 +112,18 @@ onMounted(async () => {
             <span class="t-name">{{ t.name }}</span>
           </button>
         </nav>
+        <!-- 发现新版本时出现在导航栏最下面；点击跳到「关于 → 更新」。 -->
+        <button
+          v-if="badge.show"
+          id="update-badge"
+          class="update-badge"
+          :class="{ required: badge.required }"
+          type="button"
+          @click="s.update.badgeClick()"
+        >
+          <span class="ub-dot" aria-hidden="true"></span>
+          <span id="update-badge-text">{{ badge.text }}</span>
+        </button>
       </aside>
 
       <main class="pane">
