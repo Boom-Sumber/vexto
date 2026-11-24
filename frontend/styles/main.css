@@ -895,6 +895,8 @@
   cursor: pointer;
 }
 .hs-menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.hs-menu button:disabled { opacity: 0.45; cursor: default; }
+.hs-menu button:disabled:hover { background: transparent; color: var(--text-secondary); }
 .hs-menu button.danger { color: var(--danger); }
 .hs-menu button.danger:hover { background: var(--danger-bg); color: var(--danger); }
 
