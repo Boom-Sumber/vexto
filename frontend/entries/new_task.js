@@ -1,8 +1,9 @@
 import "../shared/contextmenu.js";
-import "../shared/theme.js";
-import "../shared/icons.js";
-import "../shared/controls.js";
-import "../shared/titlebar.js";
-import "../pages/new_task.js";
+import { createApp } from "vue";
+import App from "../new_task/App.vue";
+import { useTheme } from "../composables/useTheme.js";
 
-TitleBar.mount({ resize: false, maximize: false });
+const theme = useTheme();
+await theme.init();
+
+createApp(App).mount("#app");

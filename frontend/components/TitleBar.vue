@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
       <button type="button" class="tb-btn" data-win="min" aria-label="最小化" @click="action('min')">
         <Icon name="minimize" :size="14" />
       </button>
-      <button type="button" class="tb-btn" data-win="max" aria-label="最大化 / 还原" @click="action('max')">
+      <button v-if="maximize" type="button" class="tb-btn" data-win="max" aria-label="最大化 / 还原" @click="action('max')">
         <Icon name="maximize" :size="14" />
       </button>
       <button type="button" class="tb-btn close" data-win="close" aria-label="关闭" @click="onClose">
