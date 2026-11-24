@@ -2,113 +2,21 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>Vexto 设置</title>
-<link rel="stylesheet" href="tokens.css" />
-<link rel="stylesheet" href="theme-dark.css" />
-<link rel="stylesheet" href="theme-light.css" />
-<link rel="stylesheet" href="base.css" />
-<link rel="stylesheet" href="toast.css" />
-<link rel="stylesheet" href="settings.css" />
+<title>Vexto</title>
+  <script type="module" crossorigin src="./assets/settings-BC4ojHtK.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/app-z4-u7GEc.js">
+  <link rel="modulepreload" crossorigin href="./assets/theme-EtFMGHAn.js">
+  <link rel="modulepreload" crossorigin href="./assets/Icon-B7WePGSu.js">
+  <link rel="modulepreload" crossorigin href="./assets/utils-OkVBRG_X.js">
+  <link rel="modulepreload" crossorigin href="./assets/useTheme-DAzbtAkn.js">
+  <link rel="modulepreload" crossorigin href="./assets/TitleBar-BDWF5WES.js">
+  <link rel="modulepreload" crossorigin href="./assets/numField-BFn8zxeW.js">
+  <link rel="stylesheet" crossorigin href="./assets/theme-vP2fd1n4.css">
+  <link rel="stylesheet" crossorigin href="./assets/Icon-CPc1RSp4.css">
+  <link rel="stylesheet" crossorigin href="./assets/utils-DlCEMhjr.css">
+  <link rel="stylesheet" crossorigin href="./assets/settings-jgcUGCvX.css">
 </head>
 <body data-theme="dark">
-<div class="win">
-  <!-- 自绘标题栏：图标与按钮行为由 titlebar.js 注入（docs/13-UI-DESIGN-SYSTEM.md） -->
-  <header class="tb" data-tauri-drag-region>
-    <span class="tb-title" data-tauri-drag-region>设置</span>
-    <div class="tb-actions">
-      <button class="tb-btn" type="button" data-win="min"></button>
-      <button class="tb-btn" type="button" data-win="max"></button>
-      <button class="tb-btn close" type="button" data-win="close"></button>
-    </div>
-  </header>
-
-  <div class="app">
-    <!-- 左侧：工具列表。内容全部由 list_tools 生成，这里不写死任何一个工具名（ADR-015）。
-         品牌磁贴使用 Vexto.svg 徽标（.logo-badge）。 -->
-    <aside class="sidebar">
-      <div class="brand">
-        <span class="logo logo-badge" aria-hidden="true"></span>
-        <span class="brand-name">Vexto</span>
-      </div>
-      <nav id="tools" class="tools"></nav>
-      <!-- 发现新版本时出现在导航栏最下面；点击跳到「关于 → 更新」。 -->
-      <button id="update-badge" class="update-badge hidden" type="button">
-        <span class="ub-dot" aria-hidden="true"></span>
-        <span id="update-badge-text">发现新版本</span>
-      </button>
-    </aside>
-
-    <!-- 右侧：当前工具的标题 / 说明 / 状态 / 标签栏 / 字段区 -->
-    <main class="pane">
-      <header class="pane-head" id="pane-head">
-        <div class="pane-title">
-          <h1 id="tool-name">加载中…</h1>
-          <p id="tool-desc" class="hint"></p>
-          <p id="tool-status-line" class="status-line"></p>
-        </div>
-        <label class="enable" id="enable-wrap">
-          <input type="checkbox" id="tool-enabled" />
-          <span>启用</span>
-        </label>
-      </header>
-
-      <div id="tool-status" class="tool-status hidden"></div>
-
-      <!-- 标签栏在滚动区**外面**（会话 52）：内容上下滚时只滚下面的字段区，
-           不再从标签栏底下穿过去。 -->
-      <div id="tabs" class="tabs hidden"></div>
-
-      <div class="pane-body">
-        <div id="fields" class="fields"></div>
-      </div>
-
-      <footer class="pane-foot">
-        <span id="status"></span>
-        <!-- 只有存在未保存改动时才出现（会话 28 起改成手动保存） -->
-        <div id="dirty-acts" class="dirty-acts hidden">
-          <button id="btnDiscard" class="btn" type="button">放弃</button>
-          <button id="btnSave" class="btn btn-primary" type="button">保存</button>
-        </div>
-      </footer>
-    </main>
-  </div>
-
-  <!-- 未保存改动时的确认框。**不用 confirm()**：系统弹窗白底，和深色主题冲突
-       （docs/13-UI-DESIGN-SYSTEM.md）。纯文档流 + 遮罩，自绘。 -->
-  <div id="dirty-modal" class="modal hidden">
-    <div class="modal-card">
-      <h2 id="modal-title">有未保存的修改</h2>
-      <p id="modal-text" class="modal-text"></p>
-      <div class="modal-acts">
-        <button id="mCancel" class="btn" type="button">取消</button>
-        <button id="mDiscard" class="btn" type="button">放弃修改</button>
-        <button id="mSave" class="btn btn-primary" type="button">保存</button>
-      </div>
-    </div>
-  </div>
-  <!-- 新建厂商 / 模型的表单弹窗。字段由 settings.js 按后端 schema 生成，
-       同样不用系统弹窗（同 #dirty-modal 的理由）。 -->
-  <div id="form-modal" class="modal hidden">
-    <div class="modal-card modal-wide">
-      <h2 id="fm-title">添加</h2>
-      <div id="fm-body" class="fm-body"></div>
-      <div class="modal-acts">
-        <!-- 只有后端声明了 test_action 的列表才显示（settings.js 控制） -->
-        <button id="fmTest" class="btn hidden" type="button">测试</button>
-        <button id="fmCancel" class="btn" type="button">取消</button>
-        <button id="fmSave" class="btn btn-primary" type="button">保存</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script src="contextmenu.js"></script>
-<script src="theme.js"></script>
-<script src="icons.js"></script>
-<script src="toast.js"></script>
-<script src="controls.js"></script>
-<script src="titlebar.js"></script>
-<script src="settings.js"></script>
-<script>TitleBar.mount();</script>
+  <div id="app"></div>
 </body>
 </html>

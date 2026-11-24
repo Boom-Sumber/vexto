@@ -23,7 +23,7 @@ export default defineConfig({
   base: "./",
   plugins: [vue()],
   build: {
-    outDir: resolve(rootDir, "ui-dist"),
+    outDir: resolve(rootDir, "ui"),
     emptyOutDir: true,
     target: "chrome120",
     assetsDir: "assets",
