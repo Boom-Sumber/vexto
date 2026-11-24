@@ -1,9 +1,11 @@
 import "../shared/contextmenu.js";
-import "../shared/theme.js";
-import "../shared/icons.js";
-import "../shared/toast.js";
-import "../shared/controls.js";
-import "../shared/titlebar.js";
-import "../pages/settings.js";
+import { createVextoApp } from "../app.js";
+import SettingsApp from "../settings/SettingsApp.vue";
+import { useTheme } from "../composables/useTheme.js";
+import { t } from "../i18n/index.js";
 
-TitleBar.mount();
+const theme = useTheme();
+await theme.init();
+
+document.title = t("settings.title");
+createVextoApp(SettingsApp).mount("#app");

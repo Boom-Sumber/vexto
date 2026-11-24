@@ -6,6 +6,8 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* Vue 挂载点铺满窗口；legacy 页面没有 #app，不受影响 */
+#app { height: 100%; }
 
 body {
   margin: 0;
