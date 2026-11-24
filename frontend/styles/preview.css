@@ -1,0 +1,480 @@
+/* 截图预览（会话 63）：左边看图裁头尾，右边四个动作。
+ * 图片走 asset protocol（file path），不接收 base64。
+ * 窗口用项目统一的自绘标题栏（titlebar.js）。 */
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.pv-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-bar);
+}
+
+.pv-info {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-hint {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 标注工具条（会话 91）：选择 / 矩形 / 椭圆 / 箭头 / 画笔 / 文字 / 马赛克，
+ * 撤销重做、颜色与线宽。跟截图动作栏同一套图标与按钮尺寸。 */
+.pv-edit-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.pv-edit-bar .tb-btn {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--r-md);
+}
+
+.pv-edit-bar .tb-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pv-edit-bar .tb-btn:disabled,
+.pv-edit-bar .pv-color:disabled,
+.pv-edit-bar select:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.pv-edit-sep {
+  width: 1px;
+  height: 18px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--border-default);
+}
+
+.pv-colors {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  padding: 0 4px;
+}
+
+.pv-color {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--sw);
+  cursor: pointer;
+}
+
+.pv-color.on {
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 3px var(--accent);
+}
+
+.pv-width {
+  display: none;
+}
+
+/* 工具气泡：点在工具图标下方，尾巴指向按钮。定位由 preview.js 用 fixed 坐标完成。 */
+.pv-tool-pop {
+  position: fixed;
+  z-index: 40;
+  padding: 7px 9px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+}
+
+.pv-tool-pop[hidden] {
+  display: none;
+}
+
+.pv-pop-arrow {
+  position: absolute;
+  top: -5px;
+  left: var(--arrow-left, 18px);
+  width: 9px;
+  height: 9px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+
+.pv-pop-body {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pv-pop-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border-default);
+}
+
+.pop-dot {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+}
+
+.pop-dot::before {
+  content: "";
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.pop-dot:hover { background: var(--bg-hover); }
+.pop-dot.on::before { background: var(--accent); }
+.pop-dot:disabled { opacity: .35; cursor: default; background: transparent; }
+
+.pop-fill {
+  width: 28px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pop-fill:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pop-fill.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+
+.pop-size {
+  min-width: 38px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.pop-size:hover { background: var(--bg-hover); color: var(--text-primary); }
+.pop-size.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+
+.pv-edit-hint {
+  margin-left: auto;
+  padding-left: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex: none;
+}
+
+@media (max-width: 820px) {
+  .pv-edit-hint { display: none; }
+}
+
+.pv-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pv-viewport-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.pv-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: var(--sp-4);
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, .03) 25%, transparent 25%) 0 0 / 16px 16px,
+    linear-gradient(-45deg, rgba(255, 255, 255, .03) 25%, transparent 25%) 0 8px / 16px 16px;
+  background-color: var(--bg-app);
+}
+
+.pv-canvas {
+  position: relative;
+  width: max-content;
+  margin: 0 auto;
+}
+
+#pv-img {
+  max-width: none;
+  max-height: none;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-float);
+}
+
+/* 标注画布与图片完全重合。始终接收指针事件：绘制工具下画新图，
+ * 选择模式下点已有图形移动/缩放；滚轮仍能正常滚动预览。 */
+.pv-annot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r-sm);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: default;
+}
+
+.pv-annot.drawing {
+  cursor: crosshair;
+}
+
+.pv-annot.textmode {
+  cursor: text;
+}
+
+/* 马赛克画笔：半透明小圆球跟随指针。 */
+.pv-brush-cursor {
+  position: fixed;
+  z-index: 35;
+  display: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(110, 114, 120, .85);
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .22);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.pv-brush-cursor.on {
+  display: block;
+}
+
+/* 文字标注的就地输入框：位置与画布上的文字坐标对齐。 */
+.pv-text-input {
+  position: absolute;
+  z-index: 4;
+  min-width: 24px;
+  padding: 0 6px;
+  border: 1px dashed var(--accent);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, .18);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.pv-zoom {
+  position: absolute;
+  right: var(--sp-4);
+  bottom: var(--sp-4);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-bar);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+  z-index: 3;
+}
+
+.pv-zoom .tb-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.pv-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: rgba(240, 86, 109, .28);
+  border-color: rgba(240, 86, 109, .75);
+  border-style: dashed;
+  border-width: 0;
+  pointer-events: none;
+}
+.pv-band.top { top: 0; border-bottom-width: 1px; }
+.pv-band.bottom { bottom: 0; border-top-width: 1px; }
+.pv-band.left {
+  left: 0;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  height: auto;
+  border-right-width: 1px;
+  border-bottom-width: 0;
+}
+.pv-band.right {
+  right: 0;
+  left: auto;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  height: auto;
+  border-left-width: 1px;
+  border-bottom-width: 0;
+}
+
+.pv-side {
+  width: 320px;
+  flex: none;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  overflow-y: auto;
+}
+
+.pv-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.pv-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.pv-path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pv-path-row input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-xs);
+}
+
+.pv-path-row .icon-btn {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.pv-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+  color: var(--text-muted);
+}
+
+.pv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pv-msg {
+  min-height: 1.2em;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.pv-msg.bad {
+  color: var(--danger);
+}
+
+.pv-ocr {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  overflow: hidden;
+}
+
+.pv-ocr-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.pv-ocr-acts {
+  display: flex;
+  gap: 4px;
+}
+
+.pv-ocr-acts .ico-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pv-ocr pre {
+  margin: 0;
+  padding: var(--sp-3);
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 2.6em;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  color: var(--text-primary);
+}

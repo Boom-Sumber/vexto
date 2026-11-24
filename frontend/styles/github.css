@@ -1,0 +1,406 @@
+/* GitHub 加速下载视图。
+ * 颜色 / 间距 / 圆角全部来自 tokens.css 与主题文件，本文件不写色值。
+ */
+
+.gh {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gh.hidden { display: none; }
+
+.gh-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 var(--sp-6) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ── 搜索区 ───────────────────────────────────────────────────────────── */
+
+.gh-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-1);
+}
+
+.gh-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-disabled);
+}
+
+.gh-input-row { display: flex; gap: var(--sp-2); }
+
+.gh-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 38px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+
+.gh-input-row .btn { height: 38px; min-width: 78px; }
+
+.gh-options {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+
+.gh-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.gh-check input { margin: 0; }
+.gh-check input:disabled + span { color: var(--text-disabled); }
+
+.gh-rate {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.gh-rate.warn { color: var(--danger); }
+
+#ghError { margin: 0; }
+
+/* ── 初始说明 / 空态 ──────────────────────────────────────────────────── */
+
+.gh-intro,
+.gh-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-loose);
+}
+.gh-intro.hidden,
+.gh-empty.hidden { display: none; }
+
+.gh-empty { align-items: center; }
+
+.gh-intro-ico {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-disabled);
+}
+
+.gh-intro-title {
+  margin-bottom: 3px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── 仓库头 ───────────────────────────────────────────────────────────── */
+
+.gh-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.gh-result.hidden { display: none; }
+
+.gh-repo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.gh-repo-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.gh-repo-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gh-repo-meta {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.gh-refresh {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+}
+.gh-refresh .ico { margin-right: 5px; }
+
+/* ── 版本卡片 ─────────────────────────────────────────────────────────── */
+
+.gh-releases {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.gh-release {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.gh-rel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 11px var(--sp-4);
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+.gh-rel-head:hover { background: var(--bg-hover); }
+
+.gh-tag {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.gh-rel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.gh-badges {
+  flex: none;
+  display: inline-flex;
+  gap: 5px;
+}
+
+.gh-badge {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gh-badge.pre {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.gh-date {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gh-chev {
+  flex: none;
+  display: inline-flex;
+  color: var(--text-dim);
+  transform: rotate(-90deg);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.gh-release.open .gh-chev { transform: rotate(0deg); }
+
+.gh-assets {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 var(--sp-4) var(--sp-3);
+}
+.gh-release.open .gh-assets { display: flex; }
+
+/* ── 单个资源 ─────────────────────────────────────────────────────────── */
+
+.gh-asset {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+}
+.gh-asset.dim { opacity: .55; }
+
+.gh-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+}
+
+.gh-kind {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--bg-active);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.gh-kind.windows {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.gh-kind.aux { color: var(--text-disabled); }
+
+.gh-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 92px;
+}
+
+.gh-get {
+  height: 28px;
+  padding: 0 14px;
+  font-size: var(--fs-xs);
+}
+
+.gh-note {
+  padding: 3px 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* ── Clone 卡片 ───────────────────────────────────────────────────────── */
+
+.gh-clone-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+}
+
+.gh-clone-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.gh-clone-title {
+  flex: none;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gh-clone-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.gh-clone-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.gh-copy-clone,
+.gh-clone-run {
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--fs-xs);
+}
+
+.gh-copy-clone .ico { margin-right: 5px; }
+
+.gh-clone-result {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.gh-clone-result span {
+  min-width: 0;
+}
+
+.gh-clone-result .btn {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  font-size: var(--fs-xs);
+}
+
+/* ── 加载更多 ─────────────────────────────────────────────────────────── */
+
+.gh-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+.gh-more-wrap .btn { min-width: 120px; }
+.gh-more-wrap .btn.hidden { display: none; }
+
+/* ── 侧栏分隔与入口 ───────────────────────────────────────────────────── */
+
+.cat-sep {
+  height: 1px;
+  margin: 7px 10px;
+  background: var(--border-subtle);
+}
+.cat-github { font-weight: 600; }

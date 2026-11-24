@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>新建任务</title>
+<link rel="stylesheet" href="styles/tokens.css" />
+<link rel="stylesheet" href="styles/theme-dark.css" />
+<link rel="stylesheet" href="styles/theme-light.css" />
+<link rel="stylesheet" href="styles/base.css" />
+<link rel="stylesheet" href="styles/new_task.css" />
+</head>
+<body data-theme="dark">
+<div class="win">
+  <!-- 固定尺寸窗口：只留最小化 / 关闭，不装缩放热区（aria 由 titlebar.js 补） -->
+  <header class="tb" data-tauri-drag-region>
+    <span class="tb-title" data-tauri-drag-region>新建任务</span>
+    <div class="tb-actions">
+      <button class="tb-btn" type="button" data-win="min"></button>
+      <button class="tb-btn close" type="button" data-win="close"></button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button id="tabLink" class="tab active" type="button">链接任务</button>
+    <!-- 种子任务先关闭：BT / 磁力还没开放（会话 25 用户要求）。
+         按钮保留在设计里，等集成时删掉 disabled 即可，后端命令与校验都还在。 -->
+    <button id="tabTorrent" class="tab" type="button" disabled
+            title="种子与磁力下载将在后续版本开放">种子任务</button>
+  </nav>
+
+  <main class="body">
+    <div id="paneLink" class="pane">
+      <textarea id="links" class="textarea" spellcheck="false"
+                placeholder="每行一个下载链接"></textarea>
+
+      <div id="error" class="notice notice-danger error hidden"></div>
+
+      <div class="field">
+        <label class="lbl" for="name">重命名：</label>
+        <div class="input-wrap">
+          <input id="name" class="input has-suffix" type="text" spellcheck="false" placeholder="选填" />
+          <span id="nameSize" class="suffix num"></span>
+        </div>
+        <button id="reprobe" class="btn" type="button">重新获取</button>
+      </div>
+    </div>
+
+    <div id="paneTorrent" class="pane hidden">
+      <div class="field">
+        <label class="lbl" for="torrentName">种子文件：</label>
+        <div class="input-wrap">
+          <input id="torrentName" class="input has-suffix" type="text" readonly
+                 placeholder="选择 .torrent 文件" />
+          <span id="torrentSize" class="suffix num"></span>
+        </div>
+        <button id="pickTorrent" class="btn" type="button">选择…</button>
+        <!-- 原生 file input 保持隐藏：系统部件是白底，只允许用自绘按钮触发它。
+             文件读成 base64 后走 IPC，Rust 侧不需要文件权限 / dialog 插件。 -->
+        <input id="torrentFile" class="hidden" type="file" accept=".torrent,application/x-bittorrent" />
+      </div>
+      <div class="hint-row">种子里的文件名与分片校验由种子决定，这里只改保存位置与限速。</div>
+      <div id="tError" class="notice notice-danger error hidden"></div>
+    </div>
+
+    <!-- 两个页签共享：保存位置 / 可用空间 / 高级选项。
+         链接任务下顺序与参考图一致（重命名 → 存储路径 → 高级选项）。 -->
+    <div class="field">
+      <label class="lbl" for="dir">存储路径：</label>
+      <div class="input-wrap">
+        <input id="dir" class="input" type="text" spellcheck="false" />
+        <button id="pickDir" class="icon-btn dir-btn" type="button" title="在资源管理器中打开" data-icon="folder"></button>
+        <button id="defaultDir" class="icon-btn dir-btn" type="button" title="填入默认下载目录" data-icon="clock"></button>
+      </div>
+    </div>
+
+    <div id="spaceHint" class="hint-row num"></div>
+
+    <label class="adv-toggle">
+      <input id="advToggle" type="checkbox" />
+      <span>高级选项</span>
+    </label>
+
+    <div id="advPane" class="adv hidden">
+      <div class="field">
+        <label class="lbl" for="speed">限速：</label>
+        <div class="input-wrap">
+          <input id="speed" class="input has-suffix" type="number" min="0" max="102400" step="64" placeholder="0" />
+          <span class="suffix">KB/s</span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="conn">连接数：</label>
+        <div class="input-wrap">
+          <input id="conn" class="input has-suffix" type="number" min="0" max="16" step="1" placeholder="0" />
+          <span class="suffix">个</span>
+        </div>
+      </div>
+      <div class="field" data-link-only>
+        <label class="lbl" for="ua">User-Agent：</label>
+        <div class="input-wrap">
+          <!-- UA 是一长串无空格字符，单行框看不全：用两行可折行的文本框。
+               视觉折行不进 value；手敲的回车由 new_task.js 的 cleanUa() 去掉。 -->
+          <textarea id="ua" class="input ua-input" rows="2" spellcheck="false" placeholder="选填"></textarea>
+        </div>
+      </div>
+      <div class="field" data-link-only>
+        <label class="lbl" for="referer">Referer：</label>
+        <div class="input-wrap">
+          <input id="referer" class="input" type="text" spellcheck="false" placeholder="选填" />
+        </div>
+      </div>
+      <div class="field" data-link-only>
+        <label class="lbl" for="checksum">校验和：</label>
+        <div class="input-wrap">
+          <input id="checksum" class="input" type="text" spellcheck="false" placeholder="sha-256=…（选填）" />
+        </div>
+      </div>
+      <div class="field auth" data-link-only>
+        <!-- 三行合成一项：用户名/密码是 HTTP Basic 的两种字段，Authorization 是
+             原始头。三者共用「认证信息」这个标签，label 因此不带 for（对应多个输入框）。 -->
+        <span class="lbl">认证信息：</span>
+        <div class="auth-body">
+          <div class="auth-row">
+            <input id="httpUser" class="input" type="text" spellcheck="false" placeholder="用户名" />
+            <input id="httpPasswd" class="input" type="password" spellcheck="false" placeholder="密码" />
+          </div>
+          <div class="auth-row group">
+            <span class="auth-prefix">Authorization</span>
+            <input id="authorization" class="input" type="text" spellcheck="false"
+                   placeholder="Bearer 你的令牌" />
+          </div>
+          <div id="authHint" class="auth-hint hidden">已填 Authorization，用户名 / 密码不会发送</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span id="status" class="status"></span>
+    <div class="acts">
+      <button id="cancel" class="btn" type="button">取消</button>
+      <button id="submit" class="btn btn-primary" type="button">新建</button>
+    </div>
+  </footer>
+</div>
+
+  <script type="module" src="./entries/new_task.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>截图翻译</title>
+<link rel="stylesheet" href="styles/tokens.css" />
+<link rel="stylesheet" href="styles/theme-dark.css" />
+<link rel="stylesheet" href="styles/theme-light.css" />
+<link rel="stylesheet" href="styles/base.css" />
+<link rel="stylesheet" href="styles/region_select.css" />
+</head>
+<body data-theme="dark" data-purpose="ocr">
+  <div id="dim"></div>
+  <div id="box"></div>
+
+  <div id="card">
+    <div id="card-tag" class="card-tag"></div>
+    <div id="card-original" class="original"></div>
+    <div id="card-text" class="translated"></div>
+    <div id="shotPath" class="shot-path" style="display:none"></div>
+    <div id="card-acts" class="card-acts">
+      <button id="copyBtn" class="btn" type="button">复制译文</button>
+      <button id="closeBtn" class="btn btn-primary" type="button">关闭</button>
+    </div>
+  </div>
+
+  <script type="module" src="./entries/ocr_overlay.js"></script>
+</body>
+</html>

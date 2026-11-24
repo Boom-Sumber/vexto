@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>滚动截图</title>
+<link rel="stylesheet" href="styles/tokens.css" />
+<link rel="stylesheet" href="styles/theme-dark.css" />
+<link rel="stylesheet" href="styles/theme-light.css" />
+<link rel="stylesheet" href="styles/base.css" />
+<link rel="stylesheet" href="styles/scroll_control.css" />
+</head>
+<body data-theme="dark">
+  <div class="scr">
+    <div class="scr-head">
+      <span class="scr-title">滚动截图</span>
+      <span id="scr-badge" class="scr-badge">进行中</span>
+    </div>
+    <div id="scr-line" class="scr-line">正在抓取…</div>
+    <div class="scr-bar"><div id="scr-fill" class="scr-fill"></div></div>
+    <div class="scr-acts">
+      <button id="scr-preview" class="btn" type="button" hidden>预览</button>
+      <button id="scr-pin" class="btn" type="button" hidden>钉屏</button>
+      <button id="scr-stop" class="btn" type="button">停止</button>
+      <button id="scr-close" class="btn btn-primary" type="button" hidden>关闭</button>
+    </div>
+  </div>
+  <script type="module" src="./entries/scroll_control.js"></script>
+</body>
+</html>
