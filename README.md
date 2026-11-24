@@ -27,7 +27,7 @@
 
 ## 安装
 
-运行 [Vexto_0.3.21_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.3.21/Vexto_0.3.21_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.4.0_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.4.0/Vexto_0.4.0_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
 当前安装包 **21.22 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
