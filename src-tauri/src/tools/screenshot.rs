@@ -88,7 +88,7 @@ impl Tool for Screenshot {
                             ("windows", "Windows 自带"),
                         ],
                     ),
-                    Field::group("钉屏"),
+                    Field::group("pin", "钉屏"),
                     Field::switch("pinscreen_single_window", "单窗口多图"),
                 ],
             ),

@@ -14,6 +14,7 @@
 
 use super::{md5_hex, now_ms, Engine, TranslateError, Translated};
 use crate::config::Config;
+use rust_i18n::t;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -177,8 +178,8 @@ fn call(
     parse_trans_result(&body, status, from, to)
 }
 
-fn ready_hint() -> &'static str {
-    "还没填百度翻译的 APPID / 密钥。\n右键托盘图标 → 设置… → 翻译 → 引擎"
+fn ready_hint() -> String {
+    t!("translate.baidu.ready").into_owned()
 }
 
 fn is_ready(cfg: &Config) -> bool {
@@ -206,7 +207,7 @@ impl Engine for Baidu {
         is_ready(cfg)
     }
 
-    fn ready_hint(&self) -> &'static str {
+    fn ready_hint(&self) -> String {
         ready_hint()
     }
 
@@ -237,7 +238,7 @@ impl Engine for BaiduLlm {
         is_ready(cfg)
     }
 
-    fn ready_hint(&self) -> &'static str {
+    fn ready_hint(&self) -> String {
         ready_hint()
     }
 

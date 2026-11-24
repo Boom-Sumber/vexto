@@ -94,14 +94,14 @@ impl Tool for Transfer {
                 "general",
                 "通用",
                 vec![
-                    Field::group("接收"),
+                    Field::group("receive", "接收"),
                     Field::switch("transfer_auto_accept", "自动保存"),
                     Field::switch("transfer_auto_complete", "自动完成"),
                     Field::switch("require_pin", "需要一个 PIN"),
                     Field::text_hint("pin", "PIN（4–6 位数字）", "4–6 位数字")
                         .show_if("require_pin", "true"),
                     Field::dir("receive_dir", "保存目录").wide(),
-                    Field::group("设备"),
+                    Field::group("device", "设备"),
                     Field::text_hint("device_alias", "别名", "不填用计算机名"),
                     Field::select(
                         "transfer_device_type",
@@ -123,7 +123,7 @@ impl Tool for Transfer {
                 "advanced",
                 "高级",
                 vec![
-                    Field::group("网络"),
+                    Field::group("network", "网络"),
                     Field::number_unit("transfer_port", "端口", 1024, 65535, ""),
                     Field::switch("transfer_use_https", "加密（HTTPS）"),
                     Field::text_hint("transfer_multicast", "多播地址", "224.0.0.167")

@@ -125,16 +125,16 @@ impl Tool for Translate {
                 "config",
                 "配置",
                 vec![
-                    Field::group("翻译"),
+                    Field::group("translate", "翻译"),
                     Field::select_dynamic("active_engine", "翻译引擎", "engines")
                         .help("从「服务管理」里选一个已配置的实例。"),
-                    Field::group("翻译方向"),
+                    Field::group("direction", "翻译方向"),
                     Field::select("lang_detect", "语种检测方式", DETECT_OPTIONS),
                     Field::select("from", "源语言", FROM_STATIC),
                     Field::select("to", "目标语言", TO_STATIC),
                     Field::select("to2", "第二目标语言", TO_STATIC)
                         .help("检测出的语言等于「目标语言」时译到「第二目标语言」"),
-                    Field::group("交互"),
+                    Field::group("interaction", "交互"),
                     Field::hotkey("hotkey", "划词翻译"),
                     Field::hotkey("hotkey_input", "输入翻译"),
                     Field::switch("auto_copy", "译完自动复制译文"),
@@ -144,12 +144,12 @@ impl Tool for Translate {
                 "services",
                 "服务管理",
                 vec![
-                    Field::group("厂商管理"),
+                    Field::group("vendors", "厂商管理"),
                     Field::list("vendor_profiles", "已配置的厂商", vendor_item_fields())
                         .summary(&["name", "vendor", "use_llm"])
                         .add_dialog()
                         .test_action("test_engine_profile"),
-                    Field::group("大模型管理"),
+                    Field::group("models", "大模型管理"),
                     Field::list("openai_profiles", "已配置的模型", openai_item_fields())
                         .summary(&["name", "model"])
                         .add_dialog()

@@ -345,10 +345,10 @@ impl Field {
         Self::new(key, "", FieldKind::ButtonRow { actions })
     }
 
-    /// 纯说明文字。没有 key（用文案本身当 DOM id），文案放在 `kind.text` 里。
+    /// 纯说明文字。`key` 用于 i18n 与 DOM id，文案放在 `kind.text` 里。
     #[allow(dead_code)]
-    pub fn note(text: &'static str) -> Self {
-        Self::new(text, "", FieldKind::Note { text })
+    pub fn note(key: &'static str, text: &'static str) -> Self {
+        Self::new(key, "", FieldKind::Note { text })
     }
 
     /// 关于页上半部分：品牌、简介、功能卡片、链接与操作。
@@ -375,9 +375,9 @@ impl Field {
         )
     }
 
-    /// 分组标题。没有 key（用标题当 DOM id），也不带 label。
-    pub fn group(title: &'static str) -> Self {
-        Self::new(title, "", FieldKind::Group { title })
+    /// 分组标题。`key` 用于 i18n 与 DOM id，标题放 `kind.title`。
+    pub fn group(key: &'static str, title: &'static str) -> Self {
+        Self::new(key, "", FieldKind::Group { title })
     }
 
     /// 可重复的一组配置。`items` 里的字段只用于描述每项的输入框，
@@ -512,8 +512,8 @@ mod tests {
             (Field::dir("g", "G"), "dir"),
             (Field::button("h", "H"), "button"),
             (Field::buttons(&[("a", "A")]), "button_row"),
-            (Field::note("说明"), "note"),
-            (Field::group("分组"), "group"),
+            (Field::note("note", "说明"), "note"),
+            (Field::group("testGroup", "分组"), "group"),
             (Field::list("i", "I", vec![]), "list"),
         ];
         for (f, ty) in cases {
@@ -565,7 +565,7 @@ mod tests {
     /// 分组标题没有任何值，前端只读 `title`。
     #[test]
     fn group_carries_its_title() {
-        let v: Value = serde_json::to_value(Field::group("下载路径")).unwrap();
+        let v: Value = serde_json::to_value(Field::group("paths", "下载路径")).unwrap();
         assert_eq!(v["type"], "group");
         assert_eq!(v["title"], "下载路径");
         assert_eq!(v["label"], "");

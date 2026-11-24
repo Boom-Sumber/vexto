@@ -17,6 +17,7 @@
 //! 虚拟屏幕（多显示器），原点是虚拟屏幕左上角。后端拿到后乘 dpr 得物理
 //! 像素，再加上虚拟屏幕原点偏移，才是 `GetDC(None)` 用的屏幕物理坐标。
 
+use rust_i18n::t;
 use windows::Graphics::Imaging::{BitmapPixelFormat, SoftwareBitmap};
 use windows::Media::Ocr::OcrEngine;
 use windows::Storage::Streams::{DataWriter, IBuffer};
@@ -71,7 +72,7 @@ fn capture_from_hdc(
     h: i32,
 ) -> Result<CapturedImage, String> {
     if w <= 0 || h <= 0 {
-        return Err("选区尺寸不合法".into());
+        return Err(t!("error.ocr.badRegion").into_owned());
     }
     unsafe {
         let hdc_mem = CreateCompatibleDC(Some(hdc));
@@ -93,11 +94,11 @@ fn capture_from_hdc(
             None,
             0,
         )
-        .map_err(|e| format!("创建截屏位图失败：{e}"))?;
+        .map_err(|e| t!("error.ocr.createBitmap", detail = e).into_owned())?;
         if bits.is_null() {
             let _ = DeleteObject(hbmp.into());
             let _ = DeleteDC(hdc_mem);
-            return Err("创建截屏位图失败".into());
+            return Err(t!("error.ocr.createBitmapShort").into_owned());
         }
         // 必须先把 DIB 选进内存 DC，BitBlt 才会把像素写进这张位图；
         // 不选的话 BitBlt 写的是 DC 默认的 1×1 单色位图，DIB 段内存
@@ -128,7 +129,7 @@ fn capture_from_hdc(
         let _ = DeleteObject(hbmp.into());
         let _ = DeleteDC(hdc_mem);
         if img.pixels.is_empty() {
-            return Err("截屏失败（BitBlt）".into());
+            return Err(t!("error.ocr.bitblt").into_owned());
         }
         Ok(img)
     }
@@ -168,19 +169,20 @@ pub fn windows_ocr_bitmap(img: &CapturedImage) -> Result<String, String> {
             &windows::Globalization::Language::CreateLanguage(&windows::core::HSTRING::from(
                 "en-US",
             ))
-            .map_err(|_| "系统没有可用的 OCR 语言".to_string())?,
+            .map_err(|_| t!("error.ocr.noLanguage").into_owned())?,
         )
-        .map_err(|_| "系统没有可用的 OCR 语言".to_string())?,
+        .map_err(|_| t!("error.ocr.noLanguage").into_owned())?,
     };
 
     // BGRA → IBuffer（DataWriter 写完 detach 即可，不用落盘/编码）
-    let writer = DataWriter::new().map_err(|e| format!("OCR 初始化失败：{e}"))?;
+    let writer = DataWriter::new()
+        .map_err(|e| t!("error.ocr.init", detail = e).into_owned())?;
     writer
         .WriteBytes(&img.pixels)
-        .map_err(|e| format!("OCR 初始化失败：{e}"))?;
+        .map_err(|e| t!("error.ocr.init", detail = e).into_owned())?;
     let buf: IBuffer = writer
         .DetachBuffer()
-        .map_err(|e| format!("OCR 初始化失败：{e}"))?;
+        .map_err(|e| t!("error.ocr.init", detail = e).into_owned())?;
 
     // 0.62 的 CreateCopyFromBuffer 没有 alpha 参数（默认 Premultiplied；
     // 截屏 alpha 恒 255，两种模式等价）
@@ -190,27 +192,29 @@ pub fn windows_ocr_bitmap(img: &CapturedImage) -> Result<String, String> {
         img.width,
         img.height,
     )
-    .map_err(|e| format!("截图数据不合法：{e}"))?;
+    .map_err(|e| t!("error.ocr.badImage", detail = e).into_owned())?;
 
     let op = engine
         .RecognizeAsync(&bitmap)
-        .map_err(|e| format!("OCR 启动失败：{e}"))?;
+        .map_err(|e| t!("error.ocr.start", detail = e).into_owned())?;
     loop {
-        let st = op.Status().map_err(|e| format!("OCR 识别失败：{e}"))?;
+        let st = op
+            .Status()
+            .map_err(|e| t!("error.ocr.recognize", detail = e).into_owned())?;
         if st == AsyncStatus::Completed {
             break;
         }
         if st == AsyncStatus::Error {
-            return Err("OCR 识别失败（引擎返回错误）".into());
+            return Err(t!("error.ocr.engineError").into_owned());
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
     let result = op
         .GetResults()
-        .map_err(|e| format!("OCR 识别失败：{e}"))?;
+        .map_err(|e| t!("error.ocr.recognize", detail = e).into_owned())?;
     Ok(result
         .Text()
-        .map_err(|e| format!("OCR 读取结果失败：{e}"))?
+        .map_err(|e| t!("error.ocr.readResult", detail = e).into_owned())?
         .to_string_lossy())
 }
 
@@ -226,11 +230,11 @@ pub fn ocr_translate_region(
     let text = ocr_bitmap(&img)?;
     let text = text.trim().to_string();
     if text.is_empty() {
-        return Err("没有识别到文字。框大一点，或换个有文字的区域试试。".into());
+        return Err(t!("error.ocr.noText").into_owned());
     }
     let cfg = crate::config::load();
     if !cfg.enable_translate {
-        return Err("划词翻译功能已停用，先在设置里启用翻译工具。".into());
+        return Err(t!("error.ocr.translateDisabled").into_owned());
     }
     let r = crate::translate::translate(&cfg, &text)?;
     Ok((text, r.dst, r.from))
@@ -241,6 +245,7 @@ pub fn ocr_translate_region(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_i18n::t;
 
     /// GDI 把一段英文画到内存位图 → OCR 必须认得出关键词。
     /// 英文 OCR 引擎在所有 Windows 上都有（不需要语言包）。
@@ -343,7 +348,10 @@ mod tests {
     #[test]
     fn capture_rejects_bad_region() {
         let e = capture_region(0, 0, 0, 100).unwrap_err();
-        assert!(e.contains("不合法"), "实际：{e}");
+        assert!(
+            e.contains(t!("error.ocr.badRegion").as_ref()),
+            "实际：{e}"
+        );
     }
 
     /// 回归：BitBlt 的目标 DIB 必须先 SelectObject 进内存 DC。

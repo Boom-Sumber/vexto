@@ -106,17 +106,23 @@ fn replace_optional(field: &mut Value, name: &str, key: &str) {
     }
 }
 
-fn localize_field(field: &mut Value) {
+fn localize_field(field: &mut Value, tool_id: &str, parent: &str) {
     let Some(key) = field.get("key").and_then(Value::as_str).map(str::to_string) else {
         return;
     };
     if key.is_empty() {
         return;
     }
+    let base = if parent.is_empty() {
+        format!("schema.field.{tool_id}.{key}")
+    } else {
+        format!("schema.field.{tool_id}.{parent}.{key}")
+    };
+
     if let Some(label) = field.get_mut("label") {
-        replace_text(label, &format!("schema.field.{key}.label"));
+        replace_text(label, &format!("{base}.label"));
     }
-    replace_optional(field, "help", &format!("schema.field.{key}.help"));
+    replace_optional(field, "help", &format!("{base}.help"));
 
     let kind = field
         .get("type")
@@ -125,14 +131,24 @@ fn localize_field(field: &mut Value) {
         .to_string();
     match kind.as_str() {
         "text" | "template" => {
-            replace_optional(
-                field,
-                "placeholder",
-                &format!("schema.field.{key}.placeholder"),
-            );
+            replace_optional(field, "placeholder", &format!("{base}.placeholder"));
+            if let Some(presets) = field.get_mut("presets").and_then(Value::as_array_mut) {
+                for preset in presets {
+                    let Some(pair) = preset.as_array_mut() else {
+                        continue;
+                    };
+                    if pair.len() < 2 {
+                        continue;
+                    }
+                    let Some(value) = pair[1].as_str().map(str::to_string) else {
+                        continue;
+                    };
+                    replace_text(&mut pair[0], &format!("{base}.preset.{value}"));
+                }
+            }
         }
         "number" => {
-            replace_optional(field, "unit", &format!("schema.field.{key}.unit"));
+            replace_optional(field, "unit", &format!("{base}.unit"));
         }
         "select" => {
             if let Some(options) = field.get_mut("options").and_then(Value::as_array_mut) {
@@ -146,7 +162,7 @@ fn localize_field(field: &mut Value) {
                     let Some(value) = pair[0].as_str().map(str::to_string) else {
                         continue;
                     };
-                    replace_text(&mut pair[1], &format!("schema.field.{key}.option.{value}"));
+                    replace_text(&mut pair[1], &format!("{base}.option.{value}"));
                 }
             }
         }
@@ -162,24 +178,45 @@ fn localize_field(field: &mut Value) {
                     let Some(command) = pair[0].as_str().map(str::to_string) else {
                         continue;
                     };
-                    replace_text(&mut pair[1], &format!("schema.action.{command}"));
+                    replace_text(&mut pair[1], &format!("schema.action.{tool_id}.{command}"));
                 }
             }
         }
         "group" => {
             if let Some(title) = field.get_mut("title") {
-                replace_text(title, &format!("schema.group.{key}.title"));
+                replace_text(title, &format!("schema.group.{tool_id}.{key}.title"));
             }
         }
         "note" => {
             if let Some(text) = field.get_mut("text") {
-                replace_text(text, &format!("schema.note.{key}.text"));
+                replace_text(text, &format!("schema.note.{tool_id}.{key}.text"));
+            }
+        }
+        "color" => {
+            if let Some(presets) = field.get_mut("presets").and_then(Value::as_array_mut) {
+                for preset in presets {
+                    let Some(pair) = preset.as_array_mut() else {
+                        continue;
+                    };
+                    if pair.len() < 2 {
+                        continue;
+                    }
+                    let Some(hex) = pair[0].as_str().map(str::to_string) else {
+                        continue;
+                    };
+                    replace_text(&mut pair[1], &format!("schema.color.{hex}"));
+                }
             }
         }
         "list" => {
+            let child_parent = if parent.is_empty() {
+                key.clone()
+            } else {
+                format!("{parent}.{key}")
+            };
             if let Some(items) = field.get_mut("item_fields").and_then(Value::as_array_mut) {
                 for item in items {
-                    localize_field(item);
+                    localize_field(item, tool_id, &child_parent);
                 }
             }
         }
@@ -210,11 +247,11 @@ pub fn localize_tool(tool: &mut Value) {
             .unwrap_or("")
             .to_string();
         if let Some(name) = section.get_mut("name") {
-            replace_text(name, &format!("schema.section.{sid}.name"));
+            replace_text(name, &format!("schema.section.{id}.{sid}.name"));
         }
         if let Some(fields) = section.get_mut("fields").and_then(Value::as_array_mut) {
             for field in fields {
-                localize_field(field);
+                localize_field(field, &id, "");
             }
         }
     }

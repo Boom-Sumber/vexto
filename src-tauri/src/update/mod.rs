@@ -532,12 +532,13 @@ fn finish_ready(app: &AppHandle, path: PathBuf, via: Option<String>, size: u64) 
 }
 
 fn notify_ready(app: &AppHandle) {
+    use rust_i18n::t;
     use tauri_plugin_notification::NotificationExt;
     if let Err(e) = app
         .notification()
         .builder()
-        .title("Vexto 需要更新")
-        .body("新版本已下载，点击立即安装。")
+        .title(t!("notify.updateTitle"))
+        .body(t!("notify.updateBody"))
         .show()
     {
         dlog::warn(&format!("update: 发送更新通知失败：{e}"));
@@ -546,7 +547,8 @@ fn notify_ready(app: &AppHandle) {
 
 /// 下载通知的点击回调先问这里：更新通知要打开设置页，而不是下载列表。
 pub fn handle_notification_click(app: &AppHandle, title: &str, _body: &str) -> bool {
-    if title == "Vexto 需要更新" {
+    use rust_i18n::t;
+    if title == t!("notify.updateTitle") || title == "Vexto 需要更新" {
         crate::open_settings_at(app, "about");
         return true;
     }

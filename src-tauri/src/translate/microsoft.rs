@@ -13,6 +13,7 @@
 use super::{Engine, TranslateError, Translated};
 use crate::config::Config;
 use crate::lang;
+use rust_i18n::t;
 use serde_json::Value;
 use std::time::Duration;
 
@@ -108,8 +109,8 @@ impl Engine for Microsoft {
         true
     }
 
-    fn ready_hint(&self) -> &'static str {
-        "微软翻译无需配置，直接可用"
+    fn ready_hint(&self) -> String {
+        t!("translate.microsoft.ready").into_owned()
     }
 
     fn translate_one(&self, cfg: &Config, text: &str) -> Result<Translated, TranslateError> {

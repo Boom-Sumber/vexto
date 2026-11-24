@@ -117,17 +117,17 @@ impl Tool for Download {
                 "general",
                 "通用",
                 vec![
-                    Field::group("下载路径"),
+                    Field::group("paths", "下载路径"),
                     Field::dir("download_dir", "下载目录").wide(),
                     Field::switch("remember_last_dir", "记住上次保存位置"),
-                    Field::group("速度与并发"),
+                    Field::group("speed", "速度与并发"),
                     Field::number_unit("max_concurrent", "同时下载数", 1, 16, "个"),
                     Field::number_unit("max_connection_per_server", "单文件连接数", 1, 16, "个"),
                     Field::number_unit("max_speed_kb", "下载限速", 0, 102_400, "KB/s")
                         .help("填 0 表示不限；单位 KB/s。"),
                     Field::switch("auto_limit", "自动限速")
                         .help("按实测速度把上限收到「峰值 × 1.3」，只降不升，避免上限虚高时 aria2 开满连接空转。"),
-                    Field::group("通知"),
+                    Field::group("notifications", "通知"),
                     Field::switch("notify_download", "下载系统通知")
                         .help("只控制下载开始 / 完成 / 失败的系统通知；强制更新下载完成仍会提醒。"),
                     Field::switch("notify_on_start", "下载开始时通知"),
@@ -151,7 +151,7 @@ impl Tool for Download {
                     Field::text_hint("after_all_done_cmd", "要运行的程序", r"D:\tools\done.exe")
                         .show_if("after_all_done", "run")
                         .wide(),
-                    Field::group("删除与清理"),
+                    Field::group("cleanup", "删除与清理"),
                     Field::select(
                         "delete_mode",
                         "文件删除方式",
@@ -168,7 +168,7 @@ impl Tool for Download {
                         "已完成记录保留",
                         &[("100", "100 条"), ("300", "300 条"), ("forever", "永久")],
                     ),
-                    Field::group("快捷键"),
+                    Field::group("hotkeys", "快捷键"),
                     Field::hotkey("hotkey_download", "打开新建下载任务"),
                 ],
             ),
@@ -177,7 +177,7 @@ impl Tool for Download {
                 "network",
                 "网络",
                 vec![
-                    Field::group("代理"),
+                    Field::group("proxy", "代理"),
                     Field::select(
                         "proxy_mode",
                         "代理模式",
@@ -190,7 +190,7 @@ impl Tool for Download {
                     Field::text_hint("proxy_url", "代理地址", "http://127.0.0.1:7890")
                         .show_if("proxy_mode", "manual")
                         .wide(),
-                    Field::group("GitHub"),
+                    Field::group("github", "GitHub"),
                     Field::select("update_download_source", "GitHub 下载线路", GITHUB_SOURCES)
                         .help("GitHub 加速下载与 clone 共用；没有单独配置下载代理时按这里的线路走，配置了下载代理时下载优先走代理。")
                         .help_tip(),
@@ -204,7 +204,7 @@ impl Tool for Download {
                     Field::password("github_token", "访问令牌")
                         .help("可选。填入后接口限额从 60 次/小时升到 5000 次/小时；只用于 api.github.com，不写日志，也不会带进下载任务。")
                         .help_tip(),
-                    Field::group("请求"),
+                    Field::group("request", "请求"),
                     Field::text_presets(
                         "default_user_agent",
                         "User-Agent",
@@ -212,7 +212,7 @@ impl Tool for Download {
                         UA_PRESETS,
                     )
                     .wide(),
-                    Field::group("DNS"),
+                    Field::group("dns", "DNS"),
                     Field::select(
                         "dns_servers",
                         "DNS 服务器",
@@ -224,7 +224,7 @@ impl Tool for Download {
                         ],
                     )
                     .help("下载引擎不支持 DoH，这里使用对应服务商的明文 DNS 地址。"),
-                    Field::group("TLS"),
+                    Field::group("tls", "TLS"),
                     Field::switch("check_certificate", "校验证书")
                         .help("关掉可以下载自签名证书的站点，但会失去对中间人攻击的防护。"),
                 ],
@@ -234,12 +234,12 @@ impl Tool for Download {
                 "advanced",
                 "高级",
                 vec![
-                    Field::group("浏览器插件接管"),
+                    Field::group("extensionBridge", "浏览器插件接管"),
                     Field::switch("extension_bridge_enabled", "启用接管")
                         .help("启动一个只监听 127.0.0.1 的接口，供 Rayburst-Connect 扩展把网页下载交过来。"),
                     Field::number_unit("extension_bridge_port", "插件端口", 1024, 65535, ""),
                     Field::password("extension_bridge_secret", "插件密钥"),
-                    Field::group("下载引擎"),
+                    Field::group("engine", "下载引擎"),
                     Field::number_unit("rpc_port", "RPC 端口", 1024, 65535, "")
                         .help("aria2 的控制接口，只绑 127.0.0.1；被占用时会自动换一个可用端口。"),
                     Field::buttons(&[

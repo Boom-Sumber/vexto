@@ -1,4 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// rust-i18n 生成的查表代码会触发 clippy::unnecessary_to_owned；这是宏展开的
+// 假阳性，无法在调用点局部 allow（attribute 会被宏忽略）。
+#![allow(clippy::unnecessary_to_owned)]
 
 //! Vexto 入口。
 //!
@@ -39,6 +42,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+use rust_i18n::t;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// 托盘「退出」置位。没有它，`ExitRequested` 里的 `prevent_exit()` 会让进程永远关不掉。
@@ -319,7 +323,7 @@ async fn translate_text(
 ) -> Result<Value, String> {
     let t = text.trim().to_string();
     if t.is_empty() {
-        return Err("没有要翻译的内容".into());
+        return Err(t!("error.translate.emptySelection").into_owned());
     }
     let m: &'static str = match mode.as_deref() {
         Some("select") => "select",
@@ -385,7 +389,7 @@ async fn translate_text(
 async fn translate_text_only(text: String) -> Result<Value, String> {
     let t = text.trim().to_string();
     if t.is_empty() {
-        return Err("没有要翻译的内容".into());
+        return Err(t!("error.translate.emptySelection").into_owned());
     }
     let cfg = config::load();
     let r = tauri::async_runtime::spawn_blocking(move || translate::translate(&cfg, &t))
@@ -854,7 +858,7 @@ async fn shot_capture_preview(mode: crate::screenshot::Mode, app: AppHandle) -> 
             });
             SaveOut {
                 ok: true,
-                message: "已打开截图预览".into(),
+                message: t!("status.screenshotPreviewOpened").into_owned(),
                 warnings: vec![],
             }
         }
@@ -1039,7 +1043,7 @@ fn pin_add(path: String, app: AppHandle) -> SimpleOut {
             }
             SimpleOut {
                 ok: true,
-                message: "已钉屏".into(),
+                message: t!("status.pinned").into_owned(),
             }
         }
         Err(e) => SimpleOut {
@@ -1055,7 +1059,7 @@ fn pin_step(window: tauri::WebviewWindow, delta: i32) -> SimpleOut {
     if crate::screenshot::pin::step(window.label(), delta).is_none() {
         return SimpleOut {
             ok: false,
-            message: "钉屏里还没有图片".into(),
+            message: t!("error.pin.noImage").into_owned(),
         };
     }
     crate::screenshot::pin::fit_window(&window);
@@ -1076,7 +1080,7 @@ fn pin_zoom(window: tauri::WebviewWindow, delta: i32, reset: Option<bool>) -> Si
         },
         None => SimpleOut {
             ok: false,
-            message: "钉屏里还没有图片".into(),
+            message: t!("error.pin.noImage").into_owned(),
         },
     }
 }
@@ -1091,7 +1095,7 @@ fn pin_set_zoom(window: tauri::WebviewWindow, zoom: f64) -> SimpleOut {
         },
         None => SimpleOut {
             ok: false,
-            message: "钉屏里还没有图片".into(),
+            message: t!("error.pin.noImage").into_owned(),
         },
     }
 }
@@ -1124,7 +1128,7 @@ async fn pin_save_as(window: tauri::WebviewWindow) -> SimpleOut {
         },
         Err(e) => SimpleOut {
             ok: false,
-            message: format!("保存任务失败：{e}"),
+            message: t!("error.saveTaskFailed", detail = e).into_owned(),
         },
     }
 }
@@ -1135,14 +1139,14 @@ fn pin_preview(window: tauri::WebviewWindow, app: AppHandle) -> SimpleOut {
     let Some((path, _, _)) = crate::screenshot::pin::current(window.label()) else {
         return SimpleOut {
             ok: false,
-            message: "钉屏里还没有图片".into(),
+            message: t!("error.pin.noImage").into_owned(),
         };
     };
     crate::screenshot::preview::set_source(path);
     schedule_window(&app, crate::popup::open_preview_window);
     SimpleOut {
         ok: true,
-        message: "已打开预览".into(),
+        message: t!("status.previewOpened").into_owned(),
     }
 }
 
@@ -1171,7 +1175,7 @@ fn preview_open(path: String, app: AppHandle) -> SimpleOut {
             }
             SimpleOut {
                 ok: true,
-                message: "已打开预览".into(),
+                message: t!("status.previewOpened").into_owned(),
             }
         }
         Err(e) => SimpleOut {
@@ -1200,17 +1204,22 @@ fn preview_open_save_dir() -> SimpleOut {
     if let Err(e) = std::fs::create_dir_all(&dir) {
         return SimpleOut {
             ok: false,
-            message: format!("创建截图目录失败（{}）：{e}", dir.display()),
+            message: t!(
+                "error.createScreenshotDir",
+                path = dir.display(),
+                detail = e
+            )
+            .into_owned(),
         };
     }
     match std::process::Command::new("explorer").arg(&dir).spawn() {
         Ok(_) => SimpleOut {
             ok: true,
-            message: format!("已打开 {}", dir.display()),
+            message: t!("status.openedPath", path = dir.display()).into_owned(),
         },
         Err(e) => SimpleOut {
             ok: false,
-            message: format!("打开目录失败：{e}"),
+            message: t!("error.openDir", detail = e).into_owned(),
         },
     }
 }
@@ -1456,7 +1465,7 @@ fn save_tool_config(
     if allowed.is_empty() && tools::registry::by_id(&tool_id).is_none() {
         return SaveOut {
             ok: false,
-            message: format!("未知的工具「{tool_id}」"),
+            message: t!("error.unknownTool", id = tool_id).into_owned(),
             warnings,
         };
     }
@@ -1536,7 +1545,9 @@ fn save_tool_config(
         if let Some(Value::String(s)) = patch.get(k) {
             let s = s.trim();
             if !s.is_empty() && !std::path::Path::new(s).is_dir() {
-                warnings.push(format!("目录不存在，保存后仍然生效：{s}"));
+                warnings.push(
+                    t!("warn.configDirMissing", path = s).into_owned(),
+                );
             }
         }
     }
@@ -1547,7 +1558,7 @@ fn save_tool_config(
         if !s.is_empty() && s.parse::<std::net::Ipv4Addr>().is_err() {
             return SaveOut {
                 ok: false,
-                message: format!("多播地址不合法：{s}"),
+                message: t!("warn.multicastInvalid", value = s).into_owned(),
                 warnings,
             };
         }
@@ -1615,7 +1626,7 @@ fn save_tool_config(
     //    否则他下次开机发现没起来，只会以为功能坏了。
     if patch.contains_key("autostart") {
         if let Err(e) = autostart::apply(cfg.autostart) {
-            warnings.push(format!("开机自启没设置成功：{e}"));
+            warnings.push(t!("warn.autostartFailed", detail = e).into_owned());
         }
     }
 
@@ -1654,8 +1665,7 @@ fn save_tool_config(
         && crate::download::engine::rpc_handle().is_some()
     {
         warnings.push(
-            "DNS / 证书校验 / RPC 端口要等下载引擎下次启动才生效（可以先停用再启用下载）"
-                .to_string(),
+            t!("warn.sidecarRestartNeeded").into_owned(),
         );
     }
 
@@ -1697,13 +1707,15 @@ fn save_tool_config(
             .stop()
             .and_then(|_| transfer::backend().start(&tc))
         {
-            warnings.push(format!("传输服务重启失败，新设置要等下次启动才生效：{e}"));
+            warnings.push(
+                t!("warn.transferRestartFailed", detail = e).into_owned(),
+            );
         }
     }
 
     SaveOut {
         ok: true,
-        message: "已保存".to_string(),
+        message: t!("status.saved").into_owned(),
         warnings,
     }
 }
@@ -1717,7 +1729,7 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
         None => {
             return SaveOut {
                 ok: false,
-                message: format!("未知的工具「{tool_id}」"),
+                message: t!("error.unknownTool", id = tool_id).into_owned(),
                 warnings: vec![],
             }
         }
@@ -1754,9 +1766,9 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
     SaveOut {
         ok: true,
         message: if enabled {
-            format!("已启用「{}」", tool.name())
+            t!("status.toolEnabled", name = tool.name()).into_owned()
         } else {
-            format!("已停用「{}」", tool.name())
+            t!("status.toolDisabled", name = tool.name()).into_owned()
         },
         warnings,
     }
@@ -1870,7 +1882,7 @@ fn open_config_dir() -> SimpleOut {
     if let Err(e) = std::fs::create_dir_all(&dir) {
         return SimpleOut {
             ok: false,
-            message: format!("无法创建配置目录：{e}"),
+            message: t!("error.createConfigDir", detail = e).into_owned(),
         };
     }
     // 用 explorer 打开比 std::fs 直接列目录更符合用户预期。
@@ -1878,11 +1890,12 @@ fn open_config_dir() -> SimpleOut {
     match std::process::Command::new("explorer").arg(&dir).spawn() {
         Ok(_) => SimpleOut {
             ok: true,
-            message: "已打开配置目录".to_string(),
+            message: t!("status.configDirOpened").into_owned(),
         },
         Err(e) => SimpleOut {
             ok: false,
-            message: format!("打开目录失败：{e}\n路径：{}", dir.display()),
+            message: t!("error.openDirWithPath", detail = e, path = dir.display())
+                .into_owned(),
         },
     }
 }
@@ -1925,18 +1938,28 @@ fn open_config_file() -> SimpleOut {
         if let Err(e) = config::save(&cfg) {
             return SimpleOut {
                 ok: false,
-                message: format!("配置文件不存在，尝试创建也失败了：{e}\n路径：{}", p.display()),
+                message: t!(
+                    "error.configFileMissing",
+                    detail = e,
+                    path = p.display()
+                )
+                .into_owned(),
             };
         }
     }
     match std::process::Command::new("explorer").arg(&p).spawn() {
         Ok(_) => SimpleOut {
             ok: true,
-            message: "已打开配置文件".to_string(),
+            message: t!("status.configFileOpened").into_owned(),
         },
         Err(e) => SimpleOut {
             ok: false,
-            message: format!("打开配置文件失败：{e}\n路径：{}", p.display()),
+            message: t!(
+                "error.openFileWithPath",
+                detail = e,
+                path = p.display()
+            )
+            .into_owned(),
         },
     }
 }
@@ -2208,7 +2231,7 @@ fn download_open_dir(gid: String) -> Result<(), String> {
         task.dir.replace('/', "\\")
     };
     if arg.trim().is_empty() {
-        return Err("这个任务没有下载目录".to_string());
+        return Err(t!("error.downloadNoDir").into_owned());
     }
     std::process::Command::new("explorer.exe")
         .arg(&arg)
@@ -2346,11 +2369,11 @@ fn github_download(url: String, filename: String) -> Result<(), String> {
     crate::download::github::validate_asset_url(&url)?;
     let cfg = config::load();
     if !cfg.enable_download {
-        return Err("下载工具还没启用：右键托盘 → 设置… → 下载 → 打开开关".to_string());
+        return Err(t!("error.downloadNotEnabled").into_owned());
     }
     let name = crate::download::naming::sanitize(&filename);
     if name.is_empty() {
-        return Err("GitHub 资源的文件名无效".to_string());
+        return Err(t!("error.githubBadFileName").into_owned());
     }
     let mut candidates = crate::download::github::download_candidates(&url, &cfg)?;
     let uri = candidates.remove(0);
@@ -2600,7 +2623,7 @@ fn notify_test(app: AppHandle) -> Result<SimpleOut, String> {
     crate::download::notify::test(&app)?;
     Ok(SimpleOut {
         ok: true,
-        message: "测试通知已发送".to_string(),
+        message: t!("status.testNotificationSent").into_owned(),
     })
 }
 
@@ -2609,14 +2632,15 @@ fn notify_test(app: AppHandle) -> Result<SimpleOut, String> {
 fn open_download_dir() -> Result<SimpleOut, String> {
     let cfg = config::load();
     let dir = crate::download::engine::configured_download_dir(&cfg);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| t!("error.createDownloadDir", detail = e).into_owned())?;
     std::process::Command::new("explorer.exe")
         .arg(&dir)
         .spawn()
-        .map_err(|e| format!("打开下载目录失败：{e}"))?;
+        .map_err(|e| t!("error.openDownloadDir", detail = e).into_owned())?;
     Ok(SimpleOut {
         ok: true,
-        message: "已打开下载目录".to_string(),
+        message: t!("status.downloadDirOpened").into_owned(),
     })
 }
 
@@ -2848,14 +2872,14 @@ fn transfer_local_info() -> TransferLocalOut {
 fn transfer_restart() -> Result<SimpleOut, String> {
     let cfg = config::load();
     if !cfg.enable_transfer {
-        return Err("互传未启用，先打开上方的启用开关".to_string());
+        return Err(t!("error.transferNotEnabled").into_owned());
     }
     let tc = transfer::TransferConfig::from_app(&cfg);
     transfer::backend().stop()?;
     transfer::backend().start(&tc)?;
     Ok(SimpleOut {
         ok: true,
-        message: "传输服务已重启".to_string(),
+        message: t!("status.transferRestarted").into_owned(),
     })
 }
 
@@ -2864,14 +2888,15 @@ fn transfer_restart() -> Result<SimpleOut, String> {
 fn transfer_open_dir() -> Result<SimpleOut, String> {
     let cfg = config::load();
     let dir = transfer::server::resolve_receive_dir(&cfg);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建接收目录：{e}"))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| t!("error.createReceiveDir", detail = e).into_owned())?;
     std::process::Command::new("explorer.exe")
         .arg(&dir)
         .spawn()
-        .map_err(|e| format!("打开接收目录失败：{e}"))?;
+        .map_err(|e| t!("error.openReceiveDir", detail = e).into_owned())?;
     Ok(SimpleOut {
         ok: true,
-        message: "已打开接收目录".to_string(),
+        message: t!("status.receiveDirOpened").into_owned(),
     })
 }
 

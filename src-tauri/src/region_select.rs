@@ -85,7 +85,9 @@ fn open_with(app: &AppHandle, purpose: Purpose, snapshot: bool) {
     if snapshot && purpose != Purpose::Ocr {
         if let Err(e) = crate::screenshot::overlay::capture() {
             crate::dlog::dlog(&format!("region overlay snapshot failed: {e}"));
-            crate::screenshot::show_error(&format!("截图初始化失败\n\n{e}"));
+            crate::screenshot::show_error(
+                &t!("error.screenshot.initFailed", detail = e).into_owned(),
+            );
             return;
         }
     }

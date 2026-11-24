@@ -3,6 +3,7 @@
 //! 内容（文案 / 功能卡 / 链接 / 组件表）全部由本文件的 `info()` 返回，前端只按
 //! 通用 `about` 字段渲染；加文案不用改 JS。命令名也从这里下发。
 
+use rust_i18n::t;
 use serde::Serialize;
 
 use super::{Field, Section, Tool};
@@ -12,14 +13,14 @@ use super::{Field, Section, Tool};
 pub struct AboutInfo {
     pub name: &'static str,
     pub version: &'static str,
-    pub subtitle: &'static str,
-    pub intro: &'static str,
+    pub subtitle: String,
+    pub intro: String,
     pub features: Vec<AboutFeature>,
     pub links: Vec<AboutLink>,
     pub components: Vec<AboutComponent>,
-    pub license: &'static str,
-    pub attribution: &'static str,
-    pub footer: &'static str,
+    pub license: String,
+    pub attribution: String,
+    pub footer: String,
     pub update: AboutUpdate,
     pub open_link_command: &'static str,
     pub diagnostics_command: &'static str,
@@ -41,21 +42,21 @@ pub struct AboutUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct AboutFeature {
     pub icon: &'static str,
-    pub title: &'static str,
-    pub desc: &'static str,
+    pub title: String,
+    pub desc: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AboutLink {
     pub id: &'static str,
-    pub label: &'static str,
+    pub label: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AboutComponent {
-    pub name: &'static str,
+    pub name: String,
     pub version: &'static str,
     pub license: &'static str,
 }
@@ -64,89 +65,83 @@ pub fn info() -> AboutInfo {
     AboutInfo {
         name: "Vexto",
         version: env!("CARGO_PKG_VERSION"),
-        subtitle: "划词翻译 · 截图 · 下载 · 局域网互传",
-        intro: "一个 Windows 常驻托盘的轻量工具箱，把划词翻译、截图 OCR、下载和局域网互传\
-                合进一个进程。翻译只把你选中的文本发给你配置的引擎；文件传输只在局域网内；\
-                不收集使用数据。",
+        subtitle: t!("about.subtitle").into_owned(),
+        intro: t!("about.intro").into_owned(),
         features: vec![
             AboutFeature {
                 icon: "translate",
-                title: "划词翻译",
-                desc: "UIA 取词 · 微软 / 百度 / 有道 / LLM",
+                title: t!("about.feature.translate.title").into_owned(),
+                desc: t!("about.feature.translate.desc").into_owned(),
             },
             AboutFeature {
                 icon: "camera",
-                title: "截图 OCR",
-                desc: "区域 / 全屏 / 窗口 · 长图 · 钉屏",
+                title: t!("about.feature.screenshot.title").into_owned(),
+                desc: t!("about.feature.screenshot.desc").into_owned(),
             },
             AboutFeature {
                 icon: "download",
-                title: "下载",
-                desc: "HTTP / BT / magnet · aria2c",
+                title: t!("about.feature.download.title").into_owned(),
+                desc: t!("about.feature.download.desc").into_owned(),
             },
             AboutFeature {
                 icon: "transfer",
-                title: "局域网互传",
-                desc: "与 LocalSend 互通 · 加密传输",
+                title: t!("about.feature.transfer.title").into_owned(),
+                desc: t!("about.feature.transfer.desc").into_owned(),
             },
         ],
         links: vec![
             AboutLink {
                 id: "repo",
-                label: "源码仓库",
+                label: t!("about.link.repo").into_owned(),
             },
             AboutLink {
                 id: "issues",
-                label: "问题反馈",
+                label: t!("about.link.issues").into_owned(),
             },
             AboutLink {
                 id: "releases",
-                label: "更新日志",
+                label: t!("about.link.releases").into_owned(),
             },
             AboutLink {
                 id: "license",
-                label: "开源许可",
+                label: t!("about.link.license").into_owned(),
             },
         ],
         components: vec![
             AboutComponent {
-                name: "Tauri",
+                name: "Tauri".to_string(),
                 version: "2.x",
                 license: "MIT / Apache-2.0",
             },
             AboutComponent {
-                name: "aria2c",
+                name: "aria2c".to_string(),
                 version: "1.37",
                 license: "GPL-2.0-or-later",
             },
             AboutComponent {
-                name: "lanflare-core",
+                name: "lanflare-core".to_string(),
                 version: "0.5",
                 license: "Apache-2.0",
             },
             AboutComponent {
-                name: "PaddleOCR 模型",
+                name: t!("about.component.paddleocr").into_owned(),
                 version: "—",
                 license: "Apache-2.0",
             },
             AboutComponent {
-                name: "whatlang",
+                name: "whatlang".to_string(),
                 version: "0.18",
                 license: "MIT",
             },
             AboutComponent {
-                name: "reqwest",
+                name: "reqwest".to_string(),
                 version: "0.13",
                 license: "MIT / Apache-2.0",
             },
         ],
-        license: "本程序以 GNU General Public License v3.0 发布。你可以自由使用、研究、\
-                  修改和再分发本软件；分发修改后的版本时，须同样以 GPL-3.0 开放源代码，\
-                  并附带许可证副本。本程序不含任何担保。",
-        attribution: "本项目在功能与设计上借鉴了 Pot、ShareX、Rayburst、LocalSend 等\
-                      开源项目，未拷贝其源代码；相关版权与商标归各自作者所有。",
-        footer: "本程序按「现状」提供，不对使用后果作任何担保。\n\
-                 © 2026 Ruxsmiles · GNU GPL-3.0",
+        license: t!("about.license").into_owned(),
+        attribution: t!("about.attribution").into_owned(),
+        footer: t!("about.footer").into_owned(),
         update: AboutUpdate {
             check: "update_check",
             download: "update_download",
@@ -167,7 +162,7 @@ pub fn open_link(kind: &str) -> Result<(), String> {
         "issues" => "https://github.com/Ruxsmiles/vexto/issues",
         "releases" => "https://github.com/Ruxsmiles/vexto/releases",
         "license" => "https://github.com/Ruxsmiles/vexto/blob/main/LICENSE",
-        _ => return Err("未知的链接".to_string()),
+        _ => return Err(t!("error.about.unknownLink").into_owned()),
     };
     crate::update::open_url(url)
 }
@@ -175,12 +170,15 @@ pub fn open_link(kind: &str) -> Result<(), String> {
 /// 复制给用户排障用；不包含任何配置值 / 凭据。
 pub fn diagnostics() -> String {
     format!(
-        "Vexto {}\nOS: {} / {}\n配置: {}\n日志: {}\n更新: {}\n",
+        "Vexto {}\nOS: {} / {}\n{}: {}\n{}: {}\n{}: {}\n",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH,
+        t!("about.diag.config"),
         crate::config::config_path().display(),
+        t!("about.diag.logs"),
         crate::config::log_dir().display(),
+        t!("about.diag.update"),
         crate::update::diagnostics_line()
     )
 }
@@ -209,7 +207,7 @@ impl Tool for About {
     }
 
     fn set_enabled(&self, _on: bool) -> Result<(), String> {
-        Err("「关于」不能停用".to_string())
+        Err(t!("error.about.cannotDisable").into_owned())
     }
 
     /// 只读信息页，没有「启用」这件事。

@@ -9,6 +9,7 @@
 //! 不做任何限制（0 个、3 个都收），也不限制"只准 Ctrl/Shift/Alt"。规格是我们定的，
 //! 只能靠 `validate_hotkey()` 与下面那组测试守住。
 
+use rust_i18n::t;
 use std::str::FromStr;
 use std::sync::Mutex;
 use tauri::AppHandle;
@@ -27,11 +28,11 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
         .filter(|p| !p.is_empty())
         .collect();
     if parts.is_empty() {
-        return Err("热键不能为空".into());
+        return Err(t!("error.hotkey.empty").into_owned());
     }
     // 最后一段是主键，前面都是修饰键
     let Some((main, mods)) = parts.split_last() else {
-        return Err("热键不能为空".into());
+        return Err(t!("error.hotkey.empty").into_owned());
     };
 
     let mut got: Vec<&str> = Vec::new();
@@ -41,20 +42,24 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
             "SHIFT" => "Shift",
             "ALT" => "Alt",
             "WIN" | "SUPER" | "CMD" | "META" => {
-                return Err("不支持 Win 键，请用 Ctrl / Shift / Alt".into())
+                return Err(t!("error.hotkey.winKey").into_owned())
             }
-            _ => return Err(format!("不认识的修饰键「{m}」，只支持 Ctrl / Shift / Alt")),
+            _ => {
+                return Err(
+                    t!("error.hotkey.unknownModifier", modifier = m).into_owned()
+                )
+            }
         };
         if got.contains(&name) {
-            return Err(format!("修饰键「{name}」重复了"));
+            return Err(t!("error.hotkey.duplicateModifier", name = name).into_owned());
         }
         got.push(name);
     }
     if got.is_empty() {
-        return Err("至少需要一个 Ctrl / Shift / Alt".into());
+        return Err(t!("error.hotkey.needModifier").into_owned());
     }
     if got.len() > 2 {
-        return Err("最多两个修饰键".into());
+        return Err(t!("error.hotkey.maxModifiers").into_owned());
     }
 
     let mk = main.to_ascii_uppercase();
@@ -66,9 +71,7 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
     // 单独按 PrintScreen 不算合法热键（那会覆盖 Win11 的系统截图键）。
     let is_print_screen = matches!(mk.as_str(), "PRINTSCREEN" | "PRTSC" | "PRTSCR");
     if !is_alpha_num && !is_fkey && !is_print_screen {
-        return Err(format!(
-            "主键「{main}」不支持，只能是 0-9、A-Z、F1-F12、PrintScreen"
-        ));
+        return Err(t!("error.hotkey.unsupportedMain", main = main).into_owned());
     }
 
     // 固定顺序归一化，保证同一个组合只有一种写法落进配置
@@ -82,7 +85,7 @@ pub fn validate_hotkey(s: &str) -> Result<String, String> {
 
     // 兜底：真让库再解析一次，它认不出的组合不要存进配置
     tauri_plugin_global_shortcut::Shortcut::from_str(&normalized)
-        .map_err(|_| format!("「{normalized}」不是有效的组合键"))?;
+        .map_err(|_| t!("error.hotkey.invalidCombo", normalized = normalized).into_owned())?;
 
     Ok(normalized)
 }
@@ -114,7 +117,9 @@ pub fn register_all(app: &AppHandle, list: Vec<Binding>) -> Vec<String> {
         let normalized = match validate_hotkey(&raw) {
             Ok(h) => h,
             Err(e) => {
-                errors.push(format!("{what}：{e}"));
+                errors.push(
+                    t!("error.hotkey.invalidFormat", what = what, detail = e).into_owned(),
+                );
                 continue;
             }
         };
@@ -122,16 +127,29 @@ pub fn register_all(app: &AppHandle, list: Vec<Binding>) -> Vec<String> {
         // 两个用途填了同一个组合：第二个必然注册失败，提前说清楚，
         // 否则用户看到的是「注册失败：已被别的程序占用」，会去别的软件里乱找。
         if done.contains(&normalized) {
-            errors.push(format!(
-                "{what}：{normalized} 和前面某个热键重复了，换一个组合"
-            ));
+            errors.push(
+                t!(
+                    "error.hotkey.duplicateCombo",
+                    what = what,
+                    combo = normalized
+                )
+                .into_owned(),
+            );
             continue;
         }
 
         let sc = match tauri_plugin_global_shortcut::Shortcut::from_str(&normalized) {
             Ok(s) => s,
             Err(e) => {
-                errors.push(format!("{what}：热键格式不对（{normalized}）：{e}"));
+                errors.push(
+                    t!(
+                        "error.hotkey.invalidComboFormat",
+                        what = what,
+                        combo = normalized,
+                        detail = e
+                    )
+                    .into_owned(),
+                );
                 continue;
             }
         };
@@ -143,9 +161,14 @@ pub fn register_all(app: &AppHandle, list: Vec<Binding>) -> Vec<String> {
         }) {
             Ok(()) => done.push(normalized),
             // 用户要求：不显示系统错误码，只说原因（会话 52）
-            Err(_) => errors.push(format!(
-                "{what}：热键 {normalized} 注册失败，多半已被其他程序占用，换一个组合试试"
-            )),
+            Err(_) => errors.push(
+                t!(
+                    "error.hotkey.registerFailed",
+                    what = what,
+                    combo = normalized
+                )
+                .into_owned(),
+            ),
         }
     }
 
@@ -176,6 +199,7 @@ fn clear_error() {
 #[allow(clippy::needless_borrow)]
 mod hotkey_tests {
     use super::validate_hotkey;
+    use rust_i18n::t;
 
     // ── 合法：必须通过，且归一化结果要正确 ──────────────────────────
     #[test]
@@ -238,26 +262,41 @@ mod hotkey_tests {
     #[test]
     fn reject_three_modifiers() {
         let e = validate_hotkey("Ctrl+Alt+Shift+T").unwrap_err();
-        assert!(e.contains("最多两个修饰键"), "实际错误：{e}");
+        assert!(
+            e.contains(t!("error.hotkey.maxModifiers").as_ref()),
+            "实际错误：{e}"
+        );
         // 顺序无关：三个修饰键一律拒绝，不论主键是什么
         let e = validate_hotkey("Alt+Ctrl+Shift+q").unwrap_err();
-        assert!(e.contains("最多两个修饰键"), "实际错误：{e}");
+        assert!(
+            e.contains(t!("error.hotkey.maxModifiers").as_ref()),
+            "实际错误：{e}"
+        );
     }
 
     #[test]
     fn reject_win_key() {
         for s in ["Ctrl+Win+T", "Super+T", "Cmd+T", "Meta+T"] {
             let e = validate_hotkey(s).unwrap_err();
-            assert!(e.contains("Win 键"), "{s} 的实际错误：{e}");
+            assert!(
+                e.contains(t!("error.hotkey.winKey").as_ref()),
+                "{s} 的实际错误：{e}"
+            );
         }
     }
 
     #[test]
     fn reject_no_modifier() {
         let e = validate_hotkey("T").unwrap_err();
-        assert!(e.contains("至少"), "实际错误：{e}");
+        assert!(
+            e.contains(t!("error.hotkey.needModifier").as_ref()),
+            "实际错误：{e}"
+        );
         let e = validate_hotkey("F5").unwrap_err();
-        assert!(e.contains("至少"), "实际错误：{e}");
+        assert!(
+            e.contains(t!("error.hotkey.needModifier").as_ref()),
+            "实际错误：{e}"
+        );
     }
 
     #[test]

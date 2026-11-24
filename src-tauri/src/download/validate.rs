@@ -4,6 +4,8 @@
 //! （脚本直接调命令），而 aria2 对非法值的报错又很难懂（一个 RPC error 字符串）。
 //! 保持纯函数、不碰文件系统，方便单测锁住边界。
 
+use rust_i18n::t;
+
 /// aria2 `checksum` 允许的类型与对应十六进制摘要长度（字符数）。
 /// 见 aria2 `--checksum=TYPE=DIGEST`；**只对 HTTP/FTP 生效，BT 有自己的分片校验**。
 fn digest_len(kind: &str) -> Option<usize> {
@@ -29,15 +31,17 @@ pub fn checksum_option(raw: &str) -> Result<Option<String>, String> {
         return Ok(None);
     }
     let Some((kind, digest)) = s.split_once('=') else {
-        return Err("校验和格式应为「类型=摘要」，例如 sha-256=abcd…".into());
+        return Err(t!("error.download.checksumFormat").into_owned());
     };
     let kind = kind.trim().to_ascii_lowercase();
     let digest = digest.trim();
     let Some(n) = digest_len(&kind) else {
-        return Err("校验和类型只支持 md5 / sha-1 / sha-224 / sha-256 / sha-384 / sha-512".into());
+        return Err(t!("error.download.checksumType").into_owned());
     };
     if digest.len() != n || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(format!("{kind} 摘要必须是 {n} 位十六进制字符"));
+        return Err(
+            t!("error.download.checksumLength", kind = kind, n = n).into_owned(),
+        );
     }
     Ok(Some(format!("{kind}={}", digest.to_ascii_lowercase())))
 }
@@ -64,10 +68,10 @@ pub fn authorization_header(raw: &str) -> Result<Option<String>, String> {
         return Ok(None);
     }
     if v.len() > MAX_AUTH_LEN {
-        return Err("认证令牌过长（上限 4 KB）".into());
+        return Err(t!("error.download.tokenTooLong").into_owned());
     }
     if v.bytes().any(|b| b < 0x20 && b != b'\t') {
-        return Err("认证令牌里含有不可见控制字符".into());
+        return Err(t!("error.download.tokenControl").into_owned());
     }
     Ok(Some(format!("Authorization: {v}")))
 }
@@ -86,17 +90,17 @@ const MAX_TORRENT_B64: usize = 6 * 1024 * 1024;
 pub fn torrent_base64(raw: &str) -> Result<String, String> {
     let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
     if cleaned.is_empty() {
-        return Err("种子文件内容为空".into());
+        return Err(t!("error.download.torrentEmpty").into_owned());
     }
     if cleaned.len() > MAX_TORRENT_B64 {
-        return Err("种子文件过大（上限约 4 MB）".into());
+        return Err(t!("error.download.torrentTooLarge").into_owned());
     }
     if !cleaned.len().is_multiple_of(4)
         || !cleaned
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
     {
-        return Err("种子文件内容不是合法的 base64".into());
+        return Err(t!("error.download.torrentBase64").into_owned());
     }
     Ok(cleaned)
 }
@@ -104,6 +108,7 @@ pub fn torrent_base64(raw: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_i18n::t;
 
     #[test]
     fn empty_checksum_is_absent() {
@@ -140,11 +145,23 @@ mod tests {
 
     #[test]
     fn checksum_rejects_bad_input() {
-        assert!(checksum_option("abcd").unwrap_err().contains("类型=摘要"));
-        assert!(checksum_option("crc32=abcd").unwrap_err().contains("只支持"));
-        assert!(checksum_option("sha-256=zz").unwrap_err().contains("十六进制"));
-        assert!(checksum_option("sha-256=abcd").unwrap_err().contains("64 位"));
-        assert!(checksum_option("md5=").unwrap_err().contains("32 位"));
+        assert!(checksum_option("abcd")
+            .unwrap_err()
+            .contains(t!("error.download.checksumFormat").as_ref()));
+        assert!(checksum_option("crc32=abcd")
+            .unwrap_err()
+            .contains(t!("error.download.checksumType").as_ref()));
+        let sha256_short = t!("error.download.checksumLength", kind = "sha-256", n = 64);
+        assert!(checksum_option("sha-256=zz")
+            .unwrap_err()
+            .contains(sha256_short.as_ref()));
+        assert!(checksum_option("sha-256=abcd")
+            .unwrap_err()
+            .contains(sha256_short.as_ref()));
+        let md5_short = t!("error.download.checksumLength", kind = "md5", n = 32);
+        assert!(checksum_option("md5=")
+            .unwrap_err()
+            .contains(md5_short.as_ref()));
     }
 
     #[test]
@@ -178,8 +195,12 @@ mod tests {
     #[test]
     fn authorization_rejects_oversize_and_control_chars() {
         let too_long = "a".repeat(MAX_AUTH_LEN + 1);
-        assert!(authorization_header(&too_long).unwrap_err().contains("过长"));
-        assert!(authorization_header("Bearer a\u{0}b").unwrap_err().contains("控制字符"));
+        assert!(authorization_header(&too_long)
+            .unwrap_err()
+            .contains(t!("error.download.tokenTooLong").as_ref()));
+        assert!(authorization_header("Bearer a\u{0}b")
+            .unwrap_err()
+            .contains(t!("error.download.tokenControl").as_ref()));
     }
 
     #[test]
@@ -194,11 +215,21 @@ mod tests {
 
     #[test]
     fn torrent_base64_rejects_invalid() {
-        assert!(torrent_base64("").unwrap_err().contains("为空"));
-        assert!(torrent_base64("   ").unwrap_err().contains("为空"));
-        assert!(torrent_base64("abc").unwrap_err().contains("base64"));
-        assert!(torrent_base64("%%%%").unwrap_err().contains("base64"));
+        assert!(torrent_base64("")
+            .unwrap_err()
+            .contains(t!("error.download.torrentEmpty").as_ref()));
+        assert!(torrent_base64("   ")
+            .unwrap_err()
+            .contains(t!("error.download.torrentEmpty").as_ref()));
+        assert!(torrent_base64("abc")
+            .unwrap_err()
+            .contains(t!("error.download.torrentBase64").as_ref()));
+        assert!(torrent_base64("%%%%")
+            .unwrap_err()
+            .contains(t!("error.download.torrentBase64").as_ref()));
         let too_big = "a".repeat(MAX_TORRENT_B64 + 4);
-        assert!(torrent_base64(&too_big).unwrap_err().contains("过大"));
+        assert!(torrent_base64(&too_big)
+            .unwrap_err()
+            .contains(t!("error.download.torrentTooLarge").as_ref()));
     }
 }

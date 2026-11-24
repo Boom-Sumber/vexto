@@ -26,6 +26,7 @@ pub mod youdao;
 
 use crate::config::{self, Config};
 use md5::{Digest, Md5};
+use rust_i18n::t;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -55,9 +56,13 @@ impl TranslateError {
     pub fn message(&self) -> String {
         match self {
             TranslateError::NotReady(s) => s.clone(),
-            TranslateError::Network(s) => format!("网络请求失败：{s}"),
+            TranslateError::Network(s) => {
+                t!("error.translate.network", detail = s).into_owned()
+            }
             TranslateError::Upstream { hint } => hint.clone(),
-            TranslateError::BadResponse(s) => format!("引擎返回了无法解析的内容：{s}"),
+            TranslateError::BadResponse(s) => {
+                t!("error.translate.badResponse", detail = s).into_owned()
+            }
         }
     }
 }
@@ -82,7 +87,7 @@ pub trait Engine: Send + Sync {
     fn translate_one(&self, cfg: &Config, text: &str) -> Result<Translated, TranslateError>;
     fn is_ready(&self, cfg: &Config) -> bool;
     /// `is_ready() == false` 时告诉用户缺什么、去哪填
-    fn ready_hint(&self) -> &'static str;
+    fn ready_hint(&self) -> String;
 }
 
 /// 引擎 id → 实例。未知 id 返回 `None`，由调用方给出中文错误。
@@ -393,26 +398,22 @@ fn pick(v: &str, fallback: &str) -> String {
 pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
     let engine_id = engine_id_of(cfg);
     if engine_id.is_empty() {
-        return Err(
-            "还没有可用的翻译引擎。\n右键托盘图标 → 设置… → 翻译 → 引擎 → \
-             在「厂商管理」或「大模型管理」里添加一个，然后在「翻译模式」里选中它。"
-                .to_string(),
-        );
+        return Err(t!("error.translate.noEngine").into_owned());
     }
     let engine = engine_by_id(&engine_id).ok_or_else(|| {
-        format!("未知的翻译引擎「{engine_id}」，去设置 → 翻译 → 引擎 里重选一下翻译模式。")
+        t!("error.translate.unknownEngine", id = engine_id).into_owned()
     })?;
 
     // 凭据先投影到扁平字段：引擎实现只认 `cfg.appid` 那一套，不知道「实例」的存在
     let base_cfg = prepared_config(cfg);
 
     if !engine.is_ready(&base_cfg) {
-        return Err(engine.ready_hint().to_string());
+        return Err(engine.ready_hint());
     }
 
     let text = text.trim();
     if text.is_empty() {
-        return Err("没有可翻译的文本".to_string());
+        return Err(t!("error.translate.emptyText").into_owned());
     }
 
     // 先定方向：这一步可能触发语种检测（本地或网络），所以必须在查缓存之前做，
@@ -432,7 +433,7 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
 
     let parts = chunk(text, engine.max_chars(), MAX_CHUNKS);
     if parts.is_empty() {
-        return Err("没有可翻译的文本".to_string());
+        return Err(t!("error.translate.emptyText").into_owned());
     }
 
     // qps=1 时块间隔 1000ms，但百度标准版用 1100ms 更稳（留 100ms 余量）
@@ -475,6 +476,7 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
 mod tests {
     use super::*;
     use crate::config::Config;
+    use rust_i18n::t;
 
     // ── 分块 ────────────────────────────────────────────────
     #[test]
@@ -732,8 +734,10 @@ mod tests {
     #[test]
     fn translate_without_profiles_says_where_to_add() {
         let err = translate(&Config::default(), "hello").unwrap_err();
-        assert!(err.contains("还没有可用的翻译引擎"), "实际：{err}");
-        assert!(err.contains("厂商管理"), "要指出添加位置：{err}");
+        assert!(
+            err.contains(t!("error.translate.noEngine").as_ref()),
+            "实际：{err}"
+        );
     }
 
     /// 有实例但凭据没填：要指出缺什么、去哪填。
@@ -749,8 +753,10 @@ mod tests {
         cfg.vendor_profiles[0].appid.clear();
         cfg.vendor_profiles[0].secret.clear();
         let err = translate(&cfg, "hello").unwrap_err();
-        assert!(err.contains("APPID"), "错误里要指出缺什么：{err}");
-        assert!(err.contains("设置"), "错误里要指出去哪填：{err}");
+        assert!(
+            err.contains(t!("translate.baidu.ready").as_ref()),
+            "错误里要指出缺什么、去哪填：{err}"
+        );
     }
 
     /// 选的是有道、凭据没填 → 提示里要出现「有道」（不能一律说百度）。
@@ -764,8 +770,10 @@ mod tests {
         cfg.vendor_profiles[0].youdao_app_key.clear();
         cfg.vendor_profiles[0].youdao_app_secret.clear();
         let err = translate(&cfg, "hello").unwrap_err();
-        assert!(err.contains("有道"), "要为具体那家指路：{err}");
-        assert!(err.contains("设置"), "实际：{err}");
+        assert!(
+            err.contains(t!("translate.youdao.ready").as_ref()),
+            "要为具体那家指路：{err}"
+        );
     }
 
     #[test]

@@ -61,7 +61,7 @@ impl Tool for General {
             "general",
             "常规",
             vec![
-                Field::group("外观"),
+                Field::group("appearance", "外观"),
                 Field::select(
                     "ui_language",
                     "界面语言",
@@ -86,7 +86,7 @@ impl Tool for General {
                 )
                 .auto_apply(),
                 Field::color("accent_color", "主色调", ACCENT_PRESETS).auto_apply(),
-                Field::group("启动"),
+                Field::group("startup", "启动"),
                 Field::switch("autostart", "开机自动启动"),
                 Field::select(
                     "tray_left_click",
@@ -98,12 +98,12 @@ impl Tool for General {
                         ("screenshot", "区域截图"),
                     ],
                 ),
-                Field::group("性能"),
+                Field::group("performance", "性能"),
                 Field::switch("lite_mode", "轻量模式").help("托盘状态下释放界面内存"),
-                Field::group("翻译与弹窗"),
+                Field::group("translatePopup", "翻译与弹窗"),
                 Field::switch("cache_enabled", "翻译缓存"),
                 Field::number_unit("popup_timeout_ms", "弹窗自动关闭", 3000, 120000, "毫秒"),
-                Field::group("配置与日志"),
+                Field::group("configLog", "配置与日志"),
                 Field::switch("log_enabled", "日志启用"),
                 Field::select(
                     "log_level",

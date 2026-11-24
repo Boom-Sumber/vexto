@@ -8,6 +8,7 @@
 
 use super::{Engine, TranslateError, Translated};
 use crate::config::Config;
+use rust_i18n::t;
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -86,10 +87,8 @@ impl Engine for OpenAiCompat {
         })
     }
 
-    fn ready_hint(&self) -> &'static str {
-        "OpenAI 兼容引擎还差点配置：先添加一个模型，BaseURL / 模型名 / API Key 三个都要填。\n\
-         右键托盘图标 → 设置… → 翻译 → 引擎 → 添加模型。\n\
-         用 DeepSeek 就填 https://api.deepseek.com + deepseek-chat。"
+    fn ready_hint(&self) -> String {
+        t!("translate.openai.ready").into_owned()
     }
 
     /// 带上用户起的模型名（「OpenAI 兼容 · DeepSeek」），否则弹窗和状态行

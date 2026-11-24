@@ -5,6 +5,7 @@
 //!
 //! 首次看到某任务且它已经是终态（极快的小文件）也会通知——这正是用户想要的。
 
+use rust_i18n::t;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -16,9 +17,16 @@ use super::rpc::TaskRow;
 static SEEN: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 
 /// 3 秒内结束的任务合并成一条摘要，避免批量下载刷屏。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BatchKind {
+    Complete,
+    Failed,
+}
+
 struct BatchItem {
-    title: String,
-    body: String,
+    kind: BatchKind,
+    name: String,
+    reason: String,
     path: String,
 }
 
@@ -65,37 +73,45 @@ pub fn observe(app: &tauri::AppHandle, tasks: &[TaskRow]) {
             // 「开始」只认第一次见到就已是 active 的任务：paused → active
             // 是用户点继续，不该再弹一条。
             "active" if prev.is_none() && cfg.notify_on_start => {
-                send(app, "开始下载", &t.name, &t.file_path);
+                send(
+                    app,
+                    &t!("notify.downloadStarted"),
+                    &t.name,
+                    &t.file_path,
+                );
             }
             "complete" if cfg.notify_on_done => {
-                queue_terminal(app, "下载完成", &t.name, &t.file_path)
+                queue_terminal(app, BatchKind::Complete, &t.name, "", &t.file_path)
             }
             "error" if cfg.notify_on_done => {
                 let reason = t
                     .error_message
                     .as_deref()
                     .filter(|s| !s.trim().is_empty())
-                    .unwrap_or("未知错误");
-                queue_terminal(
-                    app,
-                    "下载失败",
-                    &format!("{}：{reason}", t.name),
-                    &t.file_path,
-                );
+                    .map(str::to_string)
+                    .unwrap_or_else(|| t!("notify.unknownError").into_owned());
+                queue_terminal(app, BatchKind::Failed, &t.name, &reason, &t.file_path);
             }
             _ => {}
         }
     }
 }
 
-fn queue_terminal(app: &tauri::AppHandle, title: &str, body: &str, path: &str) {
+fn queue_terminal(
+    app: &tauri::AppHandle,
+    kind: BatchKind,
+    name: &str,
+    reason: &str,
+    path: &str,
+) {
     let spawn = {
         let mut g = BATCH.lock().unwrap_or_else(|e| e.into_inner());
         let first = g.is_none();
         let items = g.get_or_insert_with(Vec::new);
         items.push(BatchItem {
-            title: title.to_string(),
-            body: body.to_string(),
+            kind,
+            name: name.to_string(),
+            reason: reason.to_string(),
             path: path.to_string(),
         });
         first
@@ -109,38 +125,71 @@ fn queue_terminal(app: &tauri::AppHandle, title: &str, body: &str, path: &str) {
     }
 }
 
+fn item_text(item: &BatchItem) -> (String, String) {
+    match item.kind {
+        BatchKind::Complete => (
+            t!("notify.downloadDone").into_owned(),
+            item.name.clone(),
+        ),
+        BatchKind::Failed => (
+            t!("notify.downloadFailed").into_owned(),
+            t!(
+                "notify.failedBody",
+                name = item.name,
+                reason = item.reason
+            )
+            .into_owned(),
+        ),
+    }
+}
+
 fn flush_batch(app: &tauri::AppHandle) {
     let Some(items) = BATCH.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         return;
     };
-    if items.len() == 1 {
-        let item = &items[0];
-        send(app, &item.title, &item.body, &item.path);
-        return;
-    }
     if items.is_empty() {
         return;
     }
+    if items.len() == 1 {
+        let (title, body) = item_text(&items[0]);
+        send(app, &title, &body, &items[0].path);
+        return;
+    }
     let total = items.len();
-    let failed = items.iter().filter(|i| i.title == "下载失败").count();
+    let failed = items
+        .iter()
+        .filter(|i| i.kind == BatchKind::Failed)
+        .count();
     let first = items
         .first()
-        .map(|i| i.body.split('：').next().unwrap_or(&i.body).trim())
+        .map(|i| i.name.trim())
         .filter(|s| !s.is_empty());
     let suffix = first
-        .map(|name| format!("（含「{name}」等）"))
+        .map(|name| t!("notify.batchSuffix", name = name).into_owned())
         .unwrap_or_default();
     let (title, body) = if failed == total {
-        ("下载失败", format!("{failed} 个下载失败{suffix}"))
+        (
+            t!("notify.downloadFailed").into_owned(),
+            t!("notify.batchFailed", count = failed, suffix = suffix).into_owned(),
+        )
     } else if failed == 0 {
-        ("下载完成", format!("已完成 {total} 个下载{suffix}"))
+        (
+            t!("notify.downloadDone").into_owned(),
+            t!("notify.batchDone", count = total, suffix = suffix).into_owned(),
+        )
     } else {
         (
-            "下载结束",
-            format!("已完成 {} 个下载，{failed} 个失败{suffix}", total - failed),
+            t!("notify.downloadEnded").into_owned(),
+            t!(
+                "notify.batchMixed",
+                done = total - failed,
+                failed = failed,
+                suffix = suffix
+            )
+            .into_owned(),
         )
     };
-    send(app, title, &body, "");
+    send(app, &title, &body, "");
 }
 
 /// 注册「点击通知」的处理器。**只在 setup 里调一次**。
@@ -205,9 +254,9 @@ pub fn test(app: &tauri::AppHandle) -> Result<(), String> {
     app.notification()
         .builder()
         .title("Vexto")
-        .body("看到这条说明系统通知是通的。")
+        .body(t!("notify.testBody"))
         .show()
-        .map_err(|e| format!("发送测试通知失败：{e}"))
+        .map_err(|e| t!("notify.testFailed", detail = e).into_owned())
 }
 
 fn send(app: &tauri::AppHandle, title: &str, body: &str, path: &str) {

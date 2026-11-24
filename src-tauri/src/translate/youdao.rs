@@ -16,6 +16,7 @@
 use super::{Engine, TranslateError, Translated};
 use crate::config::Config;
 use crate::lang;
+use rust_i18n::t;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -246,10 +247,8 @@ fn youdao_lang(code: &str, what: &str) -> Result<&'static str, TranslateError> {
     })
 }
 
-fn not_ready_hint() -> &'static str {
-    "还没填有道智云的应用 ID / 应用密钥。\n\
-     右键托盘图标 → 设置… → 翻译 → 引擎 → 厂商选「有道」。\n\
-     两个值在 ai.youdao.com 的「应用管理」里。"
+fn not_ready_hint() -> String {
+    t!("translate.youdao.ready").into_owned()
 }
 
 fn is_ready(cfg: &Config) -> bool {
@@ -302,7 +301,7 @@ impl Engine for YoudaoMt {
         is_ready(cfg)
     }
 
-    fn ready_hint(&self) -> &'static str {
+    fn ready_hint(&self) -> String {
         not_ready_hint()
     }
 
@@ -369,7 +368,7 @@ impl Engine for YoudaoLlm {
         is_ready(cfg)
     }
 
-    fn ready_hint(&self) -> &'static str {
+    fn ready_hint(&self) -> String {
         not_ready_hint()
     }
 

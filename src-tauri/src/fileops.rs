@@ -6,6 +6,7 @@
 //!
 //! **调用方负责先确认**：这里不做二次询问，也没有撤销。
 
+use rust_i18n::t;
 use std::path::Path;
 
 /// 删一个文件或目录。
@@ -18,7 +19,7 @@ use std::path::Path;
 pub fn delete(path: &str, recycle: bool) -> Result<(), String> {
     let p = path.trim();
     if p.is_empty() {
-        return Err("没有文件路径".into());
+        return Err(t!("error.fileops.noPath").into_owned());
     }
     let target = Path::new(p);
     if !target.exists() {
@@ -26,9 +27,11 @@ pub fn delete(path: &str, recycle: bool) -> Result<(), String> {
     }
     if !recycle {
         return if target.is_dir() {
-            std::fs::remove_dir_all(target).map_err(|e| format!("删除目录失败：{e}"))
+            std::fs::remove_dir_all(target)
+                .map_err(|e| t!("error.fileops.deleteDir", detail = e).into_owned())
         } else {
-            std::fs::remove_file(target).map_err(|e| format!("删除文件失败：{e}"))
+            std::fs::remove_file(target)
+                .map_err(|e| t!("error.fileops.deleteFile", detail = e).into_owned())
         };
     }
     to_recycle_bin(p)
@@ -61,17 +64,18 @@ fn to_recycle_bin(path: &str) -> Result<(), String> {
     };
     let rc = unsafe { SHFileOperationW(&mut op) };
     if rc != 0 {
-        return Err(format!("移入回收站失败（错误码 {rc}）"));
+        return Err(t!("error.fileops.recycle", code = rc).into_owned());
     }
     if op.fAnyOperationsAborted.as_bool() {
-        return Err("已取消删除".into());
+        return Err(t!("error.fileops.cancelled").into_owned());
     }
     Ok(())
 }
 
 #[cfg(not(windows))]
 fn to_recycle_bin(path: &str) -> Result<(), String> {
-    std::fs::remove_file(path).map_err(|e| format!("删除文件失败：{e}"))
+    std::fs::remove_file(path)
+        .map_err(|e| t!("error.fileops.deleteFile", detail = e).into_owned())
 }
 
 /// 在资源管理器里打开所在目录并选中文件。
@@ -82,7 +86,7 @@ fn to_recycle_bin(path: &str) -> Result<(), String> {
 pub fn reveal(path: &str) -> Result<(), String> {
     let p = path.trim().replace('/', "\\");
     if p.is_empty() {
-        return Err("没有文件路径".into());
+        return Err(t!("error.fileops.noPath").into_owned());
     }
     let mut cmd = std::process::Command::new("explorer.exe");
     #[cfg(windows)]
@@ -95,7 +99,7 @@ pub fn reveal(path: &str) -> Result<(), String> {
             if let Some(dir) = std::path::Path::new(&p).parent() {
                 cmd.raw_arg(dir.display().to_string());
             } else {
-                return Err("路径没有上级目录".into());
+                return Err(t!("error.fileops.noParent").into_owned());
             }
         }
     }
@@ -104,7 +108,7 @@ pub fn reveal(path: &str) -> Result<(), String> {
 
     cmd.spawn()
         .map(|_| ())
-        .map_err(|e| format!("打开资源管理器失败：{e}"))
+        .map_err(|e| t!("error.fileops.reveal", detail = e).into_owned())
 }
 
 #[cfg(test)]
@@ -158,7 +162,9 @@ pub fn pick_files() -> Result<Vec<String>, String> {
     // 多选结果是「目录\0文件\0文件\0\0」，64K 缓冲够几千个文件。
     let mut buffer = vec![0u16; 64 * 1024];
     // 过滤串：显示名\0模式\0，以两个 \0 结束。
-    let filter: Vec<u16> = "所有文件\0*.*\0\0".encode_utf16().collect();
+    let filter: Vec<u16> = format!("{}\0*.*\0\0", t!("dialog.allFiles"))
+        .encode_utf16()
+        .collect();
 
     let mut ofn = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
@@ -212,13 +218,17 @@ pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, 
     let mut buffer = vec![0u16; 32 * 1024];
     let init: Vec<u16> = default_path.to_string_lossy().encode_utf16().collect();
     if init.len() >= buffer.len() {
-        return Err("保存路径太长".into());
+        return Err(t!("error.fileops.pathTooLong").into_owned());
     }
     buffer[..init.len()].copy_from_slice(&init);
 
-    let filter: Vec<u16> = "PNG 图片\0*.png\0所有文件\0*.*\0\0"
-        .encode_utf16()
-        .collect();
+    let filter: Vec<u16> = format!(
+        "{}\0*.png\0{}\0*.*\0\0",
+        t!("dialog.pngImages"),
+        t!("dialog.allFiles")
+    )
+    .encode_utf16()
+    .collect();
     let ext: Vec<u16> = "png\0".encode_utf16().collect();
     let mut ofn = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
@@ -234,7 +244,7 @@ pub fn pick_save_png(default_path: &Path) -> Result<Option<std::path::PathBuf>, 
     if !ok.as_bool() {
         let err = unsafe { CommDlgExtendedError() };
         if err.0 != 0 {
-            return Err(format!("打开保存对话框失败（错误码 {}）", err.0));
+            return Err(t!("error.fileops.saveDialog", code = err.0).into_owned());
         }
         return Ok(None);
     }
@@ -261,7 +271,9 @@ pub fn pick_folder() -> Result<Option<std::path::PathBuf>, String> {
 
     let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
     let initialized = hr.is_ok();
-    let title: Vec<u16> = "选择 clone 保存位置\0".encode_utf16().collect();
+    let title: Vec<u16> = format!("{}\0", t!("dialog.cloneDir"))
+        .encode_utf16()
+        .collect();
     let mut display = [0u16; 260];
     let bi = BROWSEINFOW {
         pszDisplayName: PWSTR(display.as_mut_ptr()),
@@ -284,7 +296,7 @@ pub fn pick_folder() -> Result<Option<std::path::PathBuf>, String> {
         unsafe { CoUninitialize() };
     }
     if !ok.as_bool() {
-        return Err("无法读取所选文件夹路径".into());
+        return Err(t!("error.fileops.folderPath").into_owned());
     }
     let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     let s = String::from_utf16_lossy(&buf[..n]);
@@ -299,9 +311,17 @@ pub fn pick_folder() -> Result<Option<std::path::PathBuf>, String> {
 /// —— 保存对话框的 `OFN_OVERWRITEPROMPT` 已经问过用户。
 pub fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
     if let Some(dir) = dst.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("创建保存目录失败：{e}"))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| t!("error.fileops.createDir", detail = e).into_owned())?;
     }
-    std::fs::copy(src, dst).map_err(|e| format!("保存文件失败（{}）：{e}", dst.display()))?;
+    std::fs::copy(src, dst).map_err(|e| {
+        t!(
+            "error.fileops.saveFile",
+            path = dst.display(),
+            detail = e
+        )
+        .into_owned()
+    })?;
     let _ = std::fs::remove_file(src);
     Ok(())
 }
