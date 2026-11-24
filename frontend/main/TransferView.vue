@@ -1,6 +1,7 @@
 <script setup>
 import { computed, inject } from "vue";
 import Icon from "../components/Icon.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
 import { useToast } from "../composables/useToast.js";
 import { t } from "../i18n/index.js";
 
@@ -8,6 +9,18 @@ defineProps({ sub: { type: String, default: "send" } });
 
 const transfer = inject("transfer");
 const toast = useToast();
+
+/* 历史分页：3 档，用分段控件（和设置页的选择控件同一套视觉） */
+const PAGE_SIZES = [
+  [10, "10"],
+  [20, "20"],
+  [50, "50"],
+];
+
+function setPageSize(v) {
+  transfer.hs.pageSize = parseInt(v, 10) || 20;
+  transfer.hsLoad(1);
+}
 
 const pickCount = computed(() => transfer.pickPaths.value.length);
 const pickSize = computed(() =>
@@ -242,17 +255,17 @@ function subText(item) {
       <header class="head">
         <h1>{{ $t("main.historyTitle") }}</h1>
         <div class="tools">
-          <select
-            id="hsPageSize"
-            class="input"
-            :aria-label="$t('main.hsPageSize')"
-            :value="String(transfer.hs.pageSize)"
-            @change="transfer.hs.pageSize = parseInt($event.target.value, 10) || 20; transfer.hsLoad(1)"
-          >
-            <option value="10">{{ $t("main.hsPerPage", { n: 10 }) }}</option>
-            <option value="20">{{ $t("main.hsPerPage", { n: 20 }) }}</option>
-            <option value="50">{{ $t("main.hsPerPage", { n: 50 }) }}</option>
-          </select>
+          <span class="hs-per-page">
+            <span class="hs-per-page-label">{{ $t("main.hsPerPageShort") }}</span>
+            <SegmentedControl
+              id="hsPageSize"
+              class="hs-per-page-seg"
+              :aria-label="$t('main.hsPageSize')"
+              :model-value="String(transfer.hs.pageSize)"
+              :options="PAGE_SIZES"
+              @update:model-value="setPageSize"
+            />
+          </span>
           <button
             id="hsClear"
             class="btn"

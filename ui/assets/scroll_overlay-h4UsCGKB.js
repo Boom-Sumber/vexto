@@ -1,0 +1,1 @@
+import{t as e}from"./app-B_YX3YbL.js";import"./theme-BsGz0Uwl.js";import{t}from"./App-GQPHKn_R.js";import"./Icon-BEqYE_66.js";document.body.dataset.purpose=`scroll`,e(t).mount(`#app`);

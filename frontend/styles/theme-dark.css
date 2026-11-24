@@ -109,6 +109,19 @@
   /* ── 原生控件用的图标（data URI 不能引用 CSS 变量，颜色只能在这里写死） ──
    * select 的箭头改成自绘后不再受系统白色箭头影响；换主题时改这一行。 */
   --icon-select: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.75 6 8.25l3.5-3.5' fill='none' stroke='%236c6c7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+
+  /* ── 选择控件（分段滑块 / 自绘下拉，ADR-088）───────────────────────── */
+  /* 凹槽与 --bg-input 同层，和输入框、开关一个家族；滑块抬亮一档，
+     靠投影和顶部高光跟凹槽分开，不用主题色填充（主题色留给动作）。 */
+  --seg-track: #181820;      /* 比 --bg-input 暗一档：和下拉触发器区分开 */
+  --seg-thumb: #3b3b48;
+  --seg-thumb-shadow: 0 1px 3px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .10);
+  --menu-tick: var(--accent);
+  /* 下拉面板比卡片抬一层，否则和 --bg-panel 糊在一起看不出浮起；
+     行的悬停色单独给，不能复用 --bg-hover（会和新面板底色撞）。 */
+  --menu-bg: #20202a;
+  --menu-row-hover: rgba(255, 255, 255, .07);
+  --menu-shadow: 0 10px 32px rgba(0, 0, 0, .62), 0 0 0 1px rgba(255, 255, 255, .07);
 }
 
 /* 主题色的浅/深/淡底/描边全部从 --theme 现算（CSS Color 5 相对色）。

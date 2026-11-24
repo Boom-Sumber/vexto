@@ -161,10 +161,12 @@ impl Tool for Download {
                     Field::switch("confirm_remove", "删除前确认"),
                     Field::switch("remove_missing_records", "文件丢失时移除记录"),
                     Field::switch("clear_finished_on_exit", "退出时清空已完成记录"),
+                    // 短标签：这一项在设置页渲染成分段滑块，三个选项平分 214px，
+                    // 「最近 100 条」放不下（见 components/SegmentedControl.vue）。
                     Field::select(
                         "history_keep",
                         "已完成记录保留",
-                        &[("100", "最近 100 条"), ("300", "最近 300 条"), ("forever", "永久保留")],
+                        &[("100", "100 条"), ("300", "300 条"), ("forever", "永久")],
                     ),
                     Field::group("快捷键"),
                     Field::hotkey("hotkey_download", "打开新建下载任务"),

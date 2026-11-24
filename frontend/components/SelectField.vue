@@ -1,4 +1,9 @@
 <script setup>
+import { computed } from "vue";
+import DropdownSelect from "./DropdownSelect.vue";
+import SegmentedControl from "./SegmentedControl.vue";
+import { preferSegmented, toItems } from "./choiceOptions.js";
+
 const props = defineProps({
   modelValue: { type: [String, Number], default: "" },
   label: { type: String, default: "" },
@@ -7,21 +12,29 @@ const props = defineProps({
 });
 
 const emit = defineEmits(["update:modelValue"]);
+
+const items = computed(() => toItems(props.options));
+const segmented = computed(() => preferSegmented(items.value));
 </script>
 
 <template>
   <label class="vx-field" :class="{ 'no-label': !label }">
     <span v-if="label" class="vx-field-label">{{ label }}</span>
     <span class="vx-field-body">
-      <select
-        :value="modelValue"
+      <SegmentedControl
+        v-if="segmented"
+        :model-value="modelValue"
+        :options="options"
         :disabled="disabled"
-        @change="emit('update:modelValue', $event.target.value)"
-      >
-        <option v-for="opt in options" :key="opt.value" :value="opt.value">
-          {{ opt.label }}
-        </option>
-      </select>
+        @update:model-value="emit('update:modelValue', $event)"
+      />
+      <DropdownSelect
+        v-else
+        :model-value="modelValue"
+        :options="options"
+        :disabled="disabled"
+        @update:model-value="emit('update:modelValue', $event)"
+      />
     </span>
   </label>
 </template>

@@ -1,5 +1,8 @@
 <script setup>
 import { onMounted, reactive, ref } from "vue";
+import DropdownSelect from "../components/DropdownSelect.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
+import { preferSegmented, toItems } from "../components/choiceOptions.js";
 import { t } from "../i18n/index.js";
 import { itemShowIf } from "./utils.js";
 
@@ -30,6 +33,7 @@ for (const fld of props.fields) {
 }
 
 const shown = (fld) => itemShowIf(fld, draft);
+const segmented = (fld) => preferSegmented(toItems(fld.options));
 
 function setValue(key, value) {
   draft[key] = value;
@@ -68,7 +72,7 @@ function save() {
 }
 
 function focusFirst() {
-  const node = body.value?.querySelector("input[type=text], select");
+  const node = body.value?.querySelector("input[type=text], .trigger, .seg button[tabindex='0']");
   if (node) node.focus();
 }
 
@@ -96,15 +100,18 @@ onMounted(focusFirst);
             <span class="track"></span>
             <span class="thumb"></span>
           </label>
-          <select
+          <SegmentedControl
+            v-else-if="fld.type === 'select' && segmented(fld)"
+            :model-value="String(draft[fld.key] ?? '')"
+            :options="fld.options || []"
+            @update:model-value="setValue(fld.key, $event)"
+          />
+          <DropdownSelect
             v-else-if="fld.type === 'select'"
-            :value="String(draft[fld.key] ?? '')"
-            @change="setValue(fld.key, $event.target.value)"
-          >
-            <option v-for="[value, label] in fld.options || []" :key="value" :value="value">
-              {{ label }}
-            </option>
-          </select>
+            :model-value="String(draft[fld.key] ?? '')"
+            :options="fld.options || []"
+            @update:model-value="setValue(fld.key, $event)"
+          />
           <input
             v-else
             class="input"

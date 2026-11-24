@@ -318,7 +318,7 @@
     "cfAccept": "接收",
     "cfRejectClose": "拒绝并关闭",
     "hsPageSize": "每页条数",
-    "hsPerPage": "每页 {n} 条",
+    "hsPerPageShort": "每页",
     "hsClear": "清空历史",
     "hsConfirmClear": "确认清空",
     "hsEmpty": "还没有传输记录。<br />收发文件之后会出现在这里。",

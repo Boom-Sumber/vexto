@@ -1,6 +1,9 @@
 <script setup>
 import { computed, reactive, ref } from "vue";
 import Icon from "../components/Icon.vue";
+import DropdownSelect from "../components/DropdownSelect.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
+import { preferSegmented, toItems } from "../components/choiceOptions.js";
 import ItemFormDialog from "./ItemFormDialog.vue";
 import { t } from "../i18n/index.js";
 import { stableJson, itemShowIf, errText, summaryParts } from "./utils.js";
@@ -47,6 +50,8 @@ function partsOf(item) {
 function detailFields(item) {
   return itemFields.value.filter((fld) => itemShowIf(fld, item));
 }
+
+const segmented = (fld) => preferSegmented(toItems(fld.options));
 
 function patch(id, key, value) {
   const next = JSON.parse(JSON.stringify(items.value));
@@ -208,15 +213,18 @@ function onSave(draft, status) {
               <span class="track"></span>
               <span class="thumb"></span>
             </label>
-            <select
+            <SegmentedControl
+              v-else-if="fld.type === 'select' && segmented(fld)"
+              :model-value="String(item[fld.key] ?? '')"
+              :options="fld.options || []"
+              @update:model-value="patch(item.id, fld.key, $event)"
+            />
+            <DropdownSelect
               v-else-if="fld.type === 'select'"
-              :value="String(item[fld.key] ?? '')"
-              @change="patch(item.id, fld.key, $event.target.value)"
-            >
-              <option v-for="[value, label] in fld.options || []" :key="value" :value="value">
-                {{ label }}
-              </option>
-            </select>
+              :model-value="String(item[fld.key] ?? '')"
+              :options="fld.options || []"
+              @update:model-value="patch(item.id, fld.key, $event)"
+            />
             <input
               v-else
               class="input"

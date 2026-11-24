@@ -791,6 +791,18 @@
 #paneHistory .head .tools .input {
   white-space: nowrap;
 }
+/* 历史分页：分段控件 + 「每页」前缀（控件本体见 components/SegmentedControl.vue） */
+.hs-per-page {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.hs-per-page-label {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.hs-per-page-seg { width: 132px; }
 .hs-list {
   display: flex;
   flex-direction: column;

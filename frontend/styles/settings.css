@@ -349,6 +349,9 @@ h1 {
 .ctrl textarea {
   width: 100%;
 }
+/* 选择控件（自绘下拉 / 分段滑块）：控件列靠右对齐，必须显式铺满 */
+.ctrl > .select,
+.ctrl > .seg { width: 100%; }
 .field.wide .ctrl { flex-basis: 360px; width: 360px; }
 .field.switch .ctrl { flex: 0 0 auto; width: auto; }
 .field.action .ctrl {

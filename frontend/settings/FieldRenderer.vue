@@ -1,6 +1,9 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import Icon from "../components/Icon.vue";
+import DropdownSelect from "../components/DropdownSelect.vue";
+import SegmentedControl from "../components/SegmentedControl.vue";
+import { preferSegmented, toItems } from "../components/choiceOptions.js";
 import HelpIcon from "./HelpIcon.vue";
 import ListField from "./ListField.vue";
 import AboutPage from "./AboutPage.vue";
@@ -147,8 +150,11 @@ const noOptions = computed(
   () => !!props.field.dynamic && engineChoices(props.settings.val).length === 0,
 );
 
-function commitSelect(e) {
-  props.settings.commit(props.field.key, e.target.value, {
+// 2–3 个短选项用分段滑块，其余用自绘下拉（原生 select 的弹层由系统画，和主题不搭）
+const segmented = computed(() => preferSegmented(toItems(selectOptions.value)));
+
+function commitValue(value) {
+  props.settings.commit(props.field.key, value, {
     autoApply: !!props.field.auto_apply,
   });
 }
@@ -373,16 +379,21 @@ onBeforeUnmount(() => {
           <span class="thumb"></span>
         </label>
 
-        <select
-          v-else-if="field.type === 'select'"
-          :value="String(currentValue ?? '')"
+        <SegmentedControl
+          v-else-if="field.type === 'select' && segmented"
+          :model-value="String(currentValue ?? '')"
+          :options="selectOptions"
           :disabled="noOptions"
-          @change="commitSelect"
-        >
-          <option v-for="[value, label] in selectOptions" :key="value" :value="value">
-            {{ label }}
-          </option>
-        </select>
+          @update:model-value="commitValue"
+        />
+
+        <DropdownSelect
+          v-else-if="field.type === 'select'"
+          :model-value="String(currentValue ?? '')"
+          :options="selectOptions"
+          :disabled="noOptions"
+          @update:model-value="commitValue"
+        />
 
         <div v-else-if="field.type === 'color'" class="swatches">
           <button
