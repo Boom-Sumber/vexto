@@ -1,0 +1,85 @@
+{
+  "common": {
+    "cancel": "取消",
+    "confirm": "确定",
+    "close": "关闭",
+    "save": "保存",
+    "retry": "重试",
+    "copy": "复制",
+    "delete": "删除",
+    "minimize": "最小化",
+    "maximize": "最大化 / 还原",
+    "toggleTheme": "切换明暗主题",
+    "openFolder": "打开所在文件夹",
+    "unknownError": "未知错误",
+    "listSeparator": "，"
+  },
+  "newTask": {
+    "title": "新建任务",
+    "tabs": {
+      "link": "链接任务",
+      "torrent": "种子任务"
+    },
+    "torrentDisabledTitle": "种子与磁力下载将在后续版本开放",
+    "linksPlaceholder": "每行一个下载链接",
+    "rename": "重命名：",
+    "optional": "选填",
+    "reprobe": "重新获取",
+    "torrentLabel": "种子文件：",
+    "torrentPlaceholder": "选择 .torrent 文件",
+    "torrentPick": "选择…",
+    "torrentHint": "种子里的文件名与分片校验由种子决定，这里只改保存位置与限速。",
+    "dir": "存储路径：",
+    "openDir": "在资源管理器中打开",
+    "useDefaultDir": "填入默认下载目录",
+    "advanced": "高级选项",
+    "speed": "限速：",
+    "speedUnit": "KB/s",
+    "connections": "连接数：",
+    "connectionsUnit": "个",
+    "ua": "User-Agent：",
+    "referer": "Referer：",
+    "checksum": "校验和：",
+    "checksumPlaceholder": "sha-256=…（选填）",
+    "checksumMultiTitle": "多条链接不能共用一个校验和",
+    "auth": "认证信息：",
+    "authUser": "用户名",
+    "authPass": "密码",
+    "authHeader": "Authorization",
+    "authPlaceholder": "Bearer 你的令牌",
+    "authHint": "已填 Authorization，用户名 / 密码不会发送",
+    "submit": "新建",
+    "status": {
+      "creating": "正在创建…",
+      "created": "已创建 {n} 个任务",
+      "partial": "成功 {ok} 个，失败 {failed} 个",
+      "torrentCreated": "已创建 1 个种子任务"
+    },
+    "space": {
+      "need": "需下载 {size}",
+      "free": "可用 {size}",
+      "torrent": "种子 {size}"
+    },
+    "error": {
+      "noLinks": "至少填一个下载链接",
+      "createFailed": "创建任务失败：{message}",
+      "torrentCreateFailed": "创建种子任务失败：{message}",
+      "subscribeFailed": "订阅预填事件失败：{message}",
+      "torrentTooLarge": "种子文件过大（上限 4 MB）",
+      "torrentReadFailed": "读取种子文件失败：{message}",
+      "torrentInvalid": "这不像是 .torrent 文件（内容应为 bencode 字典 d…e）",
+      "torrentMissing": "请先选择一个 .torrent 文件",
+      "item": "{uri}：{error}"
+    }
+  },
+  "feedback": {
+    "windowTitle": "截图",
+    "copyImage": "复制图片",
+    "openFolder": "打开所在文件夹",
+    "pin": "钉住",
+    "preview": "预览"
+  },
+  "settings": {},
+  "download": {},
+  "popup": {}
+}

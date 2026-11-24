@@ -15,10 +15,10 @@ const started = ref(false);
 let timer = 0;
 
 const ACTS = [
-  { act: "copy", icon: "copy", title: "复制图片" },
-  { act: "folder", icon: "folder", title: "打开所在文件夹" },
-  { act: "pin", icon: "pin", title: "钉住" },
-  { act: "preview", icon: "preview", title: "预览" },
+  { act: "copy", icon: "copy", titleKey: "feedback.copyImage" },
+  { act: "folder", icon: "folder", titleKey: "feedback.openFolder" },
+  { act: "pin", icon: "pin", titleKey: "feedback.pin" },
+  { act: "preview", icon: "preview", titleKey: "feedback.preview" },
 ];
 
 function schedule() {
@@ -117,8 +117,8 @@ onBeforeUnmount(() => {
         :key="a.act"
         class="fb-btn"
         type="button"
-        :title="a.title"
-        :aria-label="a.title"
+        :title="$t(a.titleKey)"
+        :aria-label="$t(a.titleKey)"
         @click.stop="act(a.act)"
       >
         <Icon :name="a.icon" :size="20" />

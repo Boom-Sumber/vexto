@@ -11,6 +11,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import TitleBar from "../components/TitleBar.vue";
 import Icon from "../components/Icon.vue";
 import { vNumField } from "../directives/numField.js";
+import { t } from "../i18n/index.js";
 
 const invoke = window.__TAURI__.core.invoke;
 const listen = window.__TAURI__.event.listen;
@@ -22,8 +23,8 @@ const torrentFileEl = ref(null);
 const links = ref("");
 const name = ref("");
 const nameEdited = ref(false);
-const nameSizeText = ref("");
 const lastSize = ref(0);
+const free = ref(null);
 const dir = ref("");
 const defaultDir = ref("");
 const speed = ref(0);
@@ -40,12 +41,10 @@ const activeTab = ref("link");
 const torrentB64 = ref("");
 const torrentBytes = ref(0);
 const torrentName = ref("");
-const torrentSizeText = ref("");
 const error = ref("");
 const tError = ref("");
 const status = ref("");
 const submitting = ref(false);
-const spaceText = ref("");
 
 // 浏览器扩展交过来的附加信息：url → { filename, size, referer, userAgent, cookie }。
 // 热键预填只有 url，不会有这些字段。
@@ -90,8 +89,25 @@ function fmtBytes(n) {
   return n.toFixed(1).replace(/\.0$/, "") + " " + u[i];
 }
 
+const nameSizeText = computed(() => (lastSize.value ? fmtBytes(lastSize.value) : ""));
+const torrentSizeText = computed(() => (torrentBytes.value ? fmtBytes(torrentBytes.value) : ""));
+const spaceText = computed(() => {
+  const parts = [];
+  if (activeTab.value === "torrent") {
+    // 种子文件本身的大小 ≠ 任务总大小（要解析 bencode 才知道），
+    // 所以只如实写「种子 x KB」，不冒充「需下载 x」。
+    if (torrentBytes.value) {
+      parts.push(t("newTask.space.torrent", { size: fmtBytes(torrentBytes.value) }));
+    }
+  } else if (lastSize.value) {
+    parts.push(t("newTask.space.need", { size: fmtBytes(lastSize.value) }));
+  }
+  if (free.value) parts.push(t("newTask.space.free", { size: fmtBytes(free.value) }));
+  return parts.join(t("common.listSeparator"));
+});
+
 function errText(e) {
-  if (e == null) return "未知错误";
+  if (e == null) return t("common.unknownError");
   if (typeof e === "string") return e;
   if (e.message) return String(e.message);
   return String(e);
@@ -135,7 +151,6 @@ function setTab(which) {
 function syncNameState() {
   if (multi.value) {
     name.value = "";
-    nameSizeText.value = "";
     checksum.value = "";
     lastSize.value = 0;
   }
@@ -144,22 +159,11 @@ function syncNameState() {
 async function updateSpaceHint(size) {
   if (size !== undefined) lastSize.value = size;
   const d = dir.value.trim() || defaultDir.value;
-  let free = null;
   try {
-    free = await invoke("disk_free", { dir: d });
+    free.value = await invoke("disk_free", { dir: d });
   } catch {
-    free = null;
+    free.value = null;
   }
-  const parts = [];
-  if (activeTab.value === "torrent") {
-    // 种子文件本身的大小 ≠ 任务总大小（要解析 bencode 才知道），
-    // 所以只如实写「种子 x KB」，不冒充「需下载 x」。
-    if (torrentBytes.value) parts.push("种子 " + fmtBytes(torrentBytes.value));
-  } else if (lastSize.value) {
-    parts.push("需下载 " + fmtBytes(lastSize.value));
-  }
-  if (free) parts.push("可用 " + fmtBytes(free));
-  spaceText.value = parts.join("，");
 }
 
 /// 单链接时探测文件名与大小。`force` 表示用户点了「重新获取」。
@@ -167,7 +171,6 @@ async function probeNow(force) {
   const list = splitLinks();
   if (list.length !== 1) {
     lastSize.value = 0;
-    nameSizeText.value = "";
     updateSpaceHint();
     return;
   }
@@ -181,7 +184,6 @@ async function probeNow(force) {
   }
 
   const seq = ++probeSeq;
-  nameSizeText.value = "";
   lastSize.value = 0;
   updateSpaceHint();
 
@@ -192,7 +194,6 @@ async function probeNow(force) {
       name.value = r.name;
     }
     if (r && r.size) {
-      nameSizeText.value = fmtBytes(r.size);
       updateSpaceHint(r.size);
     }
   } catch {
@@ -219,7 +220,6 @@ function resetTorrent() {
   torrentB64.value = "";
   torrentBytes.value = 0;
   torrentName.value = "";
-  torrentSizeText.value = "";
   updateSpaceHint();
 }
 
@@ -234,7 +234,7 @@ async function onTorrentPicked(ev) {
 
   if (file.size > MAX_TORRENT_FILE) {
     resetTorrent();
-    showError("种子文件过大（上限 4 MB）", "torrent");
+    showError(t("newTask.error.torrentTooLarge"), "torrent");
     return;
   }
   let bytes;
@@ -242,19 +242,18 @@ async function onTorrentPicked(ev) {
     bytes = new Uint8Array(await file.arrayBuffer());
   } catch (e) {
     resetTorrent();
-    showError("读取种子文件失败：" + errText(e), "torrent");
+    showError(t("newTask.error.torrentReadFailed", { message: errText(e) }), "torrent");
     return;
   }
   if (bytes.length < 2 || bytes[0] !== 0x64 || bytes[bytes.length - 1] !== 0x65) {
     resetTorrent();
-    showError("这不像是 .torrent 文件（内容应为 bencode 字典 d…e）", "torrent");
+    showError(t("newTask.error.torrentInvalid"), "torrent");
     return;
   }
 
   torrentB64.value = bytesToBase64(bytes);
   torrentBytes.value = bytes.length;
   torrentName.value = file.name;
-  torrentSizeText.value = fmtBytes(bytes.length);
   updateSpaceHint();
 }
 
@@ -266,7 +265,7 @@ async function submit() {
 async function submitLinks() {
   const list = splitLinks();
   if (!list.length) {
-    showError("至少填一个下载链接");
+    showError(t("newTask.error.noLinks"));
     return;
   }
 
@@ -309,24 +308,24 @@ async function submitLinks() {
   });
 
   submitting.value = true;
-  status.value = "正在创建…";
+  status.value = t("newTask.status.creating");
   showError("");
   try {
     const r = await invoke("download_add", { tasks });
     const failed = Array.isArray(r.failed) ? r.failed : [];
     if (failed.length) {
-      showError(failed.map((f) => f.uri + "：" + f.error).join("\n"));
-      status.value = `成功 ${r.ok} 个，失败 ${failed.length} 个`;
+      showError(failed.map((f) => t("newTask.error.item", { uri: f.uri, error: f.error })).join("\n"));
+      status.value = t("newTask.status.partial", { ok: r.ok, failed: failed.length });
       links.value = failed.map((f) => f.uri).join("\n");
       syncNameState();
       scheduleProbe();
     } else {
-      status.value = `已创建 ${r.ok} 个任务`;
+      status.value = t("newTask.status.created", { n: r.ok });
       // 这个命令会销毁本窗口，响应可能收不到：不 await，也别让 rejection 冒成错误
       invoke("new_task_done").catch(() => {});
     }
   } catch (e) {
-    showError("创建任务失败：" + errText(e));
+    showError(t("newTask.error.createFailed", { message: errText(e) }));
     status.value = "";
   } finally {
     submitting.value = false;
@@ -335,7 +334,7 @@ async function submitLinks() {
 
 async function submitTorrent() {
   if (!torrentB64.value) {
-    showError("请先选择一个 .torrent 文件", "torrent");
+    showError(t("newTask.error.torrentMissing"), "torrent");
     return;
   }
   const task = {
@@ -347,14 +346,14 @@ async function submitTorrent() {
   };
 
   submitting.value = true;
-  status.value = "正在创建…";
+  status.value = t("newTask.status.creating");
   showError("", "torrent");
   try {
     await invoke("download_add_torrent", { task });
-    status.value = "已创建 1 个种子任务";
+    status.value = t("newTask.status.torrentCreated");
     invoke("new_task_done").catch(() => {});
   } catch (e) {
-    showError("创建种子任务失败：" + errText(e), "torrent");
+    showError(t("newTask.error.torrentCreateFailed", { message: errText(e) }), "torrent");
     status.value = "";
   } finally {
     submitting.value = false;
@@ -393,12 +392,12 @@ function addPrefill(payload) {
 
   const now = splitLinks();
   const ex = now.length === 1 ? extras.get(now[0]) || {} : null;
+  lastSize.value = ex ? Number(ex.size) || 0 : 0;
   nameEdited.value = false;
   if (ex && ex.filename) {
     name.value = ex.filename;
     // 别让自动探测把扩展给的原文件名覆盖掉；用户仍可点「重新获取」。
     nameEdited.value = true;
-    nameSizeText.value = ex.size ? fmtBytes(ex.size) : "";
   }
   // 接管带来的 UA 回显（用户要求）：只写单链接——多链接的 UA 可能各不相同，
   // 塞进同一个框会把第一条的 UA 应用到全部任务（提交时本来就是按链取 ex.userAgent）。
@@ -479,7 +478,7 @@ onMounted(async () => {
       }
     });
   } catch (e) {
-    showError("订阅预填事件失败：" + errText(e));
+    showError(t("newTask.error.subscribeFailed", { message: errText(e) }));
   }
 
   try {
@@ -508,11 +507,11 @@ onBeforeUnmount(() => {
 <template>
   <div class="win">
     <!-- 固定尺寸窗口：只留主题 / 最小化 / 关闭，不装缩放热区、不显示最大化。 -->
-    <TitleBar ref="tb" title="新建任务" :resize="false" :maximize="false" />
+    <TitleBar ref="tb" :title="$t('newTask.title')" :resize="false" :maximize="false" />
 
     <nav class="tabs">
       <button id="tabLink" class="tab" :class="{ active: activeTab === 'link' }" type="button" @click="setTab('link')">
-        链接任务
+        {{ $t("newTask.tabs.link") }}
       </button>
       <!-- 种子任务先关闭：BT / 磁力还没开放（会话 25 用户要求）。
            按钮保留在设计里，等集成时删掉 disabled 即可，后端命令与校验都还在。 -->
@@ -522,9 +521,9 @@ onBeforeUnmount(() => {
         :class="{ active: activeTab === 'torrent' }"
         type="button"
         disabled
-        title="种子与磁力下载将在后续版本开放"
+        :title="$t('newTask.torrentDisabledTitle')"
       >
-        种子任务
+        {{ $t("newTask.tabs.torrent") }}
       </button>
     </nav>
 
@@ -536,7 +535,7 @@ onBeforeUnmount(() => {
           v-model="links"
           class="textarea"
           spellcheck="false"
-          placeholder="每行一个下载链接"
+          :placeholder="$t('newTask.linksPlaceholder')"
           @input="onLinksInput"
           @keydown.ctrl.enter.prevent="submit"
           @keydown.meta.enter.prevent="submit"
@@ -545,7 +544,7 @@ onBeforeUnmount(() => {
         <div id="error" class="notice notice-danger error" v-show="error">{{ error }}</div>
 
         <div class="field">
-          <label class="lbl" for="name">重命名：</label>
+          <label class="lbl" for="name">{{ $t("newTask.rename") }}</label>
           <div class="input-wrap">
             <input
               id="name"
@@ -553,20 +552,20 @@ onBeforeUnmount(() => {
               class="input has-suffix"
               type="text"
               spellcheck="false"
-              placeholder="选填"
+              :placeholder="$t('newTask.optional')"
               @input="onNameInput"
             />
             <span id="nameSize" class="suffix num">{{ nameSizeText }}</span>
           </div>
           <button id="reprobe" class="btn" type="button" :disabled="reprobeDisabled" @click="probeNow(true)">
-            重新获取
+            {{ $t("newTask.reprobe") }}
           </button>
         </div>
       </div>
 
       <div id="paneTorrent" class="pane" v-show="activeTab === 'torrent'">
         <div class="field">
-          <label class="lbl" for="torrentName">种子文件：</label>
+          <label class="lbl" for="torrentName">{{ $t("newTask.torrentLabel") }}</label>
           <div class="input-wrap">
             <input
               id="torrentName"
@@ -574,11 +573,11 @@ onBeforeUnmount(() => {
               class="input has-suffix"
               type="text"
               readonly
-              placeholder="选择 .torrent 文件"
+              :placeholder="$t('newTask.torrentPlaceholder')"
             />
             <span id="torrentSize" class="suffix num">{{ torrentSizeText }}</span>
           </div>
-          <button id="pickTorrent" class="btn" type="button" @click="pickTorrent">选择…</button>
+          <button id="pickTorrent" class="btn" type="button" @click="pickTorrent">{{ $t("newTask.torrentPick") }}</button>
           <!-- 原生 file input 保持隐藏：系统部件是白底，只允许用自绘按钮触发它。
                文件读成 base64 后走 IPC，Rust 侧不需要文件权限 / dialog 插件。 -->
           <input
@@ -590,20 +589,20 @@ onBeforeUnmount(() => {
             @change="onTorrentPicked"
           />
         </div>
-        <div class="hint-row">种子里的文件名与分片校验由种子决定，这里只改保存位置与限速。</div>
+        <div class="hint-row">{{ $t("newTask.torrentHint") }}</div>
         <div id="tError" class="notice notice-danger error" v-show="tError">{{ tError }}</div>
       </div>
 
       <!-- 两个页签共享：保存位置 / 可用空间 / 高级选项。
            链接任务下顺序与参考图一致（重命名 → 存储路径 → 高级选项）。 -->
       <div class="field">
-        <label class="lbl" for="dir">存储路径：</label>
+        <label class="lbl" for="dir">{{ $t("newTask.dir") }}</label>
         <div class="input-wrap">
           <input id="dir" v-model="dir" class="input" type="text" spellcheck="false" @change="updateSpaceHint()" />
-          <button id="pickDir" class="icon-btn dir-btn" type="button" title="在资源管理器中打开" aria-label="在资源管理器中打开" @click="openDir">
+          <button id="pickDir" class="icon-btn dir-btn" type="button" :title="$t('newTask.openDir')" :aria-label="$t('newTask.openDir')" @click="openDir">
             <Icon name="folder" :size="16" />
           </button>
-          <button id="defaultDir" class="icon-btn dir-btn" type="button" title="填入默认下载目录" aria-label="填入默认下载目录" @click="useDefaultDir">
+          <button id="defaultDir" class="icon-btn dir-btn" type="button" :title="$t('newTask.useDefaultDir')" :aria-label="$t('newTask.useDefaultDir')" @click="useDefaultDir">
             <Icon name="clock" :size="16" />
           </button>
         </div>
@@ -613,12 +612,12 @@ onBeforeUnmount(() => {
 
       <label class="adv-toggle">
         <input id="advToggle" v-model="advOpen" type="checkbox" />
-        <span>高级选项</span>
+        <span>{{ $t("newTask.advanced") }}</span>
       </label>
 
       <div id="advPane" class="adv" v-show="advOpen">
         <div class="field">
-          <label class="lbl" for="speed">限速：</label>
+          <label class="lbl" for="speed">{{ $t("newTask.speed") }}</label>
           <div class="input-wrap">
             <input
               id="speed"
@@ -631,11 +630,11 @@ onBeforeUnmount(() => {
               step="64"
               placeholder="0"
             />
-            <span class="suffix">KB/s</span>
+            <span class="suffix">{{ $t("newTask.speedUnit") }}</span>
           </div>
         </div>
         <div class="field">
-          <label class="lbl" for="conn">连接数：</label>
+          <label class="lbl" for="conn">{{ $t("newTask.connections") }}</label>
           <div class="input-wrap">
             <input
               id="conn"
@@ -648,11 +647,11 @@ onBeforeUnmount(() => {
               step="1"
               placeholder="0"
             />
-            <span class="suffix">个</span>
+            <span class="suffix">{{ $t("newTask.connectionsUnit") }}</span>
           </div>
         </div>
         <div class="field" v-show="activeTab === 'link'">
-          <label class="lbl" for="ua">User-Agent：</label>
+          <label class="lbl" for="ua">{{ $t("newTask.ua") }}</label>
           <div class="input-wrap">
             <!-- UA 是一长串无空格字符，单行框看不全：用两行可折行的文本框。
                  视觉折行不进 value；手敲的回车由 cleanUa() 去掉。 -->
@@ -662,19 +661,19 @@ onBeforeUnmount(() => {
               class="input ua-input"
               rows="2"
               spellcheck="false"
-              placeholder="选填"
+              :placeholder="$t('newTask.optional')"
               @input="onUaInput"
             ></textarea>
           </div>
         </div>
         <div class="field" v-show="activeTab === 'link'">
-          <label class="lbl" for="referer">Referer：</label>
+          <label class="lbl" for="referer">{{ $t("newTask.referer") }}</label>
           <div class="input-wrap">
-            <input id="referer" v-model="referer" class="input" type="text" spellcheck="false" placeholder="选填" />
+            <input id="referer" v-model="referer" class="input" type="text" spellcheck="false" :placeholder="$t('newTask.optional')" />
           </div>
         </div>
         <div class="field" v-show="activeTab === 'link'">
-          <label class="lbl" for="checksum">校验和：</label>
+          <label class="lbl" for="checksum">{{ $t("newTask.checksum") }}</label>
           <div class="input-wrap">
             <input
               id="checksum"
@@ -683,39 +682,39 @@ onBeforeUnmount(() => {
               type="text"
               spellcheck="false"
               :disabled="multi"
-              :title="multi ? '多条链接不能共用一个校验和' : ''"
-              placeholder="sha-256=…（选填）"
+              :title="multi ? $t('newTask.checksumMultiTitle') : ''"
+              :placeholder="$t('newTask.checksumPlaceholder')"
             />
           </div>
         </div>
         <div class="field auth" v-show="activeTab === 'link'">
           <!-- 三行合成一项：用户名/密码是 HTTP Basic 的两种字段，Authorization 是
                原始头。三者共用「认证信息」这个标签，label 因此不带 for（对应多个输入框）。 -->
-          <span class="lbl">认证信息：</span>
+          <span class="lbl">{{ $t("newTask.auth") }}</span>
           <div class="auth-body">
             <div class="auth-row">
-              <input id="httpUser" v-model="httpUser" class="input" type="text" spellcheck="false" placeholder="用户名" />
+              <input id="httpUser" v-model="httpUser" class="input" type="text" spellcheck="false" :placeholder="$t('newTask.authUser')" />
               <input
                 id="httpPasswd"
                 v-model="httpPasswd"
                 class="input"
                 type="password"
                 spellcheck="false"
-                placeholder="密码"
+                :placeholder="$t('newTask.authPass')"
               />
             </div>
             <div class="auth-row group">
-              <span class="auth-prefix">Authorization</span>
+              <span class="auth-prefix">{{ $t("newTask.authHeader") }}</span>
               <input
                 id="authorization"
                 v-model="authorization"
                 class="input"
                 type="text"
                 spellcheck="false"
-                placeholder="Bearer 你的令牌"
+                :placeholder="$t('newTask.authPlaceholder')"
               />
             </div>
-            <div id="authHint" class="auth-hint" v-show="authHint">已填 Authorization，用户名 / 密码不会发送</div>
+            <div id="authHint" class="auth-hint" v-show="authHint">{{ $t("newTask.authHint") }}</div>
           </div>
         </div>
       </div>
@@ -724,8 +723,8 @@ onBeforeUnmount(() => {
     <footer class="foot">
       <span id="status" class="status">{{ status }}</span>
       <div class="acts">
-        <button id="cancel" class="btn" type="button" @click="cancel">取消</button>
-        <button id="submit" class="btn btn-primary" type="button" :disabled="submitting" @click="submit">新建</button>
+        <button id="cancel" class="btn" type="button" @click="cancel">{{ $t("common.cancel") }}</button>
+        <button id="submit" class="btn btn-primary" type="button" :disabled="submitting" @click="submit">{{ $t("newTask.submit") }}</button>
       </div>
     </footer>
   </div>

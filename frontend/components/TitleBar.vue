@@ -100,19 +100,26 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="tb-btn tb-theme"
-        title="切换明暗主题"
-        aria-label="切换明暗主题"
+        :title="$t('common.toggleTheme')"
+        :aria-label="$t('common.toggleTheme')"
         @click="toggle"
       >
         <Icon :name="resolved === 'dark' ? 'sun' : 'moon'" :size="14" />
       </button>
-      <button type="button" class="tb-btn" data-win="min" aria-label="最小化" @click="action('min')">
+      <button type="button" class="tb-btn" data-win="min" :aria-label="$t('common.minimize')" @click="action('min')">
         <Icon name="minimize" :size="14" />
       </button>
-      <button v-if="maximize" type="button" class="tb-btn" data-win="max" aria-label="最大化 / 还原" @click="action('max')">
+      <button
+        v-if="maximize"
+        type="button"
+        class="tb-btn"
+        data-win="max"
+        :aria-label="$t('common.maximize')"
+        @click="action('max')"
+      >
         <Icon name="maximize" :size="14" />
       </button>
-      <button type="button" class="tb-btn close" data-win="close" aria-label="关闭" @click="onClose">
+      <button type="button" class="tb-btn close" data-win="close" :aria-label="$t('common.close')" @click="onClose">
         <Icon name="close" :size="14" />
       </button>
     </div>

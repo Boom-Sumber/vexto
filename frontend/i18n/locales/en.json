@@ -1,0 +1,85 @@
+{
+  "common": {
+    "cancel": "",
+    "confirm": "",
+    "close": "",
+    "save": "",
+    "retry": "",
+    "copy": "",
+    "delete": "",
+    "minimize": "",
+    "maximize": "",
+    "toggleTheme": "",
+    "openFolder": "",
+    "unknownError": "",
+    "listSeparator": ""
+  },
+  "newTask": {
+    "title": "",
+    "tabs": {
+      "link": "",
+      "torrent": ""
+    },
+    "torrentDisabledTitle": "",
+    "linksPlaceholder": "",
+    "rename": "",
+    "optional": "",
+    "reprobe": "",
+    "torrentLabel": "",
+    "torrentPlaceholder": "",
+    "torrentPick": "",
+    "torrentHint": "",
+    "dir": "",
+    "openDir": "",
+    "useDefaultDir": "",
+    "advanced": "",
+    "speed": "",
+    "speedUnit": "",
+    "connections": "",
+    "connectionsUnit": "",
+    "ua": "",
+    "referer": "",
+    "checksum": "",
+    "checksumPlaceholder": "",
+    "checksumMultiTitle": "",
+    "auth": "",
+    "authUser": "",
+    "authPass": "",
+    "authHeader": "",
+    "authPlaceholder": "",
+    "authHint": "",
+    "submit": "",
+    "status": {
+      "creating": "",
+      "created": "",
+      "partial": "",
+      "torrentCreated": ""
+    },
+    "space": {
+      "need": "",
+      "free": "",
+      "torrent": ""
+    },
+    "error": {
+      "noLinks": "",
+      "createFailed": "",
+      "torrentCreateFailed": "",
+      "subscribeFailed": "",
+      "torrentTooLarge": "",
+      "torrentReadFailed": "",
+      "torrentInvalid": "",
+      "torrentMissing": "",
+      "item": ""
+    }
+  },
+  "feedback": {
+    "windowTitle": "",
+    "copyImage": "",
+    "openFolder": "",
+    "pin": "",
+    "preview": ""
+  },
+  "settings": {},
+  "download": {},
+  "popup": {}
+}
