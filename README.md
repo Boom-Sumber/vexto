@@ -10,7 +10,7 @@
 
 [简体中文](README.md) · [English](README.en.md) · [下载 Releases](https://github.com/Ruxsmiles/vexto/releases) · [反馈 Issues](https://github.com/Ruxsmiles/vexto/issues)
 
-![version](https://img.shields.io/badge/version-0.5.2-blue?style=flat-square)
+![version](https://img.shields.io/badge/version-0.5.3-blue?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square)
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square)
@@ -44,7 +44,7 @@
 
 ## 安装
 
-运行 [Vexto_0.5.2_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.2/Vexto_0.5.2_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.5.3_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.3/Vexto_0.5.3_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
 当前安装包 **21.30 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
