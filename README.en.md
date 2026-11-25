@@ -10,7 +10,7 @@ A lightweight Windows tray toolbox that combines select-to-translate, screenshot
 
 [简体中文](README.md) · [English](README.en.md) · [Download Releases](https://github.com/Ruxsmiles/vexto/releases) · [Feedback Issues](https://github.com/Ruxsmiles/vexto/issues)
 
-![version](https://img.shields.io/badge/version-0.5.3-blue?style=flat-square)
+![version](https://img.shields.io/badge/version-0.5.4-blue?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square)
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square)
@@ -44,7 +44,7 @@ A lightweight Windows tray toolbox that combines select-to-translate, screenshot
 
 ## Installation
 
-Run [Vexto_0.5.3_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.3/Vexto_0.5.3_x64-setup.exe). The installer installs per-user (`%LOCALAPPDATA%`) and **lets you choose a custom install path**; administrator rights are not required.
+Run [Vexto_0.5.4_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.4/Vexto_0.5.4_x64-setup.exe). The installer installs per-user (`%LOCALAPPDATA%`) and **lets you choose a custom install path**; administrator rights are not required.
 
 The current installer is **21.30 MiB** (includes the PaddleOCR model, LZMA-compressed); the installed program directory is about 42 MB.
 
