@@ -6,6 +6,7 @@
 
 use super::{Field, Section, Tool};
 use crate::config;
+use rust_i18n::t;
 
 /// GitHub 下载 / clone 线路。`auto` 先走 gh-proxy，最后才直连。
 ///
@@ -70,10 +71,14 @@ impl Tool for Download {
         cfg.enable_download = on;
         config::save(&cfg)?;
         if on {
-            crate::download::engine::set_message("已启用 · 空闲（aria2c 未启动）");
+            crate::download::engine::set_status(
+                crate::download::engine::EngineStatus::Idle,
+            );
         } else {
             crate::download::engine::shutdown_all()?;
-            crate::download::engine::set_message("已停用（aria2c 已退出）");
+            crate::download::engine::set_status(
+                crate::download::engine::EngineStatus::Stopped,
+            );
         }
         Ok(())
     }
@@ -83,14 +88,19 @@ impl Tool for Download {
     fn status_line(&self) -> String {
         let cfg = config::load();
         if !cfg.enable_download {
-            return "未启用".to_string();
+            return t!("status.line.disabled").into_owned();
         }
         let bridge = if cfg.extension_bridge_enabled {
-            "浏览器插件接管"
+            t!("status.line.bridgeOn")
         } else {
-            "浏览器插件接管已关闭"
+            t!("status.line.bridgeOff")
         };
-        format!("{} · {bridge}", crate::download::engine::status_line())
+        t!(
+            "status.line.download",
+            engine = crate::download::engine::status_line(),
+            bridge = bridge
+        )
+        .into_owned()
     }
 
     /// 引擎/插件接管有失败信息时红，aria2c 还没起来时黄（会话 52）。
@@ -99,12 +109,10 @@ impl Tool for Download {
         if !cfg.enable_download {
             return "ok";
         }
-        let engine_msg = crate::download::engine::status_line();
-        let bridge_msg = crate::extension_bridge::status_line();
-        if engine_msg.contains("失败") || bridge_msg.contains("失败") {
+        if crate::download::engine::status_is_error() || crate::extension_bridge::has_error() {
             return "error";
         }
-        if engine_msg.contains("未启动") {
+        if crate::download::engine::status_is_idle() {
             return "warn";
         }
         "ok"

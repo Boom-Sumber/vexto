@@ -16,6 +16,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use rust_i18n::t;
 use tauri::{AppHandle, Emitter};
 
 use crate::dlog;
@@ -707,12 +708,12 @@ pub fn status_suffix() -> String {
     let g = state();
     if g.view.required {
         if let Some(v) = &g.view.latest {
-            return format!(" · 立即更新到 {v}");
+            return t!("status.line.updateNow", version = v).into_owned();
         }
     }
     if g.view.phase == Phase::Available {
         if let Some(v) = &g.view.latest {
-            return format!(" · 可更新到 {v}");
+            return t!("status.line.updateAvailable", version = v).into_owned();
         }
     }
     String::new()

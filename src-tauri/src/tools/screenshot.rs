@@ -3,6 +3,7 @@
 
 use super::{Field, Section, Tool};
 use crate::config;
+use rust_i18n::t;
 
 pub struct Screenshot;
 
@@ -44,9 +45,9 @@ impl Tool for Screenshot {
     fn status_line(&self) -> String {
         let cfg = config::load();
         if !cfg.enable_screenshot {
-            return "未启用".to_string();
+            return t!("status.line.disabled").into_owned();
         }
-        format!("已启用 · 区域截图 {}", cfg.hotkey_screenshot)
+        t!("status.line.screenshot", hotkey = cfg.hotkey_screenshot).into_owned()
     }
 
     fn sections(&self) -> Vec<Section> {

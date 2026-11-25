@@ -165,7 +165,7 @@ fn with_engine(mut payload: Value, cfg: &config::Config) -> Value {
         m.insert(
             "engineName".to_string(),
             json!(if label.is_empty() {
-                "未配置引擎".to_string()
+                t!("status.line.translateEngineMissing").into_owned()
             } else {
                 label
             }),
@@ -2853,9 +2853,15 @@ fn transfer_local_info() -> TransferLocalOut {
     let cfg = config::load();
     let tc = transfer::TransferConfig::from_app(&cfg);
     let status = match transfer::server::state() {
-        transfer::server::ServiceState::Listening { port } => format!("正在监听 · 端口 {port}"),
-        transfer::server::ServiceState::Failed(e) => format!("启动失败：{e}"),
-        transfer::server::ServiceState::Stopped => "服务未运行".to_string(),
+        transfer::server::ServiceState::Listening { port } => {
+            t!("status.line.transferListeningPort", port = port).into_owned()
+        }
+        transfer::server::ServiceState::Failed(e) => {
+            t!("status.line.transferStartFailed", message = e).into_owned()
+        }
+        transfer::server::ServiceState::Stopped => {
+            t!("status.line.transferNotRunning").into_owned()
+        }
     };
     // 只挑非回环、IPv4、非 link-local（169.254.x.x）的地址
     let mut ips: Vec<String> = if_addrs::get_if_addrs()

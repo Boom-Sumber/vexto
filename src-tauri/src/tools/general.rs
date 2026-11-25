@@ -4,6 +4,8 @@
 //! 属翻译、截图热键属截图、下载热键属下载，各归各的分区，这样用户改划词热键时不会
 //! 担心动到别的东西。
 
+use rust_i18n::t;
+
 use super::{Field, Section, Tool};
 use crate::config;
 
@@ -44,16 +46,16 @@ impl Tool for General {
     fn status_line(&self) -> String {
         let cfg = config::load();
         let cache = if cfg.cache_enabled {
-            "缓存开启"
+            t!("status.line.cacheOn")
         } else {
-            "缓存关闭"
+            t!("status.line.cacheOff")
         };
         let log = if cfg.log_enabled {
-            "日志开启"
+            t!("status.line.logOn")
         } else {
-            "日志关闭"
+            t!("status.line.logOff")
         };
-        format!("{cache} · {log}")
+        t!("status.line.general", cache = cache, log = log).into_owned()
     }
 
     fn sections(&self) -> Vec<Section> {
@@ -79,9 +81,9 @@ impl Tool for General {
                     "appearance_theme",
                     "主题",
                     &[
-                        ("light", "浅色主题"),
-                        ("dark", "深色主题"),
-                        ("system", "系统主题"),
+                        ("light", "浅色"),
+                        ("dark", "深色"),
+                        ("system", "系统"),
                     ],
                 )
                 .auto_apply(),

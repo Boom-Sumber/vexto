@@ -10,6 +10,7 @@
 
 use crate::dlog;
 use crate::download::{engine, history, rpc};
+use rust_i18n::t;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex, OnceLock};
@@ -145,16 +146,14 @@ pub fn next_limit(ceiling_kb: u32, peak_kb: u32, applied_kb: u32) -> u32 {
 /// 不用 `InitiateSystemShutdownExW` —— 那要提权、还要多加一个 windows feature。
 fn fire_after_done(action: &str, cmd: &str) {
     let result = match action {
-        "shutdown" => Command::new("shutdown")
-            .args([
-                "/s",
-                "/t",
-                "60",
-                "/c",
-                "Vexto：下载已全部完成，60 秒后关机（要取消请运行 shutdown /a）",
-            ])
-            .spawn()
-            .map(|_| ()),
+        "shutdown" => {
+            let notice = t!("status.line.pumpShutdownNotice").into_owned();
+            Command::new("shutdown")
+                .args(["/s", "/t", "60", "/c"])
+                .arg(notice)
+                .spawn()
+                .map(|_| ())
+        }
         // SetSuspendState 在 powrprof.dll 里，没有稳定的命令行入口，
         // rundll32 是官方文档给出的调用方式。
         "sleep" => Command::new("rundll32.exe")
@@ -174,16 +173,18 @@ fn fire_after_done(action: &str, cmd: &str) {
     match result {
         Ok(()) => {
             dlog::dlog(&format!("pump: 全部下载完成，已执行 {action}"));
-            engine::set_message(match action {
-                "shutdown" => "全部下载完成 · 60 秒后关机（shutdown /a 可取消）",
-                "sleep" => "全部下载完成 · 已请求睡眠",
-                _ => "全部下载完成 · 已启动指定程序",
+            engine::set_status(match action {
+                "shutdown" => engine::EngineStatus::PumpShutdown,
+                "sleep" => engine::EngineStatus::PumpSleep,
+                _ => engine::EngineStatus::PumpRun,
             });
         }
         Err(e) => {
             dlog::dlog(&format!("pump: 执行 {action} 失败：{e}"));
             // 状态行是用户可见的：不显示错误码（会话 52），细节在日志里
-            engine::set_message(format!("全部下载完成，但执行「{action}」失败（原因见日志）"));
+            engine::set_status(engine::EngineStatus::PumpFailed {
+                action: action.to_string(),
+            });
         }
     }
 }

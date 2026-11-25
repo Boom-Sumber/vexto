@@ -18,6 +18,7 @@
 
 use crate::config;
 use crate::dlog;
+use rust_i18n::t;
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -47,8 +48,34 @@ struct EngineState {
     port: u16,
     secret: String,
     conf_path: Option<PathBuf>,
-    /// 设置页「下载」分区的状态摘要。S3a 没有主窗口，这里就是用户能看到的反馈。
-    message: String,
+    /// 设置页「下载」分区的状态摘要。
+    status: EngineStatus,
+}
+
+/// 引擎状态行。存结构而不是成品字符串：切换界面语言后按当前语言重新渲染。
+#[derive(Clone, Debug)]
+pub enum EngineStatus {
+    Idle,
+    Stopped,
+    Running {
+        port: u16,
+    },
+    Restarted {
+        port: u16,
+    },
+    Queued {
+        label: String,
+        state: String,
+        pct: String,
+        done: u64,
+        total: u64,
+    },
+    PumpShutdown,
+    PumpSleep,
+    PumpRun,
+    PumpFailed {
+        action: String,
+    },
 }
 
 static ENGINE: OnceLock<Mutex<EngineState>> = OnceLock::new();
@@ -61,7 +88,7 @@ fn lock() -> MutexGuard<'static, EngineState> {
                 port: PREFERRED_PORT,
                 secret: String::new(),
                 conf_path: None,
-                message: String::new(),
+                status: EngineStatus::Idle,
             })
         })
         .lock()
@@ -71,18 +98,52 @@ fn lock() -> MutexGuard<'static, EngineState> {
 /// 设置页显示的一行状态。S3a 只有「运行中 / 已停止 / 最近一次结果」，没有任务数。
 pub fn status_line() -> String {
     let g = lock();
-    if g.message.is_empty() {
-        "已启用 · 空闲（aria2c 未启动）".to_string()
-    } else {
-        g.message.clone()
+    match &g.status {
+        EngineStatus::Idle => t!("status.line.engineIdle").into_owned(),
+        EngineStatus::Stopped => t!("status.line.engineStopped").into_owned(),
+        EngineStatus::Running { port } => {
+            t!("status.line.engineRunning", port = port).into_owned()
+        }
+        EngineStatus::Restarted { port } => {
+            t!("status.line.engineRestarted", port = port).into_owned()
+        }
+        EngineStatus::Queued {
+            label,
+            state,
+            pct,
+            done,
+            total,
+        } => t!(
+            "status.line.queued",
+            label = label,
+            state = state,
+            pct = pct,
+            done = done,
+            total = total
+        )
+        .into_owned(),
+        EngineStatus::PumpShutdown => t!("status.line.pumpShutdown").into_owned(),
+        EngineStatus::PumpSleep => t!("status.line.pumpSleep").into_owned(),
+        EngineStatus::PumpRun => t!("status.line.pumpRun").into_owned(),
+        EngineStatus::PumpFailed { action } => {
+            t!("status.line.pumpFailed", action = action).into_owned()
+        }
     }
 }
 
+/// 状态行是否处于失败 / 未启动。避免用翻译后的字符串做 `contains` 判断。
+pub fn status_is_error() -> bool {
+    matches!(&lock().status, EngineStatus::PumpFailed { .. })
+}
+
+pub fn status_is_idle() -> bool {
+    matches!(&lock().status, EngineStatus::Idle)
+}
+
 /// 记一条用户可见的状态（成功入队、剪贴板不是链接、启停等）。
-pub fn set_message(msg: impl Into<String>) {
-    let m = msg.into();
-    dlog::dlog(&format!("engine: {m}"));
-    lock().message = m;
+pub fn set_status(status: EngineStatus) {
+    dlog::dlog(&format!("engine: {status:?}"));
+    lock().status = status;
 }
 
 /// 关掉 sidecar。先优雅退出让 aria2 写完 session，等 5 秒还在就用句柄强杀。
@@ -103,7 +164,7 @@ pub fn shutdown_all() -> Result<(), String> {
     }
     remove_conf(g.conf_path.take());
     g.secret.clear();
-    g.message = "已停止（aria2c 已退出）".to_string();
+    g.status = EngineStatus::Stopped;
     dlog::dlog("engine: aria2c 已退出，无孤儿进程");
     Ok(())
 }
@@ -141,7 +202,7 @@ pub fn ensure_running(cfg: &config::Config) -> Result<crate::download::rpc::Rpc,
     g.port = port;
     g.secret = secret;
     g.conf_path = Some(conf);
-    g.message = format!("aria2c 运行中（RPC 端口 {port}）");
+    g.status = EngineStatus::Running { port };
     Ok(rpc)
 }
 
@@ -167,8 +228,7 @@ pub fn restart(cfg: &config::Config) -> Result<String, String> {
                 matches!(t.status.as_str(), "active" | "waiting" | "paused")
             });
             if pending {
-                return Err("还有任务在队列里，重启引擎会丢掉它们。等下载结束或删掉任务后再重启。"
-                    .to_string());
+                return Err(t!("error.download.restartPending").into_owned());
             }
         }
     }
@@ -181,10 +241,10 @@ pub fn restart(cfg: &config::Config) -> Result<String, String> {
         g.port = port;
         g.secret = secret;
         g.conf_path = Some(conf);
-        g.message = format!("已按新配置重启（RPC 端口 {port}）");
+        g.status = EngineStatus::Restarted { port };
     }
     crate::download::pump::notify();
-    Ok(format!("已重启下载引擎（RPC 端口 {port}）"))
+    Ok(t!("status.line.engineRestartOk", port = port).into_owned())
 }
 
 /// 本进程已经分配出去的文件名（含还在排队、文件尚未落盘的）。
@@ -287,10 +347,13 @@ pub fn add_task(
     let st = rpc.tell_status(&gid)?;
     // `totalLength` 为 0 时 progress_ratio 返回 0，绝不会在这里除零（任务书 §S3.10 坑 2）。
     let pct = crate::download::rpc::progress_ratio(st.completed_length, st.total_length) * 100.0;
-    set_message(format!(
-        "已入队 {} · {} · {pct:.0}% · {}/{} B",
-        st.gid, st.status, st.completed_length, st.total_length
-    ));
+    set_status(EngineStatus::Queued {
+        label: st.gid.clone(),
+        state: st.status.clone(),
+        pct: format!("{pct:.0}"),
+        done: st.completed_length,
+        total: st.total_length,
+    });
     Ok(st)
 }
 
@@ -326,10 +389,13 @@ pub fn add_torrent(
     } else {
         t.name.trim()
     };
-    set_message(format!(
-        "已入队 {label} · {} · {pct:.0}% · {}/{} B",
-        st.status, st.completed_length, st.total_length
-    ));
+    set_status(EngineStatus::Queued {
+        label: label.to_string(),
+        state: st.status.clone(),
+        pct: format!("{pct:.0}"),
+        done: st.completed_length,
+        total: st.total_length,
+    });
     Ok(st)
 }
 

@@ -31,6 +31,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde_json::{json, Value};
+use rust_i18n::t;
 use tauri::AppHandle;
 
 /// 请求头上限。扩展只会发几百字节，8 KiB 足够且能挡住畸形请求。
@@ -75,26 +76,12 @@ pub fn stop() {
     LISTENING.store(false, Ordering::SeqCst);
 }
 
-/// 设置页状态行。
-pub fn status_line() -> String {
-    let cfg = crate::config::load();
-    if !cfg.extension_bridge_enabled {
-        return "浏览器插件接管：已关闭".to_string();
-    }
-    if let Ok(g) = LAST_ERROR.lock() {
-        if let Some(e) = g.as_ref() {
-            return format!("浏览器插件接管：{e}");
-        }
-    }
-    if LISTENING.load(Ordering::SeqCst) {
-        format!(
-            "浏览器插件接管：监听 127.0.0.1:{} · 已接收 {} 个下载",
-            cfg.extension_bridge_port,
-            ACCEPTED.load(Ordering::SeqCst)
-        )
-    } else {
-        "浏览器插件接管：正在启动…".to_string()
-    }
+/// 状态色判断用：不对翻译后的文案做 `contains("失败")`。
+pub fn has_error() -> bool {
+    LAST_ERROR
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
 }
 
 fn set_error(msg: Option<String>) {
@@ -274,7 +261,7 @@ fn handle(mut stream: TcpStream, app: AppHandle, secret: String) {
 fn add_download(stream: &mut TcpStream, app: &AppHandle, origin: Option<&str>, body: &[u8]) {
     // 工具没开时不要假装接管：回 fallback 让浏览器自己下，比「接管了又不干活」好。
     if !crate::config::load().enable_download {
-        set_error(Some("下载工具未启用，已拒绝扩展请求".into()));
+        set_error(Some(t!("status.line.bridgeToolDisabled").into_owned()));
         let _ = write_json(
             stream,
             200,

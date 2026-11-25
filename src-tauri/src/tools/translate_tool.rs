@@ -12,6 +12,7 @@
 use super::{Field, Section, Tool};
 use crate::config;
 use crate::translate::{engine_by_id, engine_id_of};
+use rust_i18n::t;
 
 // `LANGS` 只在 `target_options_match_lang_table` 里用到（生产代码走的是下面的
 // `TO_STATIC` 静态表），所以 import 挂在测试模块上，否则会报 unused import。
@@ -99,23 +100,31 @@ impl Tool for Translate {
     fn status_line(&self) -> String {
         let cfg = config::load();
         if !cfg.enable_translate {
-            return "已停用".to_string();
+            return t!("status.line.stopped").into_owned();
         }
         let id = engine_id_of(&cfg);
         if id.is_empty() {
             // 一个实例都没配：别拿 engine_by_id("") 的默认百度来冒充
-            return "未配置引擎".to_string();
+            return t!("status.line.translateEngineMissing").into_owned();
         }
         match engine_by_id(&id) {
             Some(e) => {
                 // 就绪判断走统一入口（要先投影实例里的凭据，不能直接问 cfg）
                 if crate::translate::engine_ready(&cfg) {
-                    format!("{} · 已就绪", e.display_name(&cfg))
+                    t!(
+                        "status.line.translateReady",
+                        engine = e.display_name(&cfg)
+                    )
+                    .into_owned()
                 } else {
-                    format!("{} · 未配置", e.display_name(&cfg))
+                    t!(
+                        "status.line.translateUnconfigured",
+                        engine = e.display_name(&cfg)
+                    )
+                    .into_owned()
                 }
             }
-            None => format!("未知引擎「{id}」"),
+            None => t!("status.line.translateUnknown", id = id).into_owned(),
         }
     }
 

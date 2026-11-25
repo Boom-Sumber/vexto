@@ -32,6 +32,12 @@ onMounted(async () => {
 });
 
 watch(() => update.focusToken.value, scrollToUpdate);
+watch(
+  () => update.info.value,
+  (value) => {
+    if (value) info.value = value;
+  },
+);
 </script>
 
 <template>

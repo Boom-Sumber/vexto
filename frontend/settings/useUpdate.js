@@ -16,6 +16,7 @@ export function useUpdate(settings) {
 
   let infoPromise = null;
   let unlisten = null;
+  let unlistenI18n = null;
 
   function loadInfo() {
     if (info.value) return Promise.resolve(info.value);
@@ -160,10 +161,25 @@ export function useUpdate(settings) {
     } catch {
       /* 首屏拉不到就等事件 */
     }
+    // 关于页文案来自 Rust；切语言后必须丢掉缓存重新拉一次。
+    try {
+      unlistenI18n = await listen("i18n:changed", async () => {
+        infoPromise = null;
+        if (!info.value) return;
+        try {
+          info.value = await invoke("about_info");
+        } catch {
+          /* 拉不到就保留旧内容 */
+        }
+      });
+    } catch {
+      /* 没有语言事件也能用 */
+    }
   }
 
   onBeforeUnmount(() => {
     if (typeof unlisten === "function") unlisten();
+    if (typeof unlistenI18n === "function") unlistenI18n();
   });
 
   return {

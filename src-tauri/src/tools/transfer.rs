@@ -7,6 +7,7 @@
 use super::{Field, Section, Tool};
 use crate::config;
 use crate::transfer;
+use rust_i18n::t;
 
 pub struct Transfer;
 
@@ -52,26 +53,31 @@ impl Tool for Transfer {
 
     fn status_line(&self) -> String {
         if !config::load().enable_transfer {
-            return "已停用".to_string();
+            return t!("status.line.stopped").into_owned();
         }
         match transfer::server::state() {
             transfer::server::ServiceState::Listening { port } => {
                 let preferred = transfer::TransferConfig::from_app(&config::load()).port;
                 let switched = if port != preferred {
-                    format!("（{preferred} 不可用，已自动切换）")
+                    t!("status.line.transferSwitched", port = preferred).into_owned()
                 } else {
                     String::new()
                 };
-                format!(
-                    "已启用 · 监听 {port}{switched} · 发现 {} 台设备",
-                    transfer::backend().peers().len()
+                t!(
+                    "status.line.transferListening",
+                    port = port,
+                    switched = switched,
+                    peers = transfer::backend().peers().len()
                 )
+                .into_owned()
             }
             // 只说人话不带错误码；完整细节在日志里（会话 52 用户要求）
             transfer::server::ServiceState::Failed(_) => {
-                "启动失败，无法启动服务（端口可能被占用）".to_string()
+                t!("status.line.transferFailed").into_owned()
             }
-            transfer::server::ServiceState::Stopped => "已启用 · 服务未运行".to_string(),
+            transfer::server::ServiceState::Stopped => {
+                t!("status.line.transferStopped").into_owned()
+            }
         }
     }
 
