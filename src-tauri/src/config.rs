@@ -404,15 +404,15 @@ pub struct Config {
     #[serde(default)]
     pub github_token: String,
 
-    // ---- 浏览器插件接管（兼容 Rayburst-Connect v3）----
+    // ---- 浏览器插件接管（Vexto Connect，protocol v3）----
     /// 是否在本机启动 HTTP 接口，让浏览器扩展把下载交过来。
     /// 只绑 `127.0.0.1`，端口与密钥必须和扩展 Options 页一致。
     #[serde(default = "d_true")]
     pub extension_bridge_enabled: bool,
-    /// 扩展 Options 页里的端口。默认 29110（Rayburst 的默认值）。
+    /// 扩展选项页里的端口。默认 29110（沿用该协议的默认端口）。
     #[serde(default = "d_bridge_port")]
     pub extension_bridge_port: u16,
-    /// 扩展 Options 页里的密钥。空串 = 不校验（与 Rayburst 语义一致）。
+    /// 扩展选项页里的密钥。空串 = 不校验（与协议语义一致）。
     #[serde(default)]
     pub extension_bridge_secret: String,
 
@@ -570,7 +570,7 @@ fn d_connections() -> u32 {
 fn d_proxy_mode() -> String {
     "direct".to_string()
 }
-/// Rayburst-Connect 的默认端口；用户在扩展 Options 页改过的话这里也要改。
+/// Vexto Connect 的默认端口；用户在扩展选项页改过的话这里也要改。
 fn d_bridge_port() -> u16 {
     29110
 }

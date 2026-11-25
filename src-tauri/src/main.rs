@@ -3291,7 +3291,7 @@ fn main() {
                 );
             }
 
-            // 浏览器扩展接管（兼容 Rayburst-Connect v3）：只绑 127.0.0.1。
+            // 浏览器扩展接管（Vexto Connect，protocol v3）：只绑 127.0.0.1。
             // 端口占用等失败只写状态行与日志，不阻断启动。
             extension_bridge::start(handle.clone());
 

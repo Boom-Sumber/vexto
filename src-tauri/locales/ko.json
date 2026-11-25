@@ -229,7 +229,7 @@
   "schema.field.download.dns_servers.option.119.29.29.29,182.254.116.116": "Tencent DNS",
   "schema.field.download.dns_servers.option.223.5.5.5,223.6.6.6": "Alibaba DNS",
   "schema.field.download.download_dir.label": "다운로드 폴더",
-  "schema.field.download.extension_bridge_enabled.help": "127.0.0.1에서만 수신하는 인터페이스를 시작하여 Rayburst-Connect 확장이 웹 다운로드를 넘길 수 있게 합니다.",
+  "schema.field.download.extension_bridge_enabled.help": "127.0.0.1에서만 수신하는 인터페이스를 시작하여 Vexto Connect 확장이 웹 다운로드를 넘길 수 있게 합니다.",
   "schema.field.download.extension_bridge_enabled.label": "연동 사용",
   "schema.field.download.extension_bridge_port.label": "확장 포트",
   "schema.field.download.extension_bridge_secret.label": "확장 키",

@@ -229,7 +229,7 @@
   "schema.field.download.dns_servers.option.119.29.29.29,182.254.116.116": "腾讯 DNS",
   "schema.field.download.dns_servers.option.223.5.5.5,223.6.6.6": "阿里 DNS",
   "schema.field.download.download_dir.label": "下载目录",
-  "schema.field.download.extension_bridge_enabled.help": "启动一个只监听 127.0.0.1 的接口，供 Rayburst-Connect 扩展把网页下载交过来。",
+  "schema.field.download.extension_bridge_enabled.help": "启动一个只监听 127.0.0.1 的接口，供 Vexto Connect 扩展把网页下载交过来。",
   "schema.field.download.extension_bridge_enabled.label": "启用接管",
   "schema.field.download.extension_bridge_port.label": "插件端口",
   "schema.field.download.extension_bridge_secret.label": "插件密钥",

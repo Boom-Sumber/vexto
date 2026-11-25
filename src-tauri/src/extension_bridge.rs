@@ -1,4 +1,4 @@
-//! 浏览器扩展接管：兼容 Rayburst-Connect 的本地 HTTP 契约（protocol v3）。
+//! 浏览器扩展接管：Vexto Connect 的本地 HTTP 契约（protocol v3）。
 //!
 //! 用户在浏览器里点下载时，扩展会先探测本机接口，然后把「任务」POST 过来：
 //!
@@ -9,20 +9,20 @@
 //! | GET | `/downloads/capabilities` | 声明 `protocolVersion = 3` |
 //! | POST | `/add` | 交接下载：立刻回 `accepted`，并把任务预填进新建页 |
 //!
-//! 为什么 `/ping` 必须自称 `product:"rayburst"`：扩展用这个字段做产品门，
-//! 不认识的产品直接判「装最新版 Rayburst 再来」。这是**协议兼容标签**，
-//! 不是品牌替换，设置页与文档都按这个口径写。
+//! 为什么 `/ping` 必须自称 `product:"rayburst"`：`product` 与
+//! `x-rayburst-client: rayburst-connect` 是扩展端写死的**协议标识**（Vexto Connect
+//! 沿用这套标识），不是产品名。改掉扩展会判成「不认识的桌面端」并拒绝连接，
+//! 所以界面与文档一律用 Vexto Connect 称呼插件，协议标签保持原样。
 //!
-//! 安全边界（与 Rayburst 同口径）：
+//! 安全边界（沿用该协议口径）：
 //! - 只绑 `127.0.0.1`，任何情况下都不绑 `0.0.0.0`；
 //! - 除 `/ping` 与预检外，必须带 `x-rayburst-client: rayburst-connect`；
 //! - CORS 只放 `chrome-extension://` 与 `moz-extension://` 源；
 //! - 配了密钥就必须带 `Authorization: Bearer <secret>`（空 = 不校验）；
 //! - Cookie 只进 aria2 的请求头，**不写日志、不进界面**。
 //!
-//! 唤醒限制：扩展只会用 native messaging 唤起 Rayburst / Motrix 的主机名。
-//! 我们不冒充别人的身份，所以 Vexto 没运行时扩展唤不起来，浏览器会自己
-//! 下载 —— 要接管就保持托盘常驻（可开机自启）。
+//! 唤醒限制：Vexto Connect 扩展没有 native messaging 主机，唤不起 Vexto。
+//! Vexto 没运行时扩展会回落到浏览器下载 —— 要接管就保持托盘常驻（可开机自启）。
 
 use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -235,9 +235,9 @@ fn handle(mut stream: TcpStream, app: AppHandle, secret: String) {
                 &json!({ "product": "rayburst", "protocolVersion": 3 }),
             );
         }
-        // Rayburst Connect 2.2.x 在下载前会先 `GET /version` 判断桌面引擎
-        // 是否 ready（`engine === "running"`）。没有这个端点时 isReady 永远
-        // false，扩展会判定 desktop-unavailable 并把下载还给浏览器。
+        // 扩展在下载前会先 `GET /version` 判断桌面引擎是否 ready
+        // （`engine === "running"`）。没有这个端点时 isReady 永远 false，
+        // 扩展会判定 desktop-unavailable 并把下载还给浏览器。
         // Vexto 的 aria2 是按需启动的，只要下载工具启用就视为可用。
         ("GET", "/version") => {
             let enabled = crate::config::load().enable_download;
@@ -328,8 +328,7 @@ fn cors_origin(origin: &str) -> Option<&str> {
 }
 
 /// `/ping` 是产品发现，扩展不会带产品头；`/version` 是引擎就绪探针，
-/// Rayburst Connect 2.2.x 调用 `engineState()` 时**也不带**产品头/密钥。
-/// 其余接口必须带。
+/// 扩展调用 `engineState()` 时**也不带**产品头/密钥。其余接口必须带。
 fn product_ok(req: &Request) -> bool {
     req.path == "/ping"
         || req.path == "/version"
@@ -339,7 +338,7 @@ fn product_ok(req: &Request) -> bool {
             .unwrap_or(false)
 }
 
-/// 密钥为空 = 不校验（与 Rayburst 语义一致）。
+/// 密钥为空 = 不校验（与协议语义一致）。
 fn bearer_ok(req: &Request, secret: &str) -> bool {
     if secret.is_empty() || req.path == "/ping" || req.path == "/version" {
         return true;

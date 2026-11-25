@@ -242,7 +242,7 @@ impl Tool for Download {
                 vec![
                     Field::group("extensionBridge", "浏览器插件接管"),
                     Field::switch("extension_bridge_enabled", "启用接管")
-                        .help("启动一个只监听 127.0.0.1 的接口，供 Rayburst-Connect 扩展把网页下载交过来。"),
+                        .help("启动一个只监听 127.0.0.1 的接口，供 Vexto Connect 扩展把网页下载交过来。"),
                     Field::number_unit("extension_bridge_port", "插件端口", 1024, 65535, ""),
                     Field::password("extension_bridge_secret", "插件密钥"),
                     Field::group("engine", "下载引擎"),
