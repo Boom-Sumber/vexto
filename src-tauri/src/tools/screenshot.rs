@@ -56,7 +56,6 @@ impl Tool for Screenshot {
                 "general",
                 "截图",
                 vec![
-                    Field::switch("enable_screenshot", "启用截图"),
                     Field::dir("screenshot_dir", "保存目录").wide(),
                     Field::template(
                         "screenshot_name_rule",
@@ -91,14 +90,6 @@ impl Tool for Screenshot {
                     ),
                     Field::group("pin", "钉屏"),
                     Field::switch("pinscreen_single_window", "单窗口多图"),
-                ],
-            ),
-            Section::new(
-                "hotkeys",
-                "快捷键配置",
-                vec![
-                    Field::hotkey("hotkey_screenshot", "区域截图"),
-                    Field::hotkey("hotkey_fullscreen", "全屏截图"),
                 ],
             ),
         ]
@@ -142,17 +133,16 @@ mod tests {
     fn disabled_by_default() {
         let c = crate::config::Config::default();
         assert!(!c.enable_screenshot);
-        assert_eq!(c.hotkey_screenshot, "Ctrl+Alt+A");
+        assert_eq!(c.hotkey_screenshot.compact(), "Ctrl+Alt+A");
     }
 
-    /// 截图页与快捷键页分开；截图页不再画任何说明文本，
-    /// 滚动 / 全屏 / 活动窗口的旧配置项全部撤掉（去开发化，ADR-054）。
+    /// 快捷键集中到「常规 → 快捷键」后，截图页只剩「截图」一个标签，
+    /// 并且不再画任何说明文本（去开发化，ADR-054 / ADR-090）。
     #[test]
-    fn sections_are_general_and_hotkeys_without_help() {
+    fn sections_are_single_general_page_without_hotkeys() {
         let s = Screenshot.sections();
-        assert_eq!(s.len(), 2);
+        assert_eq!(s.len(), 1);
         assert_eq!((s[0].id, s[0].name), ("general", "截图"));
-        assert_eq!((s[1].id, s[1].name), ("hotkeys", "快捷键配置"));
         for f in &s[0].fields {
             assert!(f.help.is_none(), "截图页不再显示说明文本：{}", f.key);
         }
@@ -163,8 +153,8 @@ mod tests {
         for gone in ["scroll_mode", "scroll_action", "shot_full", "shot_window"] {
             assert!(!keys.contains(&gone), "旧配置项 {gone} 应删除");
         }
-        let hot = &s[1].fields;
-        assert!(hot.iter().any(|f| f.key == "hotkey_screenshot"));
-        assert!(hot.iter().any(|f| f.key == "hotkey_fullscreen"));
+        for moved in ["hotkey_screenshot", "hotkey_fullscreen"] {
+            assert!(!keys.contains(&moved), "热键 {moved} 应移到常规 → 快捷键");
+        }
     }
 }

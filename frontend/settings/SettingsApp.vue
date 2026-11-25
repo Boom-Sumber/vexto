@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import TitleBar from "../components/TitleBar.vue";
 import Icon from "../components/Icon.vue";
 import ToastHost from "../components/ToastHost.vue";
@@ -9,7 +9,7 @@ import { Icons } from "../shared/icons.js";
 
 const s = useSettings();
 const {
-  tools,
+  visibleTools,
   tool,
   sections,
   tabId,
@@ -24,7 +24,6 @@ const {
 } = s;
 
 const tb = ref(null);
-const enableChecked = ref(false);
 const badge = s.update.badge;
 
 const blocks = computed(() => {
@@ -36,7 +35,7 @@ const blocks = computed(() => {
       out.push({ type: "group", field: f });
       continue;
     }
-    if (f.type === "list" || f.type === "about") {
+    if (f.type === "list" || f.type === "about" || f.type === "tool_list") {
       card = null;
       out.push({ type: "single", field: f });
       continue;
@@ -61,20 +60,6 @@ const statusLineKind = computed(() => {
   return "";
 });
 
-watch(
-  tool,
-  (value) => {
-    enableChecked.value = !!value?.enabled;
-  },
-  { immediate: true },
-);
-
-async function onEnableChange(e) {
-  const want = e.target.checked;
-  const ok = await s.toggleToolEnabled(want);
-  if (!ok) enableChecked.value = !want;
-}
-
 async function onSave() {
   await s.saveAll();
 }
@@ -98,11 +83,11 @@ onMounted(async () => {
         </div>
         <nav id="tools" class="tools">
           <button
-            v-for="t in tools"
+            v-for="t in visibleTools"
             :key="t.id"
             type="button"
             class="tool"
-            :class="{ on: t.id === tool?.id, off: !t.enabled }"
+            :class="{ on: t.id === tool?.id }"
             @click="s.selectTool(t.id)"
           >
             <span v-if="t.icon && Icons.has(t.icon)" class="t-ico">
@@ -135,15 +120,6 @@ onMounted(async () => {
               {{ tool?.status_line || "" }}
             </p>
           </div>
-          <label v-if="tool && tool.switchable !== false" id="enable-wrap" class="enable">
-            <input
-              id="tool-enabled"
-              v-model="enableChecked"
-              type="checkbox"
-              @change="onEnableChange"
-            />
-            <span>{{ $t("settings.enable") }}</span>
-          </label>
         </header>
 
         <div id="tool-status" class="tool-status" v-show="banner">{{ banner }}</div>

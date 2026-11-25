@@ -456,6 +456,7 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
                     | tools::FieldKind::ButtonRow { .. }
                     | tools::FieldKind::Group { .. }
                     | tools::FieldKind::About { .. }
+                    | tools::FieldKind::ToolList
             ) {
                 continue;
             }
@@ -480,24 +481,82 @@ fn is_hotkey_key(k: &str) -> bool {
     HOTKEY_KEYS.contains(&k)
 }
 
+fn hotkey_label(key: &str) -> String {
+    match key {
+        "hotkey" => t!("schema.field.general.hotkey.label").into_owned(),
+        "hotkey_input" => t!("schema.field.general.hotkey_input.label").into_owned(),
+        "hotkey_screenshot" => t!("schema.field.general.hotkey_screenshot.label").into_owned(),
+        "hotkey_fullscreen" => t!("schema.field.general.hotkey_fullscreen.label").into_owned(),
+        "hotkey_download" => t!("schema.field.general.hotkey_download.label").into_owned(),
+        other => other.to_string(),
+    }
+}
+
+/// 前端可能提交新对象，也可能提交旧字符串（旧页面/手改配置）。
+fn parse_hotkey_value(value: &Value) -> Result<hotkey::HotkeyBinding, String> {
+    let binding = match value.as_str() {
+        Some(text) => hotkey::HotkeyBinding::from_legacy(text),
+        None => serde_json::from_value(value.clone())
+            .map_err(|_| t!("error.hotkey.invalidValue").into_owned())?,
+    };
+    binding.validate()
+}
+
+/// 保存期查重：只看已启用工具的热键（停用工具的绑定保留但不注册、不显示）。
+fn duplicate_hotkey_message(patch: &Map<String, Value>) -> Option<String> {
+    let cfg = config::load();
+    let mut bindings: Vec<(&'static str, hotkey::HotkeyBinding)> = Vec::new();
+    let mut push = |key: &'static str, fallback: &hotkey::HotkeyBinding| {
+        let value = patch
+            .get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_else(|| fallback.clone());
+        bindings.push((key, value));
+    };
+    if cfg.enable_translate {
+        push("hotkey", &cfg.hotkey);
+        push("hotkey_input", &cfg.hotkey_input);
+    }
+    if cfg.enable_screenshot {
+        push("hotkey_screenshot", &cfg.hotkey_screenshot);
+        push("hotkey_fullscreen", &cfg.hotkey_fullscreen);
+    }
+    if cfg.enable_download {
+        push("hotkey_download", &cfg.hotkey_download);
+    }
+    let items: Vec<(&'static str, &hotkey::HotkeyBinding)> =
+        bindings.iter().map(|(key, value)| (*key, value)).collect();
+    hotkey::find_duplicate(&items).map(|(first, second, combo)| {
+        t!(
+            "error.hotkey.duplicateFields",
+            first = hotkey_label(first),
+            second = hotkey_label(second),
+            combo = combo
+        )
+        .into_owned()
+    })
+}
+
 /// 一次性注册所有全局热键（划词 / 输入翻译 / 下载）。
 ///
 /// **必须走 `hotkey::register_all`**，不能连着调两次 `register_hotkey`——
 /// 后者开头会 `unregister_all()`，第二次调用会把第一次注册的划词热键注销掉。
 /// 下载热键只在工具启用时注册：停用后按了不该有反应（任务书 §S3.8b 验收 9.3.2）。
 fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
-    let mut list: Vec<hotkey::Binding> = vec![
-        (
+    let mut list: Vec<hotkey::Binding> = Vec::new();
+    // 翻译工具停用后，划词 / 输入翻译热键不应继续占用系统组合（工具管理统一控制）。
+    if cfg.enable_translate {
+        list.push((
             "划词热键",
             cfg.hotkey.clone(),
             Box::new(|a: &AppHandle| translate_selection(a.clone())),
-        ),
-        (
+        ));
+        list.push((
             "输入翻译热键",
             cfg.hotkey_input.clone(),
             Box::new(|a: &AppHandle| open_input_translate(a.clone())),
-        ),
-    ];
+        ));
+    }
     if cfg.enable_download {
         list.push((
             "下载热键",
@@ -1443,20 +1502,14 @@ fn save_tool_config(
     let mut warnings: Vec<String> = Vec::new();
 
     // 1) 热键格式校验（后端不信任前端，06-TESTING §6.4.1 第 11j 条）
-    let mut normalized: std::collections::HashMap<String, String> =
+    let mut normalized: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
-    for k in values.keys() {
+    for (k, v) in &values {
         if !is_hotkey_key(k) {
             continue;
         }
-        let raw = match values.get(k).and_then(|v| v.as_str()) {
-            Some(s) => s,
-            None => continue,
-        };
-        match hotkey::validate_hotkey(raw) {
-            Ok(h) => {
-                normalized.insert(k.clone(), h);
-            }
+        let binding = match parse_hotkey_value(v) {
+            Ok(binding) => binding,
             Err(e) => {
                 return SaveOut {
                     ok: false,
@@ -1464,7 +1517,18 @@ fn save_tool_config(
                     warnings,
                 };
             }
-        }
+        };
+        let value = match serde_json::to_value(&binding) {
+            Ok(value) => value,
+            Err(e) => {
+                return SaveOut {
+                    ok: false,
+                    message: e.to_string(),
+                    warnings,
+                };
+            }
+        };
+        normalized.insert(k.clone(), value);
     }
 
     // 2) 只保留该工具声明的 key，并写入归一化后的热键
@@ -1483,11 +1547,22 @@ fn save_tool_config(
         }
         match normalized.get(k) {
             Some(h) => {
-                patch.insert(k.clone(), Value::String(h.clone()));
+                patch.insert(k.clone(), h.clone());
             }
             None => {
                 patch.insert(k.clone(), v.clone());
             }
+        }
+    }
+
+    // 2.1) 跨模块重复组合：只检查本次保存涉及热键时，避免无关字段被历史重复值阻塞。
+    if HOTKEY_KEYS.iter().any(|k| patch.contains_key(*k)) {
+        if let Some(message) = duplicate_hotkey_message(&patch) {
+            return SaveOut {
+                ok: false,
+                message,
+                warnings,
+            };
         }
     }
 
@@ -1751,6 +1826,8 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
     let mut warnings: Vec<String> = Vec::new();
     if tool_id == "translate" {
         tray::set_translate_enabled(&app, enabled);
+        // 翻译启停改变「要不要注册划词 / 输入翻译热键」，必须整体重注册。
+        warnings.extend(register_hotkeys(&app, &config::load()));
     }
     if tool_id == "download" {
         // 下载工具启停会改变「要不要注册下载热键」。必须整体重注册：
@@ -3286,16 +3363,19 @@ mod tests {
     #[test]
     fn tool_value_keys_come_from_sections() {
         let keys = tool_value_keys("translate");
-        assert!(keys.contains(&"hotkey"));
+        // 快捷键已集中到「常规 → 快捷键」
+        assert!(!keys.contains(&"hotkey"));
+        assert!(!keys.contains(&"hotkey_input"));
         // 会话 31 起引擎页签是「翻译模式 + 两张列表」
         assert!(keys.contains(&"active_engine"));
         assert!(keys.contains(&"to"));
         // 会话 31：厂商与模型都是列表字段，翻译模式单独存 active_engine
         assert!(keys.contains(&"vendor_profiles"));
         assert!(keys.contains(&"openai_profiles"));
-        assert!(keys.contains(&"active_engine"));
         // 通用工具的字段不该出现在翻译里
         assert!(!keys.contains(&"popup_timeout_ms"));
+        // 工具管理不是配置字段
+        assert!(!tool_value_keys("general").contains(&"tool_list"));
     }
 
     #[test]
@@ -3327,6 +3407,7 @@ mod tests {
                             | crate::tools::FieldKind::ButtonRow { .. }
                             | crate::tools::FieldKind::Group { .. }
                             | crate::tools::FieldKind::About { .. }
+                            | crate::tools::FieldKind::ToolList
                     ) {
                         continue;
                     }

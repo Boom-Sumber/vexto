@@ -29,6 +29,10 @@ export function useSettings() {
   let unlistenI18n = null;
 
   const tool = computed(() => tools.value.find((x) => x.id === toolId.value) || null);
+  // 停用的功能工具从侧栏隐藏；常规 / 关于（switchable=false）始终显示。
+  const visibleTools = computed(() =>
+    tools.value.filter((x) => x.enabled !== false || x.switchable === false),
+  );
   const section = computed(
     () => sections.value.find((s) => s.id === tabId.value) || sections.value[0] || null,
   );
@@ -159,6 +163,7 @@ export function useSettings() {
     }
     const found = tools.value.find((x) => x.id === id);
     if (!found) return;
+    if (found.enabled === false && found.switchable !== false) return;
 
     toolId.value = id;
     if (!opts.keepBanner) showBanner("");
@@ -178,26 +183,35 @@ export function useSettings() {
     await refreshHotkeyError();
   }
 
-  async function toggleToolEnabled(want) {
-    const found = tool.value;
-    if (!found) return;
+  /// 工具管理页的统一启停入口。成功后刷新工具列表与常规分区：
+  /// 热键页会根据启用状态增减分组，必须重新取一次 schema 与 values。
+  async function setToolEnabled(id, want) {
     try {
-      const res = await invoke("set_tool_enabled", { toolId: found.id, enabled: want });
-      if (res && res.ok) {
-        setStatus(res.message || t("settings.saved"));
-        showBanner("");
-        await reloadTools();
-        await selectTool(found.id, { keepBanner: true });
-      } else {
+      const res = await invoke("set_tool_enabled", { toolId: id, enabled: want });
+      if (!res || !res.ok) {
         showBanner((res && res.message) || t("settings.toggleFailed"));
         setStatus("");
         return false;
       }
+      setStatus(res.message || t("settings.saved"));
+      if (Array.isArray(res.warnings) && res.warnings.length) {
+        showBanner(res.warnings.join("\n"));
+      } else {
+        showBanner("");
+      }
+      await reloadTools();
+      if (!visibleTools.value.some((x) => x.id === toolId.value)) {
+        const first = visibleTools.value[0]?.id || "general";
+        await selectTool(first, { keepBanner: true, skipGuard: true });
+      } else {
+        refreshSections();
+        await reloadValues();
+      }
+      return true;
     } catch (e) {
       showBanner(t("settings.toggleFailedWith", { message: errText(e) }));
       return false;
     }
-    return true;
   }
 
   async function saveAll() {
@@ -305,8 +319,9 @@ export function useSettings() {
     } catch {
       /* 没有就算了 */
     }
+    const usable = tools.value.filter((x) => x.enabled !== false || x.switchable === false);
     const first =
-      wanted && tools.value.some((x) => x.id === wanted) ? wanted : tools.value[0]?.id;
+      wanted && usable.some((x) => x.id === wanted) ? wanted : usable[0]?.id;
     if (first) await selectTool(first);
     loading.value = false;
 
@@ -374,6 +389,7 @@ export function useSettings() {
 
   return {
     tools,
+    visibleTools,
     toolId,
     sections,
     tabId,
@@ -393,7 +409,7 @@ export function useSettings() {
     val,
     commit,
     selectTool,
-    toggleToolEnabled,
+    setToolEnabled,
     saveAll,
     discardAll,
     resolveDirty,

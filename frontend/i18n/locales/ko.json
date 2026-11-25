@@ -85,7 +85,6 @@
   "settings": {
     "title": "설정",
     "loading": "불러오는 중…",
-    "enable": "사용",
     "discard": "취소",
     "save": "저장",
     "saving": "저장 중…",
@@ -103,9 +102,6 @@
     "dirtySwitch": "\"{name}\"에 저장하지 않은 변경 사항이 {n}개 있습니다. 도구를 전환하면 사라집니다.",
     "dirtyUpdate": "업데이트를 설치하면 Vexto가 닫힙니다. \"{name}\"에 저장하지 않은 변경 사항이 {n}개 있습니다. 먼저 저장하세요.",
     "discardChanges": "변경 사항 취소",
-    "captureIdle": "클릭하여 설정",
-    "capturePrompt": "키 조합을 누르세요…",
-    "captureNeedMod": "먼저 Ctrl / Shift / Alt를 누르세요",
     "preview": "미리보기",
     "previewSample": "예: {name}",
     "dirPlaceholder": "예: D:\\Downloads",
@@ -170,7 +166,11 @@
     "updateBadgeDownloading": "업데이트 다운로드 중 {pct}%",
     "updateBadgeDownloadingUnknown": "업데이트 다운로드 중…",
     "updateBadgeRequired": "지금 V{version}으로 업데이트",
-    "updateBadgeAvailable": "새 버전 {version}"
+    "updateBadgeAvailable": "새 버전 {version}",
+    "hotkeyEmpty": "클릭하여 단축키 설정",
+    "hotkeyClear": "단축키 지우기",
+    "hotkeyNeedModifier": "Ctrl 또는 Alt가 필요합니다",
+    "hotkeyUnsupported": "지원하지 않는 키입니다"
   },
   "download": {},
   "popup": {

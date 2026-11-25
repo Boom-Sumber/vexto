@@ -85,7 +85,6 @@
   "settings": {
     "title": "Settings",
     "loading": "Loading…",
-    "enable": "Enable",
     "discard": "Discard",
     "save": "Save",
     "saving": "Saving…",
@@ -103,9 +102,6 @@
     "dirtySwitch": "“{name}” has {n} unsaved changes. Switching tools will discard them.",
     "dirtyUpdate": "Installing an update will close Vexto. “{name}” has {n} unsaved changes; save first to keep them.",
     "discardChanges": "Discard changes",
-    "captureIdle": "Click to set",
-    "capturePrompt": "Press a key combination…",
-    "captureNeedMod": "Press Ctrl / Shift / Alt first",
     "preview": "Preview",
     "previewSample": "Example: {name}",
     "dirPlaceholder": "e.g. D:\\Downloads",
@@ -170,7 +166,11 @@
     "updateBadgeDownloading": "Downloading update {pct}%",
     "updateBadgeDownloadingUnknown": "Downloading update…",
     "updateBadgeRequired": "Update now V{version}",
-    "updateBadgeAvailable": "New version {version}"
+    "updateBadgeAvailable": "New version {version}",
+    "hotkeyEmpty": "Click to set shortcut",
+    "hotkeyClear": "Clear shortcut",
+    "hotkeyNeedModifier": "Requires Ctrl or Alt",
+    "hotkeyUnsupported": "Unsupported key"
   },
   "download": {},
   "popup": {

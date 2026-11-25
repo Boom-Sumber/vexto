@@ -1,11 +1,13 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import Icon from "../components/Icon.vue";
 import DropdownSelect from "../components/DropdownSelect.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
 import { preferSegmented, toItems } from "../components/choiceOptions.js";
 import HelpIcon from "./HelpIcon.vue";
 import ListField from "./ListField.vue";
+import ToolListField from "./ToolListField.vue";
+import HotkeyInput from "./HotkeyInput.vue";
 import AboutPage from "./AboutPage.vue";
 import { vNumField } from "../directives/numField.js";
 import { t } from "../i18n/index.js";
@@ -28,14 +30,6 @@ const preview = ref("");
 const previewBad = ref(false);
 const previewing = ref(false);
 
-const MODS = ["Ctrl", "Shift", "Alt"];
-const MOD_KEYS = { Control: "Ctrl", Shift: "Shift", Alt: "Alt" };
-const MAIN_RE = /^(Key[A-Z]|Digit[0-9]|F([1-9]|1[0-2])|PrintScreen)$/;
-
-const capturing = ref(false);
-const captureNeedMod = ref(false);
-let capture = null;
-
 function syncDraft() {
   const v = currentValue.value;
   draft.value = v == null ? "" : String(v);
@@ -44,7 +38,7 @@ function syncDraft() {
 watch(
   currentValue,
   () => {
-    if (!editing.value && !capturing.value) syncDraft();
+    if (!editing.value) syncDraft();
   },
 );
 watch(
@@ -180,65 +174,9 @@ function pickCustom(e) {
   });
 }
 
-function normalizeMods(mods) {
-  return MODS.filter((m) => mods.includes(m)).join("+");
+function commitHotkey(value) {
+  props.settings.commit(props.field.key, value);
 }
-
-function beginCapture() {
-  if (capturing.value) return;
-  capturing.value = true;
-  editing.value = true;
-  capture = { prev: draft.value, mods: [] };
-  draft.value = "";
-  captureNeedMod.value = false;
-  document.addEventListener("keydown", onCaptureKey, true);
-}
-
-function onCaptureKey(e) {
-  if (!capture) return;
-  e.preventDefault();
-  e.stopPropagation();
-  if (e.key === "Escape") {
-    endCapture(false);
-    return;
-  }
-  const mod = MOD_KEYS[e.key];
-  if (mod) {
-    if (!capture.mods.includes(mod)) capture.mods.push(mod);
-    if (capture.mods.length > 2) capture.mods = capture.mods.slice(-2);
-    draft.value = normalizeMods(capture.mods) + "+";
-    return;
-  }
-  if (!MAIN_RE.test(e.code)) return;
-  if (capture.mods.length === 0) {
-    captureNeedMod.value = true;
-    return;
-  }
-  const main = e.code.startsWith("Key")
-    ? e.code.slice(3)
-    : e.code.startsWith("Digit")
-      ? e.code.slice(5)
-      : e.code;
-  draft.value = normalizeMods(capture.mods) + "+" + main;
-  endCapture(true);
-}
-
-function endCapture(save) {
-  if (!capture) return;
-  document.removeEventListener("keydown", onCaptureKey, true);
-  const prev = capture.prev;
-  capture = null;
-  capturing.value = false;
-  editing.value = false;
-  captureNeedMod.value = false;
-  if (!save) draft.value = prev;
-  else props.settings.commit(props.field.key, draft.value);
-}
-
-const hotkeyPlaceholder = computed(() => {
-  if (!capturing.value) return t("settings.captureIdle");
-  return captureNeedMod.value ? t("settings.captureNeedMod") : t("settings.capturePrompt");
-});
 
 async function runAction(key, btn) {
   if (btn) btn.disabled = true;
@@ -258,9 +196,6 @@ async function runAction(key, btn) {
   }
 }
 
-onBeforeUnmount(() => {
-  if (capture) endCapture(false);
-});
 </script>
 
 <template>
@@ -274,6 +209,10 @@ onBeforeUnmount(() => {
     :field="field"
     :settings="settings"
   />
+
+  <div v-else-if="field.type === 'tool_list'" class="field tool-list" v-show="visible">
+    <ToolListField :settings="settings" />
+  </div>
 
   <div v-else-if="field.type === 'about'" class="field about" v-show="visible">
     <AboutPage :field="field" :settings="settings" />
@@ -416,16 +355,11 @@ onBeforeUnmount(() => {
           </label>
         </div>
 
-        <input
+        <HotkeyInput
           v-else-if="field.type === 'hotkey'"
-          class="capture"
-          type="text"
-          readonly
-          :value="draft"
-          :placeholder="hotkeyPlaceholder"
-          :class="{ capturing }"
-          @click="beginCapture"
-          @focus="beginCapture"
+          :model-value="currentValue"
+          :label="field.label || field.key"
+          @update:model-value="commitHotkey"
         />
 
         <div v-else class="note">

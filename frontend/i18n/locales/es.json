@@ -85,7 +85,6 @@
   "settings": {
     "title": "Ajustes",
     "loading": "Cargando…",
-    "enable": "Activar",
     "discard": "Descartar",
     "save": "Guardar",
     "saving": "Guardando…",
@@ -103,9 +102,6 @@
     "dirtySwitch": "«{name}» tiene {n} cambios sin guardar. Si cambias de herramienta, se perderán.",
     "dirtyUpdate": "Instalar una actualización cerrará Vexto. «{name}» tiene {n} cambios sin guardar; guarda primero para conservarlos.",
     "discardChanges": "Descartar cambios",
-    "captureIdle": "Haz clic para configurar",
-    "capturePrompt": "Pulsa una combinación de teclas…",
-    "captureNeedMod": "Pulsa primero Ctrl / Shift / Alt",
     "preview": "Vista previa",
     "previewSample": "Ejemplo: {name}",
     "dirPlaceholder": "p. ej. D:\\Downloads",
@@ -170,7 +166,11 @@
     "updateBadgeDownloading": "Descargando actualización {pct}%",
     "updateBadgeDownloadingUnknown": "Descargando actualización…",
     "updateBadgeRequired": "Actualizar ahora a V{version}",
-    "updateBadgeAvailable": "Nueva versión {version}"
+    "updateBadgeAvailable": "Nueva versión {version}",
+    "hotkeyEmpty": "Haz clic para configurar el atajo",
+    "hotkeyClear": "Borrar atajo",
+    "hotkeyNeedModifier": "Se requiere Ctrl o Alt",
+    "hotkeyUnsupported": "Tecla no compatible"
   },
   "download": {},
   "popup": {

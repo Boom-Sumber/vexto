@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 
+use crate::hotkey::HotkeyBinding;
+
 /// 翻译模式取值。`engine_mode` 只认这三个，代码里一律用常量，避免拼错。
 pub const MODE_VENDOR_MT: &str = "vendor_mt";
 pub const MODE_VENDOR_LLM: &str = "vendor_llm";
@@ -166,21 +168,19 @@ pub struct Config {
     pub openai_active: String,
 
     // ---- 热键 ----
-    /// 划词翻译热键，**永远存归一化形式**（`Ctrl+Alt+T`），
-    /// 不存 `global-hotkey` 的 `control+alt+KeyT`。见 hotkey::validate_hotkey。
+    /// 划词翻译热键。旧配置是 `"Ctrl+Alt+T"` 字符串，读取时自动转成
+    /// `{ modifiers, key, match }`（ADR-090）；新配置一律写对象。
     #[serde(default = "d_hotkey")]
-    pub hotkey: String,
+    pub hotkey: HotkeyBinding,
     /// 截图翻译热键（S5 才真正注册，S2 只存值）
     #[serde(default = "d_hotkey_ocr")]
-    pub hotkey_ocr: String,
+    pub hotkey_ocr: HotkeyBinding,
     /// 下载热键（S3 才真正注册，S2 只存值）
     #[serde(default = "d_hotkey_download")]
-    pub hotkey_download: String,
-    /// 输入翻译热键。**本轮只存值、不注册也不进设置页**——弹窗重做（输入框 +
-    /// 翻译按钮 + 可聚焦模式）是下一个会话的事，现在注册了按下去没反应，
-    /// 等于给用户造一个死配置。
+    pub hotkey_download: HotkeyBinding,
+    /// 输入翻译热键。
     #[serde(default = "d_hotkey_input")]
-    pub hotkey_input: String,
+    pub hotkey_input: HotkeyBinding,
 
     // ---- 模块开关 ----
     #[serde(default = "d_true")]
@@ -199,10 +199,10 @@ pub struct Config {
     // ---- 截图（S7）----
     /// 区域截图热键（S7 才真正注册）
     #[serde(default = "d_hotkey_screenshot")]
-    pub hotkey_screenshot: String,
+    pub hotkey_screenshot: HotkeyBinding,
     /// 全屏截图热键（S7 会话 72；与设置页/托盘全屏共用反馈）
     #[serde(default = "d_hotkey_fullscreen")]
-    pub hotkey_fullscreen: String,
+    pub hotkey_fullscreen: HotkeyBinding,
     /// 截图工具总开关。默认关（ADR-040：未启用时零进程零线程）。
     #[serde(default)]
     pub enable_screenshot: bool,
@@ -482,23 +482,23 @@ fn d_to2() -> String {
 fn d_lang_detect() -> String {
     "local".to_string()
 }
-fn d_hotkey() -> String {
-    "Ctrl+Alt+T".to_string()
+fn d_hotkey() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+Alt+T")
 }
-fn d_hotkey_ocr() -> String {
-    "Ctrl+Alt+S".to_string()
+fn d_hotkey_ocr() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+Alt+S")
 }
-fn d_hotkey_download() -> String {
-    "Ctrl+Alt+D".to_string()
+fn d_hotkey_download() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+Alt+D")
 }
-fn d_hotkey_input() -> String {
-    "Ctrl+Alt+I".to_string()
+fn d_hotkey_input() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+Alt+I")
 }
-fn d_hotkey_screenshot() -> String {
-    "Ctrl+Alt+A".to_string()
+fn d_hotkey_screenshot() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+Alt+A")
 }
-fn d_hotkey_fullscreen() -> String {
-    "Ctrl+PrintScreen".to_string()
+fn d_hotkey_fullscreen() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+PrintScreen")
 }
 /// 默认截图文件名规则（会话 81）。`$...$` 是格式占位，其余部分是前缀 / 后缀。
 pub const DEFAULT_SCREENSHOT_NAME_RULE: &str = "Vexto_$yyyyMMdd_HHmmss$.png";
@@ -1165,8 +1165,34 @@ mod tests {
         assert_eq!(c.appid, "x");
         assert_eq!(c.from, "auto");
         assert_eq!(c.to, "zh");
-        assert_eq!(c.hotkey, "Ctrl+Alt+T");
+        assert_eq!(c.hotkey.compact(), "Ctrl+Alt+T");
         assert_eq!(c.secret, "");
+    }
+
+    /// ADR-090：旧配置的字符串热键要自动转成结构体，新配置写回对象。
+    #[test]
+    fn legacy_hotkey_string_migrates_to_struct() {
+        let c: Config = serde_json::from_str(r#"{"hotkey":"Ctrl+Alt+T"}"#).unwrap();
+        assert_eq!(c.hotkey.modifiers, vec!["Ctrl", "Alt"]);
+        assert_eq!(c.hotkey.key, "T");
+        assert_eq!(c.hotkey.match_mode, "exact");
+        let value = serde_json::to_value(&c).unwrap();
+        assert_eq!(value["hotkey"]["key"], "T");
+        assert_eq!(value["hotkey"]["match"], "exact");
+        assert!(value["hotkey"].is_object(), "新配置必须存对象");
+    }
+
+    /// 新结构体读取、缺 match 兜底、坏对象不拖垮整份配置。
+    #[test]
+    fn hotkey_object_is_read_leniently() {
+        let c: Config = serde_json::from_str(
+            r#"{"hotkey":{"modifiers":["alt","ctrl"],"key":"t"}}"#,
+        )
+        .unwrap();
+        assert_eq!(c.hotkey.compact(), "Ctrl+Alt+T");
+
+        let bad: Config = serde_json::from_str(r#"{"hotkey":{"key":"NoSuchKey"}}"#).unwrap();
+        assert_eq!(bad.from, "auto", "坏热键不能拖垮其它字段");
     }
 
     /// S1 时代的完整配置（只有 5 个字段）必须能被 S2 读出来，且新字段取默认值。
@@ -1179,13 +1205,13 @@ mod tests {
         assert_eq!(c.engine_mode, MODE_VENDOR_MT);
         assert_eq!(c.vendor, VENDOR_BAIDU);
         assert_eq!(c.popup_timeout_ms, 15000);
-        assert_eq!(c.hotkey_ocr, "Ctrl+Alt+S");
-        assert_eq!(c.hotkey_download, "Ctrl+Alt+D");
+        assert_eq!(c.hotkey_ocr.compact(), "Ctrl+Alt+S");
+        assert_eq!(c.hotkey_download.compact(), "Ctrl+Alt+D");
         assert_eq!(c.to2, "en");
         assert_eq!(c.lang_detect, "local");
-        assert_eq!(c.hotkey_input, "Ctrl+Alt+I");
-        assert_eq!(c.hotkey_screenshot, "Ctrl+Alt+A");
-        assert_eq!(c.hotkey_fullscreen, "Ctrl+PrintScreen");
+        assert_eq!(c.hotkey_input.compact(), "Ctrl+Alt+I");
+        assert_eq!(c.hotkey_screenshot.compact(), "Ctrl+Alt+A");
+        assert_eq!(c.hotkey_fullscreen.compact(), "Ctrl+PrintScreen");
         assert_eq!(c.screenshot_feedback_seconds, 4);
         assert_eq!(c.screenshot_feedback_fade_ms, 400);
         assert!(!c.enable_screenshot);
@@ -1225,7 +1251,7 @@ mod tests {
     #[test]
     fn config_empty_object_falls_back_to_defaults() {
         let c: Config = serde_json::from_str("{}").unwrap();
-        assert_eq!(c.hotkey, "Ctrl+Alt+T");
+        assert_eq!(c.hotkey.compact(), "Ctrl+Alt+T");
     }
 
     /// 乱码 JSON 走 `unwrap_or_default()` 这条路：不能 panic。
@@ -1257,7 +1283,7 @@ mod tests {
         assert_eq!(cfg.to, "zh", "非中文的默认去向");
         assert_eq!(cfg.to2, "en", "中文的默认去向");
         assert_eq!(cfg.lang_detect, "local", "默认本地检测，不偷偷打网络");
-        assert_eq!(cfg.hotkey_input, "Ctrl+Alt+I");
+        assert_eq!(cfg.hotkey_input.compact(), "Ctrl+Alt+I");
     }
 
     /// S3a 新增的下载参数：老配置没有这两个字段时必须落到「不限速 / 5 并发」，

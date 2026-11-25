@@ -85,7 +85,6 @@
   "settings": {
     "title": "设置",
     "loading": "加载中…",
-    "enable": "启用",
     "discard": "放弃",
     "save": "保存",
     "saving": "保存中…",
@@ -103,9 +102,6 @@
     "dirtySwitch": "「{name}」有 {n} 项改动还没保存，切换工具会丢掉它们。",
     "dirtyUpdate": "安装更新会关闭 Vexto。「{name}」有 {n} 项改动还没保存；先保存再安装就不会丢。",
     "discardChanges": "放弃修改",
-    "captureIdle": "点击设置",
-    "capturePrompt": "请按下组合键…",
-    "captureNeedMod": "必须先按 Ctrl / Shift / Alt",
     "preview": "预览",
     "previewSample": "示例：{name}",
     "dirPlaceholder": "例如 D:\\Downloads",
@@ -170,7 +166,11 @@
     "updateBadgeDownloading": "正在下载更新 {pct}%",
     "updateBadgeDownloadingUnknown": "正在下载更新…",
     "updateBadgeRequired": "立即更新 V{version}",
-    "updateBadgeAvailable": "发现新版本 {version}"
+    "updateBadgeAvailable": "发现新版本 {version}",
+    "hotkeyEmpty": "点击设置快捷键",
+    "hotkeyClear": "清除快捷键",
+    "hotkeyNeedModifier": "至少需要 Ctrl 或 Alt",
+    "hotkeyUnsupported": "不支持这个按键"
   },
   "download": {},
   "popup": {

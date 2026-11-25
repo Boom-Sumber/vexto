@@ -148,6 +148,9 @@ pub enum FieldKind {
         data_command: &'static str,
         part: &'static str,
     },
+    /// 工具管理（ADR-090）：列出所有可启停工具与开关。
+    /// 数据来自前端已经拿到的 `list_tools`，不写 Config；开关走 `set_tool_enabled`。
+    ToolList,
 }
 
 /// 一个设置项。`key` 对应 `Config` 里的字段名（`Button`/`Note` 没有要存的 key）。
@@ -380,6 +383,11 @@ impl Field {
         Self::new(key, "", FieldKind::Group { title })
     }
 
+    /// 工具管理列表。值不存 Config，开关直接调用 `set_tool_enabled`。
+    pub fn tool_list(key: &'static str, label: &'static str) -> Self {
+        Self::new(key, label, FieldKind::ToolList)
+    }
+
     /// 可重复的一组配置。`items` 里的字段只用于描述每项的输入框，
     /// 它们的 `key` 是对象内的键名（`name` / `base` …），不是顶层配置键。
     pub fn list(key: &'static str, label: &'static str, items: Vec<Field>) -> Self {
@@ -515,6 +523,7 @@ mod tests {
             (Field::note("note", "说明"), "note"),
             (Field::group("testGroup", "分组"), "group"),
             (Field::list("i", "I", vec![]), "list"),
+            (Field::tool_list("tool_list", ""), "tool_list"),
         ];
         for (f, ty) in cases {
             let v: Value = serde_json::to_value(&f).unwrap();

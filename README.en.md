@@ -80,7 +80,7 @@ Settings → About → Update can check for new versions and install them direct
 1. Right-click the tray icon → Settings.
 2. Translation uses “Microsoft Translator” by default; add and select Baidu / Youdao / OpenAI-compatible engines in Service management when needed.
 3. Select-to-translate: press `Ctrl+Alt+T`; screenshot OCR translation: press `Ctrl+Alt+S` and drag a region.
-4. The screenshot tool is disabled by default; enable it in Settings → Screenshot before its hotkeys are registered.
+4. The screenshot tool is disabled by default; enable it in Settings → General → Tools before its hotkeys are registered.
 
 ## Hotkeys
 
@@ -93,7 +93,7 @@ Settings → About → Update can check for new versions and install them direct
 | Fullscreen capture | `Ctrl+PrintScreen` |
 | Download | `Ctrl+Alt+D` |
 
-All can be changed in Settings; PrintScreen combinations may be occupied by the system or other software, and a registration failure is reported when saving.
+All can be changed in Settings → General → Shortcuts; PrintScreen combinations may be occupied by the system or other software, and a registration failure is reported when saving.
 
 When a capture is done, press `L` to start scrolling capture with the current selection; if scrolling capture fails, the first frame is kept and can still be saved / copied / pinned / previewed.
 

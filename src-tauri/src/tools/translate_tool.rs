@@ -144,8 +144,6 @@ impl Tool for Translate {
                     Field::select("to2", "第二目标语言", TO_STATIC)
                         .help("检测出的语言等于「目标语言」时译到「第二目标语言」"),
                     Field::group("interaction", "交互"),
-                    Field::hotkey("hotkey", "划词翻译"),
-                    Field::hotkey("hotkey_input", "输入翻译"),
                     Field::switch("auto_copy", "译完自动复制译文"),
                 ],
             ),
@@ -267,11 +265,12 @@ mod tests {
             "to2",
             "lang_detect",
             "from",
-            "hotkey",
-            "hotkey_input",
             "auto_copy",
         ] {
             assert!(keys.contains(&k), "「配置」里缺字段 {k}，实际：{keys:?}");
+        }
+        for moved in ["hotkey", "hotkey_input"] {
+            assert!(!keys.contains(&moved), "热键 {moved} 应移到常规 → 快捷键");
         }
     }
 

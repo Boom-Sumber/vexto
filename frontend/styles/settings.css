@@ -228,19 +228,6 @@ h1 {
   box-shadow: none;
 }
 
-/* 工具级启用开关 */
-.enable {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-top: var(--sp-1);
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-
 /* 错误横幅（热键被占用、保存警告等） */
 .tool-status {
   margin: 0 var(--sp-8) var(--sp-2);
@@ -435,14 +422,86 @@ h1 {
 }
 .num-row.has-unit input { padding-right: calc(var(--w-stepper) + 52px); }
 
-/* 热键框：只读 + 捕获模式，不允许手打（ADR-018） */
-input.capture { cursor: pointer; user-select: none; }
-input.capturing {
-  border-color: var(--warning);
-  background: var(--warning-bg);
-  color: var(--warning);
-  box-shadow: none;
+/* 热键框：只读 + 捕获模式，不允许手打（ADR-018 / ADR-090） */
+.hotkey-wrap {
+  width: 214px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.hotkey-input {
+  position: relative;
+  height: 36px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 34px 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+.hotkey-input:hover { border-color: var(--border-strong); }
+.hotkey-input:focus { outline: none; }
+.hotkey-input.capturing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: var(--ring);
   cursor: default;
+}
+.hotkey-input.empty:not(.capturing) { color: var(--text-dim); }
+.hk-combo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+.hk-seg {
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.hk-plus {
+  color: var(--text-dim);
+  font-weight: 400;
+}
+.hotkey-input.capturing .hk-plus { color: var(--accent); opacity: .65; }
+.hk-prompt { color: var(--accent); }
+.hotkey-input.empty:not(.capturing) .hk-prompt { color: var(--text-dim); }
+.hk-more { letter-spacing: 0; }
+.hk-clear {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text-dim);
+  color: var(--bg-panel);
+  font-size: 13px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.hk-clear:hover { background: var(--text-secondary); }
+.hk-hint {
+  font-size: var(--fs-xs);
+  color: var(--danger);
+  text-align: right;
 }
 
 /* ── pill 开关（demo .switch 的视觉；类名用 switch-pill——字段包装层也带
@@ -1212,4 +1271,44 @@ input.capturing {
   .about-features { grid-template-columns: 1fr; }
   .about-name { font-size: 23px; }
   .about-logo { width: 52px; height: 52px; }
+}
+
+/* ── 工具管理（常规 → 工具管理）──────────────────────────────────── */
+.tool-list-field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.tool-row:last-child { border-bottom: none; }
+.tool-ico {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  background: var(--bg-app);
+  border: 1px solid var(--border-default);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+.tool-meta { flex: 1 1 auto; min-width: 0; }
+.tool-name {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.tool-desc {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

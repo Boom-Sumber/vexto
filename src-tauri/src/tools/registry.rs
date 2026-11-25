@@ -132,17 +132,17 @@ mod tests {
         assert_eq!(ids, vec!["config", "services"]);
     }
 
-    /// 翻译两个标签、下载三个标签，其余工具都只有一个 Section，
-    /// 这样前端不会给它们画一层没意义的标签栏。
+    /// 常规三个标签（常规 / 工具管理 / 快捷键）、翻译两个、下载三个、互传两个；
+    /// 截图与关于只有一个 Section。
     #[test]
     fn multi_section_tools_are_the_expected_ones() {
         for t in all() {
             let id = t.id();
             let n = t.sections().len();
             match id {
+                "general" => assert_eq!(n, 3, "工具 {id} 应该是三个标签"),
                 "translate" => assert_eq!(n, 2, "工具 {id} 应该是两个标签"),
                 "download" => assert_eq!(n, 3, "工具 {id} 应该是三个标签"),
-                "screenshot" => assert_eq!(n, 2, "工具 {id} 应该是两个标签"),
                 "transfer" => assert_eq!(n, 2, "工具 transfer 应该是两个标签"),
                 _ => assert_eq!(n, 1, "工具 {id} 不该有多个 Section"),
             }
