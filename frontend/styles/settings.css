@@ -569,7 +569,7 @@ input.capturing {
   min-height: 52px;
 }
 
-/* 图标磁贴：列表项是通用形状，统一 file 图标（前端不按字段名挑图标） */
+/* 图标磁贴：服务配置卡片显示厂商 / 大模型品牌图标 */
 .li-ico {
   flex: none;
   width: 34px;

@@ -51,6 +51,12 @@ function detailFields(item) {
   return itemFields.value.filter((fld) => itemShowIf(fld, item));
 }
 
+// 服务配置卡片用品牌图标：厂商实例按 vendor 区分，OpenAI 兼容实例统一用大模型图标。
+function itemIcon(item) {
+  if (props.field.key === "openai_profiles") return "llm";
+  return item.vendor === "youdao" ? "youdao" : "baidu";
+}
+
 const segmented = (fld) => preferSegmented(toItems(fld.options));
 
 function patch(id, key, value) {
@@ -153,7 +159,7 @@ function onSave(draft, status) {
             :aria-label="$t('settings.listExpand')"
             @click="toggleOpen(item.id)"
           ></button>
-          <span class="li-ico"><Icon name="file" :size="16" /></span>
+          <span class="li-ico"><Icon :name="itemIcon(item)" :size="20" /></span>
 
           <div class="li-info">
             <div class="li-name-row">
