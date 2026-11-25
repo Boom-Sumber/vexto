@@ -1,6 +1,22 @@
-# Vexto
+<div align="center">
+
+<img src="frontend/assets/logo.png" width="96" height="96" alt="Vexto" />
+
+<h1>Vexto</h1>
+
+<hr />
 
 一个 Windows 常驻托盘的轻量工具箱，把划词翻译、截图、下载、局域网传文件合进一个进程。
+
+[简体中文](README.md) · [English](README.en.md) · [下载 Releases](https://github.com/Ruxsmiles/vexto/releases) · [反馈 Issues](https://github.com/Ruxsmiles/vexto/issues)
+
+![version](https://img.shields.io/badge/version-0.5.1-blue?style=flat-square)
+![platform](https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square)
+![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square)
+![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square)
+![license](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)
+
+</div>
 
 **卖点：轻。** 托盘常驻不拉 WebView2；只有真正打开窗口时才创建。
 
@@ -91,7 +107,7 @@ Vexto 本身不直接注入浏览器。要让网页下载进入 Vexto，需要�
 | 打开设置页 | 约 6–7 MB | 约 87 MB | 约 93 MB |
 | 关闭窗口（轻量模式开） | 约 1–2 MB | 0 | 约 1–2 MB |
 | 关闭窗口（轻量模式关） | 约 6–7 MB | 约 87 MB（挂起） | 约 93 MB |
-| 安装包 | — | — | **21.22 MiB** |
+| 安装包 | — | — | **21.30 MiB** |
 
 任务管理器会把 WebView2 子进程归入「WebView2 管理器」组，主程序与它分开显示。开启「轻量模式」后，关闭窗口会释放 WebView2，内存更低，下次打开稍慢；不开启时窗口会挂起复用，再次打开更快。
 
@@ -100,7 +116,7 @@ Vexto 本身不直接注入浏览器。要让网页下载进入 Vexto，需要�
 - Windows 10 1809+ / Windows 11。
 - 中文 OCR 需要 Paddle 模型（随包）或系统中文 OCR 语言包；竖排、艺术字、低分辨率识别差是能力边界。
 - 滚动截图要求选区内的画面整体滚动；只有一半区域滚动时会失败并回退到第一帧。
-- 不做自动更新：升级时托盘右键退出，运行新的 setup 覆盖安装，`%APPDATA%\vexto\config.json` 会保留。
+- 应用内更新会关闭程序后原地覆盖安装，配置保留；也可以退出后手动运行新的安装包覆盖安装。
 - 安装器不自动配置防火墙。
 - 截图按虚拟屏幕处理，多显示器时是一整张。
 
@@ -115,6 +131,8 @@ Vexto 本身不直接注入浏览器。要让网页下载进入 Vexto，需要�
 ```powershell
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 
+npm install                                  # 仅首次：安装前端依赖
+npm run build                                # 前端产物输出到 ui/
 cargo build --release                        # 产物: target\release\lightbox.exe
 cargo clippy --release -- -D warnings        # 必须零警告
 cargo test
@@ -122,7 +140,7 @@ cargo tauri build                            # NSIS: target\release\bundle\nsis\
 powershell -File scripts\measure-mem.ps1     # 内存实测（进程需在跑）
 ```
 
-技术栈：Rust + Tauri 2，前端纯静态 HTML/CSS/JS —— 没有 npm、Vite、TypeScript 或前端框架。
+技术栈：Rust + Tauri 2 + Vue 3，前端用 Vite 构建，产物是纯静态文件。
 
 > 下载功能依赖 aria2c sidecar，仓库不提交该二进制。构建前把 aria2c 放到
 > `src-tauri/binaries/aria2c-x86_64-pc-windows-msvc.exe`（版本见 `src-tauri/licenses/aria2-VERSION.txt`）。
@@ -132,10 +150,11 @@ powershell -File scripts\measure-mem.ps1     # 内存实测（进程需在跑）
 ```
 scripts/           build.ps1 / measure-mem.ps1 / gen-icons.ps1
 src-tauri/         Rust 源码、模型、第三方许可（aria2c 需手动放置）
-ui/                纯静态前端
+frontend/          Vue 3 源码与 i18n 词条
+ui/                前端构建产物（Tauri 直接读取）
 ```
 
-开发与构建约定见 `src-tauri/` 与 `ui/` 内的模块注释。
+开发与构建约定见 `src-tauri/` 与 `frontend/` 内的模块注释。
 
 ## 项目地址
 
