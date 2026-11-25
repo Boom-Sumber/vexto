@@ -13,6 +13,7 @@
 | 下载 | HTTPS / BT / magnet 下载，aria2c sidecar，空闲自动退出 |
 | 浏览器接管 | 安装 [Vexto Connect](https://github.com/Ruxsmiles/vexto-connect) 后，Edge / Chrome / Firefox 与国内 Chromium 套壳浏览器的下载可交给 Vexto |
 | 局域网传文件 | 与官方 LocalSend 互通，接收 / 发送 / 历史 / 校验 |
+| 界面语言 | 简体中文 / English / 日本語 / 한국어 / Español，默认跟随系统，设置里即时切换 |
 | 外观 | 明亮 / 暗色 / 跟随系统，六种主色调 + 取色器 |
 
 ## 界面预览
@@ -27,9 +28,9 @@
 
 ## 安装
 
-运行 [Vexto_0.4.0_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.4.0/Vexto_0.4.0_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.5.0_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.0/Vexto_0.5.0_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
-当前安装包 **21.22 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
+当前安装包 **21.30 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
 浏览器接管下载需要另装配套扩展，见下方「浏览器接管下载」。
 
