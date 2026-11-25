@@ -102,23 +102,24 @@ impl Engine for OpenAiCompat {
 
     fn translate_one(&self, cfg: &Config, text: &str) -> Result<Translated, TranslateError> {
         let profile = cfg.active_openai_profile().ok_or_else(|| {
-            TranslateError::NotReady(
-                "还没有添加 OpenAI 兼容的模型。\n右键托盘图标 → 设置… → 翻译 → 引擎 → 添加模型"
-                    .to_string(),
-            )
+            TranslateError::NotReady(t!("translate.openai.noModel").into_owned())
         })?;
         let url = endpoint(&profile.base);
         if url.is_empty() {
-            return Err(TranslateError::NotReady(format!(
-                "模型「{}」的 BaseURL 是空的",
-                profile.name
-            )));
+            return Err(TranslateError::NotReady(
+                t!("error.translate.openai.baseUrlEmpty", name = profile.name)
+                    .into_owned(),
+            ));
         }
 
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
-            .map_err(|e| TranslateError::Network(format!("创建 HTTP 客户端失败：{e}")))?;
+            .map_err(|e| {
+                TranslateError::Network(
+                    t!("error.translate.client", detail = e).into_owned(),
+                )
+            })?;
 
         let body = json!({
             "model": profile.model.trim(),
@@ -143,10 +144,14 @@ impl Engine for OpenAiCompat {
             .map_err(|e| TranslateError::Network(e.to_string()))?;
 
         let v: Value = serde_json::from_str(&raw).map_err(|_| {
-            TranslateError::BadResponse(format!(
-                "HTTP {status}，前 200 字符：{}",
-                raw.chars().take(200).collect::<String>()
-            ))
+            TranslateError::BadResponse(
+                t!(
+                    "error.translate.openai.httpStatus",
+                    status = status,
+                    detail = raw.chars().take(200).collect::<String>()
+                )
+                .into_owned(),
+            )
         })?;
 
         // 上游错误先看 error 字段：OpenAI 兼容层的报错格式比百度统一
@@ -159,9 +164,15 @@ impl Engine for OpenAiCompat {
             let msg = err
                 .get("message")
                 .and_then(|m| m.as_str())
-                .unwrap_or("（上游没给原因）");
+                .map(str::to_string)
+                .unwrap_or_else(|| t!("error.translate.openai.noReason").into_owned());
             return Err(TranslateError::Upstream {
-                hint: format!("引擎返回 {code}：{msg}"),
+                hint: t!(
+                    "error.translate.upstream",
+                    code = code,
+                    msg = msg
+                )
+                .into_owned(),
             });
         }
 
@@ -181,7 +192,9 @@ impl Engine for OpenAiCompat {
 
         let dst = strip_wrapper(content);
         if dst.trim().is_empty() {
-            return Err(TranslateError::BadResponse("模型返回了空译文".to_string()));
+            return Err(TranslateError::BadResponse(
+                t!("error.translate.emptyTranslation", detail = "").into_owned(),
+            ));
         }
 
         Ok(Translated {

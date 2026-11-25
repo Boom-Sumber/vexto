@@ -37,16 +37,25 @@ pub fn parse_response(
 ) -> Result<Translated, TranslateError> {
     if !status.is_success() {
         return Err(TranslateError::Upstream {
-            hint: format!("微软翻译返回 HTTP {status}：{}", snippet(body)),
+            hint: t!(
+                "error.translate.httpStatus",
+                engine = t!("translate.microsoft.name"),
+                status = status,
+                detail = snippet(body)
+            )
+            .into_owned(),
         });
     }
     let v: Value = serde_json::from_str(body).map_err(|_| {
-        TranslateError::BadResponse(format!("返回的不是 JSON：{}", snippet(body)))
+        TranslateError::BadResponse(
+            t!("error.translate.badJson", detail = snippet(body)).into_owned(),
+        )
     })?;
-    let first = v
-        .as_array()
-        .and_then(|a| a.first())
-        .ok_or_else(|| TranslateError::BadResponse(format!("返回数组为空：{}", snippet(body))))?;
+    let first = v.as_array().and_then(|a| a.first()).ok_or_else(|| {
+        TranslateError::BadResponse(
+            t!("error.translate.emptyArray", detail = snippet(body)).into_owned(),
+        )
+    })?;
 
     let dst = first
         .get("translations")
@@ -60,10 +69,9 @@ pub fn parse_response(
         })
         .unwrap_or_default();
     if dst.trim().is_empty() {
-        return Err(TranslateError::BadResponse(format!(
-            "返回了空译文：{}",
-            snippet(body)
-        )));
+        return Err(TranslateError::BadResponse(
+            t!("error.translate.emptyTranslation", detail = snippet(body)).into_owned(),
+        ));
     }
 
     let detected = first
@@ -115,10 +123,14 @@ impl Engine for Microsoft {
 
     fn translate_one(&self, cfg: &Config, text: &str) -> Result<Translated, TranslateError> {
         let from = lang::to_microsoft(&cfg.from).ok_or_else(|| {
-            TranslateError::NotReady(format!(
-                "微软翻译不支持源语言「{}」，请在设置里换一个",
-                cfg.from
-            ))
+            TranslateError::NotReady(
+                t!(
+                    "error.translate.unsupportedFrom",
+                    engine = t!("translate.microsoft.name"),
+                    lang = cfg.from
+                )
+                .into_owned(),
+            )
         })?;
 
         let to_app = if cfg.to.trim().is_empty() || cfg.to.eq_ignore_ascii_case("auto") {
@@ -129,15 +141,24 @@ impl Engine for Microsoft {
         let to = lang::to_microsoft(to_app)
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                TranslateError::NotReady(format!(
-                    "微软翻译不支持目标语言「{to_app}」，请在设置里换一个"
-                ))
+                TranslateError::NotReady(
+                    t!(
+                        "error.translate.unsupportedTo",
+                        engine = t!("translate.microsoft.name"),
+                        lang = to_app
+                    )
+                    .into_owned(),
+                )
             })?;
 
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(20))
             .build()
-            .map_err(|e| TranslateError::Network(format!("创建 HTTP 客户端失败：{e}")))?;
+            .map_err(|e| {
+                TranslateError::Network(
+                    t!("error.translate.client", detail = e).into_owned(),
+                )
+            })?;
 
         // 语种码只包含字母、数字和 `-`，直接拼进 query 是安全的；reqwest 0.13 的
         // blocking RequestBuilder 没有 `.query()`（只有 form），这里不引 URL 编码库。
@@ -160,6 +181,7 @@ impl Engine for Microsoft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_i18n::t;
 
     #[test]
     fn parses_detected_language_and_translation() {
@@ -198,9 +220,13 @@ mod tests {
         .unwrap_err();
         assert!(e.message().contains("400"));
         let e = parse_response("[]", reqwest::StatusCode::OK, "", "zh-Hans").unwrap_err();
-        assert!(e.message().contains("数组为空"));
+        assert!(e
+            .message()
+            .contains(t!("error.translate.emptyArray", detail = "").as_ref()));
         let e = parse_response("not json", reqwest::StatusCode::OK, "", "zh-Hans").unwrap_err();
-        assert!(e.message().contains("不是 JSON"));
+        assert!(e
+            .message()
+            .contains(t!("error.translate.badJson", detail = "").as_ref()));
     }
 
     #[test]

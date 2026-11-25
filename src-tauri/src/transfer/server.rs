@@ -13,7 +13,7 @@
 //! SHA-256、同目录临时文件原子 rename、失败删 `.lanflare-part`），
 //! 启动时清超过 24 小时的残留临时文件（任务书 §S4.10 坑 3）。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -33,11 +33,12 @@ use lanflare_proto::discovery::{DeviceType, ProtocolType};
 use tokio::sync::{mpsc, oneshot};
 
 use super::backend::{
-    ActiveFile, ActiveTransfer, IncomingFile, IncomingRequest, Peer, TransferBackend,
-    TransferConfig, TransferHandle,
+    ActiveFile, ActiveTransfer, IncomingFile, IncomingRequest, Peer, RespondError,
+    TransferBackend, TransferConfig, TransferHandle,
 };
 use super::events::{ProgressView, TransferEvent};
 use crate::config;
+use rust_i18n::t;
 
 /// 「刷新」时对单台设备做在线探测的超时。局域网内 TCP 握手正常在几十毫秒内，
 /// 1.5 秒足够覆盖手机省电时的慢应答，又不至于让刷新卡太久（并发探测，不累加）。
@@ -91,6 +92,9 @@ struct Globals {
     /// 会话 → 待发文件 (名字, 本机路径)：发送侧进度事件里只有文件名，
     /// 历史记录要「打开文件」就得知道源路径。
     session_files: Mutex<HashMap<String, Vec<(String, String)>>>,
+    /// 本机主动取消的接收会话：FileFailed 里可能只有上游文案，靠这个集合
+    /// 判断「中断是不是我们自己点的取消」，不再匹配中文错误串。
+    cancelled_locally: Mutex<HashSet<String>>,
 }
 
 /// 发现侧的两件东西，只在服务运行期间有效。
@@ -122,6 +126,7 @@ fn globals() -> &'static Globals {
         session_target: Mutex::new(HashMap::new()),
         session_file_names: Mutex::new(HashMap::new()),
         session_files: Mutex::new(HashMap::new()),
+        cancelled_locally: Mutex::new(HashSet::new()),
     })
 }
 
@@ -221,7 +226,7 @@ fn record_progress(view: &ProgressView) {
 
         // 会话级事件：发送侧会用空 file_name 发 preparing / 终态，
         // 完成时也会发一条 `N 个文件` 的汇总。都不该变成「文件行」。
-        let session_level = view.file_name.is_empty() || view.file_name.ends_with(" 个文件");
+        let session_level = view.session_level || view.file_name.is_empty();
         if session_level {
             if !view.status.is_empty() {
                 t.status = view.status.clone();
@@ -376,12 +381,13 @@ pub fn active_transfers() -> Vec<ActiveTransfer> {
 pub fn cancel_receive(session_id: &str) -> Result<(), String> {
     let mgr = lock(&globals().session_mgr)
         .clone()
-        .ok_or("传输服务未就绪")?;
+        .ok_or(t!("error.transfer.serviceNotReady").into_owned())?;
     let ip = lock(&globals().session_ip)
         .get(session_id)
         .copied()
-        .ok_or("找不到该会话的发起方，无法取消")?;
-    let rt = runtime_handle().ok_or("请先启用局域网互传")?;
+        .ok_or(t!("error.transfer.senderNotFound").into_owned())?;
+    lock(&globals().cancelled_locally).insert(session_id.to_string());
+    let rt = runtime_handle().ok_or(t!("error.transfer.notEnabled").into_owned())?;
     let sid = session_id.to_string();
     let target = lock(&globals().session_target).get(session_id).cloned();
     rt.spawn(async move {
@@ -395,12 +401,13 @@ pub fn cancel_receive(session_id: &str) -> Result<(), String> {
                     view: ProgressView {
                         session_id: sid.clone(),
                         direction: "recv".into(),
+                        session_level: true,
                         file_name: String::new(),
                         bytes: 0,
                         total: 0,
                         speed_bps: None,
                         status: "cancelled".into(),
-                        message: Some("已在本机取消".to_string()),
+                        message: Some(t!("transfer.localCancelled").into_owned()),
                     },
                 });
                 // 关键一步：去**对方**的 /cancel 端点喊一声。LocalSend 的接收方
@@ -504,10 +511,10 @@ pub fn pending_list() -> Vec<IncomingRequest> {
 ///
 /// 接受 = 全部文件放行（对方一次发的是一组）；拒绝 = 403，对方收到「用户拒绝」。
 /// 找不到 session_id（已过期 / 已处理）返回 Err，前端提示即可。
-pub fn respond(session_id: &str, accept: bool) -> Result<(), String> {
+pub fn respond(session_id: &str, accept: bool) -> Result<(), RespondError> {
     let mut pending = lock(&globals().pending);
     let Some(idx) = pending.iter().position(|p| p.view.session_id == session_id) else {
-        return Err("该传输请求已过期或已处理".to_string());
+        return Err(RespondError::Expired);
     };
     let item = pending.remove(idx);
     drop(pending);
@@ -519,7 +526,7 @@ pub fn respond(session_id: &str, accept: bool) -> Result<(), String> {
     let sender = item.view.sender_alias.clone();
     if item.decision_tx.send(decision).is_err() {
         crate::dlog::dlog("transfer: 应答失败（对端已断开）");
-        return Err("对方已取消传输".to_string());
+        return Err(RespondError::PeerCancelled);
     }
     let msg = if accept {
         format!("已接受 {sender} 的传输")
@@ -655,7 +662,7 @@ impl TransferBackend for LanflareBackend {
         pending_list()
     }
 
-    fn respond(&self, session_id: &str, accept: bool) -> Result<(), String> {
+    fn respond(&self, session_id: &str, accept: bool) -> Result<(), RespondError> {
         respond(session_id, accept)
     }
 
@@ -1162,6 +1169,7 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
                 view: ProgressView {
                     session_id,
                     direction: "recv".into(),
+                    session_level: false,
                     file_name,
                     bytes: 0,
                     total: total_bytes,
@@ -1182,6 +1190,7 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
                 view: ProgressView {
                     session_id,
                     direction: "recv".into(),
+                    session_level: false,
                     file_name,
                     bytes: bytes_received,
                     total: total_bytes,
@@ -1204,6 +1213,7 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
                 view: ProgressView {
                     session_id,
                     direction: "recv".into(),
+                    session_level: false,
                     file_name: result
                         .target_path
                         .file_name()
@@ -1228,11 +1238,13 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
                 .get(&format!("{session_id}|{file_id}"))
                 .cloned()
                 .unwrap_or(file_id);
-            let aborted = error.contains("Stream error") || error.contains("已在本机取消");
+            let aborted = error.contains("Stream error")
+                || lock(&globals().cancelled_locally).contains(&session_id);
             emit(TransferEvent::Progress {
                 view: ProgressView {
                     session_id: session_id.clone(),
                     direction: "recv".into(),
+                    session_level: false,
                     file_name: name,
                     bytes: 0,
                     total: 0,
@@ -1249,17 +1261,19 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
                     view: ProgressView {
                         session_id,
                         direction: "recv".into(),
+                        session_level: true,
                         file_name: String::new(),
                         bytes: 0,
                         total: 0,
                         speed_bps: None,
                         status: "cancelled".into(),
-                        message: Some("对方已取消".to_string()),
+                        message: Some(t!("transfer.peerCancelled").into_owned()),
                     },
                 });
             }
         }
         ServerTransferEvent::SessionEnded { session_id, reason } => {
+            lock(&globals().cancelled_locally).remove(&session_id);
             crate::dlog::dlog(&format!("transfer: 会话 {session_id} 结束：{reason:?}"));
             // 对方在确认框还没应答时取消：把这条待确认请求也撤掉，
             // 否则确认框会一直留着一条已经没人等的请求（会话 80）。
@@ -1270,15 +1284,24 @@ fn on_transfer_progress(ev: ServerTransferEvent) {
             // 会话级终态也要发一条：传输页靠它把「传输中」翻成「已完成 / 已取消」，
             // 否则取消之后页面会停在最后那个百分比上不动。
             let (status, message) = match reason {
-                SessionEndReason::Finished => ("done", "传输完成".to_string()),
-                SessionEndReason::CancelledBySender => ("cancelled", "对方已取消".to_string()),
-                SessionEndReason::CancelledLocally => ("cancelled", "已在本机取消".to_string()),
-                SessionEndReason::TimedOut => ("failed", "传输超时".to_string()),
+                SessionEndReason::Finished => {
+                    ("done", t!("transfer.sessionDone").into_owned())
+                }
+                SessionEndReason::CancelledBySender => {
+                    ("cancelled", t!("transfer.peerCancelled").into_owned())
+                }
+                SessionEndReason::CancelledLocally => {
+                    ("cancelled", t!("transfer.localCancelled").into_owned())
+                }
+                SessionEndReason::TimedOut => {
+                    ("failed", t!("transfer.timeout").into_owned())
+                }
             };
             emit(TransferEvent::Progress {
                 view: ProgressView {
                     session_id,
                     direction: "recv".into(),
+                    session_level: true,
                     file_name: String::new(),
                     bytes: 0,
                     total: 0,

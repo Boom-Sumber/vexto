@@ -268,11 +268,11 @@ export function useTransfer({ toast, setView, setSub }) {
       else closeConfirm();
     } catch (e) {
       cfBusy.value = false;
-      const msg = errText(e);
-      if (msg.includes("取消") || msg.includes("过期")) {
+      const err = e && typeof e === "object" ? e : { code: "failed", message: errText(e) };
+      if (err.code === "cancelled" || err.code === "expired") {
         closeConfirm(t("main.requestExpired"));
       } else {
-        cfError.value = msg;
+        cfError.value = err.message || errText(e);
       }
     }
   }
@@ -373,7 +373,7 @@ export function useTransfer({ toast, setView, setSub }) {
         return;
       }
     }
-    const sessionLevel = !view.file_name || view.file_name.endsWith(" 个文件");
+    const sessionLevel = view.session_level === true || !view.file_name;
     if (sessionLevel) {
       if (view.status) s.status = view.status;
       if (view.message) s.message = view.message;

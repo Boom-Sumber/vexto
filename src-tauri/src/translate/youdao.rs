@@ -90,28 +90,34 @@ fn salt() -> String {
 /// 这里只覆盖文本翻译/大模型会遇到的，其余给出查文档的指路。
 pub fn error_hint(code: &str, msg: &str) -> String {
     let why = match code {
-        "101" => "缺少必填参数：应用 ID / 密钥可能没填全",
-        "102" => "不支持的语言类型：语言的**有道代码**和百度的不一样（日语是 ja、韩语是 ko）",
-        "103" => "翻译文本过长：单次上限 5000 字符",
-        "108" => "应用 ID 无效：检查有道智云「应用管理」里的应用 ID",
-        "110" => "应用没有绑定文本翻译服务：去有道智云控制台给应用加上该服务",
-        "111" => "开发者账号无效",
-        "113" => "待翻译文本为空",
-        "202" => "签名校验失败：检查应用密钥；也可能是文本里含特殊编码导致签名不一致",
-        "203" => "访问 IP 不在白名单：控制台里如果配了 IP 限制，去掉或加上本机 IP",
-        "206" => "时间戳无效导致签名失败：本机时间不准，校准一下系统时间",
-        "207" => "重放请求：同一组 salt + curtime 用过了，重试即可",
-        "401" => "账户已欠费：去有道智云控制台充值（新账号有 50 元体验金）",
-        "411" | "1411" | "2411" => "访问频率受限：稍等再试",
-        "412" => "长文本请求过于频繁：稍等 3 秒再试",
-        "2003" => "不支持的语言识别类型",
-        "303" | "304" => "有道服务端异常，稍后重试",
-        _ => "有道没有给出这个错误码的解释，去 ai.youdao.com 的错误码表查一下",
+        "101" => t!("error.youdao.101"),
+        "102" => t!("error.youdao.102"),
+        "103" => t!("error.youdao.103"),
+        "108" => t!("error.youdao.108"),
+        "110" => t!("error.youdao.110"),
+        "111" => t!("error.youdao.111"),
+        "113" => t!("error.youdao.113"),
+        "202" => t!("error.youdao.202"),
+        "203" => t!("error.youdao.203"),
+        "206" => t!("error.youdao.206"),
+        "207" => t!("error.youdao.207"),
+        "401" => t!("error.youdao.401"),
+        "411" | "1411" | "2411" => t!("error.youdao.411"),
+        "412" => t!("error.youdao.412"),
+        "2003" => t!("error.youdao.2003"),
+        "303" | "304" => t!("error.youdao.303"),
+        _ => t!("error.youdao.unknown"),
     };
     if msg.trim().is_empty() {
-        format!("有道返回 {code}：{why}")
+        t!("error.youdao.withCode", code = code, why = why).into_owned()
     } else {
-        format!("有道返回 {code}：{why}（原文：{msg}）")
+        t!(
+            "error.youdao.withCodeDetail",
+            code = code,
+            why = why,
+            msg = msg
+        )
+        .into_owned()
     }
 }
 
@@ -421,6 +427,7 @@ impl Engine for YoudaoLlm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_i18n::t;
 
     // ── 签名 input 的截断规则 ────────────────────────────────
     #[test]
@@ -493,7 +500,10 @@ mod tests {
         let e = parse_mt(body).unwrap_err();
         let m = e.message();
         assert!(m.contains("102"), "{m}");
-        assert!(m.contains("语言"), "102 要说是语言码问题：{m}");
+        assert!(
+            m.contains(t!("error.youdao.102").as_ref()),
+            "102 要说是语言码问题：{m}"
+        );
     }
 
     #[test]
@@ -589,8 +599,8 @@ mod tests {
         ] {
             let m = error_hint(code, "");
             assert!(
-                !m.contains("没有给出这个错误码的解释"),
-                "{code} 缺中文解释：{m}"
+                !m.contains(t!("error.youdao.unknown").as_ref()),
+                "{code} 缺解释：{m}"
             );
         }
         assert!(error_hint("9999", "").contains("ai.youdao.com"));

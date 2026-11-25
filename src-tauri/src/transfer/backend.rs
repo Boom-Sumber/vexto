@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use crate::config;
+use rust_i18n::t;
 
 /// 传输服务的配置投影。trait 不直接依赖 `config::Config`，
 /// 将来换实现时配置读取留在调用方。
@@ -168,6 +169,29 @@ pub struct TransferHandle {
 }
 
 /// 传输实现的契约。实现体在 `server.rs`（接收/发现）与 `send.rs`（发送）。
+/// 接收确认失败的结构化原因；前端按 `code` 决定提示，不再匹配中文文案。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RespondError {
+    Expired,
+    PeerCancelled,
+}
+
+impl RespondError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            RespondError::Expired => "expired",
+            RespondError::PeerCancelled => "cancelled",
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            RespondError::Expired => t!("error.transfer.requestExpired").into_owned(),
+            RespondError::PeerCancelled => t!("error.transfer.peerCancelled").into_owned(),
+        }
+    }
+}
+
 pub trait TransferBackend: Send + Sync {
     /// 启动传输服务（绑端口 + 起发现）。失败必须把原因说清楚
     /// （端口被占 / 无网络 / 组播不可用），调用方会展示给用户。
@@ -190,7 +214,7 @@ pub trait TransferBackend: Send + Sync {
     /// 待确认的传入请求（最旧在前）。
     fn pending_requests(&self) -> Vec<IncomingRequest>;
     /// 接受 / 拒绝一条传入请求。
-    fn respond(&self, session_id: &str, accept: bool) -> Result<(), String>;
+    fn respond(&self, session_id: &str, accept: bool) -> Result<(), RespondError>;
     /// 当前 / 刚结束的传输快照（传输页数据源；窗口中途打开也能还原进度）。
     fn active_transfers(&self) -> Vec<ActiveTransfer>;
     /// 取消一次**接收中**的会话。发送侧取消用 `send::cancel_send`。
@@ -200,6 +224,14 @@ pub trait TransferBackend: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 前端按 code 判断过期/取消，code 必须稳定，不能跟着文案变。
+    #[test]
+    fn respond_error_codes_are_stable() {
+        assert_eq!(RespondError::Expired.code(), "expired");
+        assert_eq!(RespondError::PeerCancelled.code(), "cancelled");
+        assert!(!RespondError::Expired.message().is_empty());
+    }
 
     #[test]
     fn from_app_maps_fields_and_trims() {

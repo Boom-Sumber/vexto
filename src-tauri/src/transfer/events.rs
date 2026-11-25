@@ -23,6 +23,10 @@ pub struct ProgressView {
     pub status: String,
     /// 终态时的原因（失败原因 / 完成落盘路径）。
     pub message: Option<String>,
+    /// true = 会话级事件（准备 / 汇总 / 会话终态），不是某一行文件。
+    /// 显式字段，避免再用 `file_name` 的中文汇总串做判断。
+    #[serde(default)]
+    pub session_level: bool,
 }
 
 /// `transfer:event` 的载荷。
@@ -37,4 +41,27 @@ pub enum TransferEvent {
     Progress { view: ProgressView },
     /// 一句话提示（如「已拒绝」「发送失败」）。
     Notice { message: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProgressView;
+
+    /// 前端靠 `session_level` 区分会话级事件，不能再依赖 file_name 的中文汇总串。
+    #[test]
+    fn progress_view_serializes_session_level() {
+        let view = ProgressView {
+            session_id: "s".into(),
+            direction: "send".into(),
+            file_name: "3 个文件".into(),
+            bytes: 0,
+            total: 0,
+            speed_bps: None,
+            status: "done".into(),
+            message: None,
+            session_level: true,
+        };
+        let value = serde_json::to_value(view).unwrap();
+        assert_eq!(value["session_level"], true);
+    }
 }

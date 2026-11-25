@@ -16,6 +16,7 @@ use lanflare_core::client::transfer::{
 };
 use lanflare_core::client::{LsClient, LsClientConfig};
 use lanflare_proto::discovery::{ProtocolType, RegisterDtoV2};
+use rust_i18n::t;
 use tokio_util::sync::CancellationToken;
 
 use super::backend::TransferHandle;
@@ -105,10 +106,11 @@ pub fn send_files(
     pin: Option<String>,
 ) -> Result<TransferHandle, String> {
     if files.is_empty() {
-        return Err("没有选中文件".to_string());
+        return Err(t!("error.transfer.noFiles").into_owned());
     }
-    let rt = server::runtime_handle().ok_or("请先启用局域网互传")?;
-    let identity = server::identity().ok_or("传输身份未就绪，请重新启用模块")?;
+    let rt = server::runtime_handle().ok_or(t!("error.transfer.notEnabled").into_owned())?;
+    let identity =
+        server::identity().ok_or(t!("error.transfer.identityNotReady").into_owned())?;
 
     let peer = server::peers()
         .into_iter()
@@ -117,7 +119,7 @@ pub fn send_files(
                 || format!("{}:{}", p.ip, p.port) == peer_id
                 || p.alias == peer_id
         })
-        .ok_or("找不到该设备（可能已离线，请刷新设备列表）")?;
+        .ok_or(t!("error.transfer.peerNotFound").into_owned())?;
 
     let base_url = format!("{}://{}:{}", peer.protocol, peer.ip, peer.port);
     let send_id = format!("send-{}-{}", std::process::id(), SEND_SEQ.fetch_add(1, Ordering::SeqCst));
@@ -155,6 +157,7 @@ pub fn send_files(
             view: ProgressView {
                 session_id: sid.clone(),
                 direction: "send".into(),
+                session_level: files.len() != 1,
                 file_name: if files.len() == 1 {
                     super::sanitize::sanitize_filename(
                         &files[0].file_name().unwrap_or_default().to_string_lossy(),
@@ -166,7 +169,9 @@ pub fn send_files(
                 total,
                 speed_bps: None,
                 status: "preparing".into(),
-                message: Some(format!("正在计算校验并连接 {target_name}…")),
+                message: Some(
+                    t!("transfer.preparing", target = target_name).into_owned(),
+                ),
             },
         });
 
@@ -177,7 +182,11 @@ pub fn send_files(
                 Ok(f) => match f.with_computed_sha256().await {
                     Ok(f) => outgoing.push(f),
                     Err(e) => {
-                        fail(&sid, &target_name, format!("读取文件失败：{e}"));
+                        fail(
+                            &sid,
+                            &target_name,
+                            t!("error.transfer.readFile", detail = e).into_owned(),
+                        );
                         lock(cancels()).remove(&sid);
                         return;
                     }
@@ -233,7 +242,11 @@ pub fn send_files(
         let client = match client {
             Ok(c) => c,
             Err(e) => {
-                fail(&sid, &target_name, format!("创建传输客户端失败：{e}"));
+                fail(
+                    &sid,
+                    &target_name,
+                    t!("error.transfer.client", detail = e).into_owned(),
+                );
                 lock(cancels()).remove(&sid);
                 return;
             }
@@ -263,21 +276,22 @@ pub fn send_files(
         match res {
             Ok(()) => {
                 server::emit(TransferEvent::Notice {
-                    message: format!("已发送给 {target_name}"),
+                    message: t!("status.sentTo", target = target_name).into_owned(),
                 });
             }
             Err(e) => {
                 let cancelled = cancel.is_cancelled();
                 let status = if cancelled { "cancelled" } else { "failed" };
                 let msg = if cancelled {
-                    "已取消发送".to_string()
+                    t!("status.sendCancelled").into_owned()
                 } else {
-                    format!("发送失败：{e}")
+                    t!("error.transfer.sendFailed", detail = e).into_owned()
                 };
                 server::emit(TransferEvent::Progress {
                     view: ProgressView {
                         session_id: sid.clone(),
                         direction: "send".into(),
+                        session_level: true,
                         file_name: String::new(),
                         bytes: 0,
                         total: 0,
@@ -302,7 +316,7 @@ pub fn cancel_send(send_id: &str) -> Result<(), String> {
             t.cancel();
             Ok(())
         }
-        None => Err("该传输已结束或不存在".to_string()),
+        None => Err(t!("error.transfer.sendNotFound").into_owned()),
     }
 }
 
@@ -312,6 +326,7 @@ fn fail(sid: &str, target: &str, msg: String) {
         view: ProgressView {
             session_id: sid.to_string(),
             direction: "send".into(),
+            session_level: true,
             file_name: String::new(),
             bytes: 0,
             total: 0,
@@ -334,12 +349,15 @@ fn forward_progress(sid: &str, target: &str, p: TransferProgress) {
                 view: ProgressView {
                     session_id: sid.to_string(),
                     direction: "send".into(),
+                    session_level: true,
                     file_name: format!("{} 个文件", accepted_files.len()),
                     bytes: 0,
                     total: total_bytes,
                     speed_bps: None,
                     status: "active".into(),
-                    message: Some(format!("对方已接受，开始发送给 {target}")),
+                    message: Some(
+                        t!("transfer.accepted", target = target).into_owned(),
+                    ),
                 },
             });
         }
@@ -354,6 +372,7 @@ fn forward_progress(sid: &str, target: &str, p: TransferProgress) {
                 view: ProgressView {
                     session_id: sid.to_string(),
                     direction: "send".into(),
+                    session_level: false,
                     file_name,
                     bytes: file_bytes_sent,
                     total: file_total_bytes,
@@ -368,6 +387,7 @@ fn forward_progress(sid: &str, target: &str, p: TransferProgress) {
                 view: ProgressView {
                     session_id: sid.to_string(),
                     direction: "send".into(),
+                    session_level: false,
                     file_name,
                     bytes: 0,
                     total: 0,
@@ -384,6 +404,7 @@ fn forward_progress(sid: &str, target: &str, p: TransferProgress) {
                 view: ProgressView {
                     session_id: sid.to_string(),
                     direction: "send".into(),
+                    session_level: false,
                     file_name,
                     bytes: 0,
                     total: 0,
@@ -404,12 +425,15 @@ fn forward_progress(sid: &str, target: &str, p: TransferProgress) {
                 view: ProgressView {
                     session_id: sid.to_string(),
                     direction: "send".into(),
+                    session_level: true,
                     file_name: format!("{total_files} 个文件"),
                     bytes: total_bytes,
                     total: total_bytes,
                     speed_bps: Some((total_bytes as f64 / secs) as u64),
                     status: "done".into(),
-                    message: Some(format!("发送完成：{} 个文件", total_files)),
+                    message: Some(
+                        t!("transfer.sendComplete", count = total_files).into_owned(),
+                    ),
                 },
             });
         }
@@ -418,6 +442,7 @@ fn forward_progress(sid: &str, target: &str, p: TransferProgress) {
                 view: ProgressView {
                     session_id: sid.to_string(),
                     direction: "send".into(),
+                    session_level: true,
                     file_name: String::new(),
                     bytes: 0,
                     total: 0,

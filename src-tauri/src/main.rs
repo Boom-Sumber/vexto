@@ -56,6 +56,13 @@ struct SimpleOut {
     message: String,
 }
 
+/// 接收确认失败：前端按 `code` 判断，不匹配文案。
+#[derive(Serialize)]
+struct TransferErrorOut {
+    code: String,
+    message: String,
+}
+
 #[derive(Serialize)]
 struct SaveOut {
     ok: bool,
@@ -2780,8 +2787,13 @@ fn transfer_history_clear() {
 
 /// 接受 / 拒绝一条传入请求（§S4.7.2 确认框的两个按钮）。
 #[tauri::command]
-fn transfer_respond(session_id: String, accept: bool) -> Result<(), String> {
-    transfer::backend().respond(&session_id, accept)
+fn transfer_respond(session_id: String, accept: bool) -> Result<(), TransferErrorOut> {
+    transfer::backend()
+        .respond(&session_id, accept)
+        .map_err(|e| TransferErrorOut {
+            code: e.code().to_string(),
+            message: e.message(),
+        })
 }
 
 /// 发送文件给一台设备。`target` = 设备指纹或 `ip:port`；异步跑，进度走事件。
