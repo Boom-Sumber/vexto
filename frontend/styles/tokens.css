@@ -6,10 +6,11 @@
 
 :root {
   /* ── 字体 ─────────────────────────────────────────────────────────── */
-  /* v2：Segoe UI 前置——拉丁字形统一走 Segoe，中文落到雅黑；
-     数字/版本号用 --font-mono + tabular-nums。不内嵌任何字体文件。 */
-  --font-ui: "Segoe UI", "Yu Gothic UI", "Malgun Gothic", system-ui, -apple-system,
-             "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  /* 默认（中文）：Segoe UI 负责拉丁，汉字直接落到雅黑 UI。
+     日 / 韩界面在文件末尾按 <html lang> 换成当地字形。不内嵌任何字体文件。 */
+  --font-ui: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+             "Noto Sans CJK SC", system-ui, -apple-system, "Yu Gothic UI", "Malgun Gothic",
+             sans-serif;
   --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
 
   /* ── 字号阶：只有这几档 ───────────────────────────────────────────── */
@@ -83,4 +84,15 @@
     --dur-fast: 0ms;
     --dur-normal: 0ms;
   }
+}
+
+/* 日文 / 韩文界面换成本地字形：雅黑也含假名与谚文，不换的话日文汉字会显示成
+   中文字形。语言由 i18n 写入 <html lang>，切语言即时生效（ADR-093）。 */
+html:lang(ja) {
+  --font-ui: "Segoe UI", "Yu Gothic UI", "Yu Gothic", "Meiryo", "Microsoft YaHei UI",
+             "Microsoft YaHei", system-ui, sans-serif;
+}
+html:lang(ko) {
+  --font-ui: "Segoe UI", "Malgun Gothic", "Microsoft YaHei UI", "Microsoft YaHei",
+             system-ui, sans-serif;
 }
