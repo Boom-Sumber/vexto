@@ -17,7 +17,8 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "publisher": "Vexto",
+    "publisher": "Ruxsmiles",
+    "copyright": "Copyright © 2026 Ruxsmiles",
     "shortDescription": "轻量工具集：划词翻译 / 截图 / 下载 / 局域网传文件",
     "longDescription": "Vexto 是一款常驻 Windows 托盘的轻量工具箱：划词翻译、截图翻译与截图、HTTP / BT / magnet 下载、局域网跨设备传文件。",
     "icon": [
