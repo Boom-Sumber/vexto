@@ -481,6 +481,14 @@ fn is_hotkey_key(k: &str) -> bool {
     HOTKEY_KEYS.contains(&k)
 }
 
+/// 工具启停字段：值变了要同步托盘菜单项的可用状态。
+const ENABLE_KEYS: [&str; 4] = [
+    "enable_translate",
+    "enable_screenshot",
+    "enable_download",
+    "enable_transfer",
+];
+
 fn hotkey_label(key: &str) -> String {
     match key {
         "hotkey" => t!("schema.field.general.hotkey.label").into_owned(),
@@ -1678,9 +1686,9 @@ fn save_tool_config(
         warnings.extend(errs);
     }
 
-    // 5) 副作用：翻译工具启停要同步托盘项
-    if tool_id == "translate" {
-        tray::set_translate_enabled(&app, cfg.enable_translate);
+    // 5) 副作用：工具启停字段变了要同步托盘菜单项的可用状态
+    if ENABLE_KEYS.iter().any(|k| patch.contains_key(*k)) {
+        tray::refresh_tool_states();
     }
 
     // 6) 缓存开关变了要清空缓存，否则用户关了缓存还在命中旧结果
@@ -1825,7 +1833,6 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
     }
     let mut warnings: Vec<String> = Vec::new();
     if tool_id == "translate" {
-        tray::set_translate_enabled(&app, enabled);
         // 翻译启停改变「要不要注册划词 / 输入翻译热键」，必须整体重注册。
         warnings.extend(register_hotkeys(&app, &config::load()));
     }
@@ -1847,6 +1854,8 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
             crate::popup::close_shot_overlay(&app);
         }
     }
+    // 托盘右键菜单里这个工具的入口跟着置灰 / 恢复。
+    tray::refresh_tool_states();
     SaveOut {
         ok: true,
         message: if enabled {

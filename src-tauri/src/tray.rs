@@ -1,8 +1,10 @@
 //! 托盘图标与右键菜单。
 //!
 //! 菜单是固定的使用入口（会话 73 用户定稿），不再按工具注册表逐项列出：
-//! 划词翻译 / 输入翻译 / 截图（全屏、区域、活动窗口）/ 任务窗口（下载、互传）/
+//! 输入翻译 / 截图（全屏、区域、活动窗口）/ 工具箱（下载、互传）/
 //! 设置 / 重启应用 / 退出程序。
+//!
+//! 工具在设置 → 常规 → 工具管理里停用后，对应菜单项置灰不可点（ADR-090）。
 //!
 //! 菜单项 = 固定文案 + **透明占位图标**（会话 81 用户要求去掉可见图标）。
 //! 保留占位是为了让文字统一缩进——Windows 原生菜单只有在「有图标列」时才会
@@ -19,9 +21,9 @@ use tauri::menu::{IconMenuItem, Menu, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::AppHandle;
 
-/// 翻译 / 输入翻译两项在工具停用时置灰。
-static TRANSLATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
-static INPUT_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
+/// 受工具启停影响的叶子项：菜单 id → 菜单项。语言切换会重建菜单，
+/// 每次 `build_menu` 整体替换这一份。
+static TOOL_ITEMS: Mutex<Vec<(&'static str, IconMenuItem<tauri::Wry>)>> = Mutex::new(Vec::new());
 /// 「检查更新」项：发现新版本时改文字，给用户一个不打开设置页也能看到的提示。
 static UPDATE_ITEM: Mutex<Option<IconMenuItem<tauri::Wry>>> = Mutex::new(None);
 /// 上一次更新提示的状态：换语言重建菜单后要按这个状态重新套一遍。
@@ -42,18 +44,27 @@ fn item(
 }
 
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
-    let translate_on = crate::tools::registry::by_id("translate")
-        .map(|t| t.enabled())
-        .unwrap_or(true);
+    let cfg = crate::config::load();
 
-    let translate = item(app, "translate", &t!("tray.translate"), translate_on)?;
-    let input = item(app, "input_translate", &t!("tray.inputTranslate"), translate_on)?;
-    *TRANSLATE_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(translate.clone());
-    *INPUT_ITEM.lock().unwrap_or_else(|e| e.into_inner()) = Some(input.clone());
-
-    let shot_full = item(app, "shot-full", &t!("tray.fullScreen"), true)?;
-    let shot_region = item(app, "shot-region", &t!("tray.region"), true)?;
-    let shot_window = item(app, "shot-window", &t!("tray.activeWindow"), true)?;
+    let input = item(
+        app,
+        "input_translate",
+        &t!("tray.inputTranslate"),
+        cfg.enable_translate,
+    )?;
+    let shot_full = item(
+        app,
+        "shot-full",
+        &t!("tray.fullScreen"),
+        cfg.enable_screenshot,
+    )?;
+    let shot_region = item(app, "shot-region", &t!("tray.region"), cfg.enable_screenshot)?;
+    let shot_window = item(
+        app,
+        "shot-window",
+        &t!("tray.activeWindow"),
+        cfg.enable_screenshot,
+    )?;
     let shot_menu = Submenu::with_items(
         app,
         &t!("tray.screenshot"),
@@ -61,8 +72,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[&shot_full, &shot_region, &shot_window],
     )?;
 
-    let downloads = item(app, "downloads", &t!("tray.downloads"), true)?;
-    let transfer = item(app, "transfer", &t!("tray.transfer"), true)?;
+    let downloads = item(app, "downloads", &t!("tray.downloads"), cfg.enable_download)?;
+    let transfer = item(app, "transfer", &t!("tray.transfer"), cfg.enable_transfer)?;
     let task_menu =
         Submenu::with_items(app, &t!("tray.taskWindows"), true, &[&downloads, &transfer])?;
 
@@ -72,9 +83,17 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let restart = item(app, "restart", &t!("tray.restart"), true)?;
     let quit = item(app, "quit", &t!("tray.quit"), true)?;
 
+    *TOOL_ITEMS.lock().unwrap_or_else(|e| e.into_inner()) = vec![
+        ("input_translate", input.clone()),
+        ("shot-full", shot_full.clone()),
+        ("shot-region", shot_region.clone()),
+        ("shot-window", shot_window.clone()),
+        ("downloads", downloads.clone()),
+        ("transfer", transfer.clone()),
+    ];
+
     let separator = PredefinedMenuItem::separator(app)?;
     let items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
-        &translate,
         &input,
         &shot_menu,
         &task_menu,
@@ -96,7 +115,6 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, ev| {
             let id = ev.id().as_ref().to_string();
             match id.as_str() {
-                "translate" => crate::translate_selection(app.clone()),
                 "input_translate" => crate::open_input_translate(app.clone()),
                 "shot-region" => {
                     if crate::config::load().enable_screenshot {
@@ -236,17 +254,26 @@ fn restart_app(app: &AppHandle) {
     app.exit(0);
 }
 
-/// 翻译工具启停后同步两个入口的可用状态。
-pub fn set_translate_enabled(app: &AppHandle, on: bool) {
-    for slot in [&TRANSLATE_ITEM, &INPUT_ITEM] {
-        let guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(item) = guard.as_ref() {
-            if let Err(e) = item.set_enabled(on) {
-                crate::dlog::warn(&format!("tray: 更新翻译项可用状态失败：{e}"));
-            }
+/// 菜单项是否可点：工具停用后置灰。
+fn tool_item_enabled(id: &str, cfg: &crate::config::Config) -> bool {
+    match id {
+        "input_translate" => cfg.enable_translate,
+        "shot-full" | "shot-region" | "shot-window" => cfg.enable_screenshot,
+        "downloads" => cfg.enable_download,
+        "transfer" => cfg.enable_transfer,
+        _ => true,
+    }
+}
+
+/// 工具启停后同步菜单项的可用状态。
+pub fn refresh_tool_states() {
+    let cfg = crate::config::load();
+    let guard = TOOL_ITEMS.lock().unwrap_or_else(|e| e.into_inner());
+    for (id, item) in guard.iter() {
+        if let Err(e) = item.set_enabled(tool_item_enabled(id, &cfg)) {
+            crate::dlog::warn(&format!("tray: 更新「{id}」可用状态失败：{e}"));
         }
     }
-    let _ = app;
 }
 
 /// 「检查更新」项当前该显示的文字。
@@ -299,5 +326,32 @@ mod tests {
         let img = spacer().expect("占位图必须能创建");
         assert_eq!((img.width(), img.height()), (20, 20));
         assert!(img.rgba().iter().all(|b| *b == 0), "占位图必须全透明");
+    }
+
+    /// 工具停用后对应入口必须置灰，其余入口不受影响。
+    #[test]
+    fn tool_items_follow_enable_flags() {
+        let mut cfg = crate::config::Config::default();
+        cfg.enable_translate = true;
+        cfg.enable_screenshot = true;
+        cfg.enable_download = true;
+        cfg.enable_transfer = true;
+        assert!(tool_item_enabled("input_translate", &cfg));
+
+        cfg.enable_translate = false;
+        assert!(!tool_item_enabled("input_translate", &cfg));
+        assert!(tool_item_enabled("settings", &cfg));
+
+        cfg.enable_screenshot = false;
+        for id in ["shot-full", "shot-region", "shot-window"] {
+            assert!(!tool_item_enabled(id, &cfg), "{id} 应随截图停用");
+        }
+
+        cfg.enable_download = false;
+        assert!(!tool_item_enabled("downloads", &cfg));
+        assert!(tool_item_enabled("transfer", &cfg));
+
+        cfg.enable_transfer = false;
+        assert!(!tool_item_enabled("transfer", &cfg));
     }
 }

@@ -1,8 +1,6 @@
 //! 常规：影响两个以上工具的东西才放这里（S2 任务书 §2.6.1 的判定标准）。
 //!
-//! 目前只有：翻译缓存、弹窗时长、日志、配置目录。热键刻意**不**放这里——划词热键
-//! 属翻译、截图热键属截图、下载热键属下载，各归各的分区，这样用户改划词热键时不会
-//! 担心动到别的东西。
+//! 三个标签：常规（共享设置）/ 工具管理（统一启停）/ 快捷键（按工具分组集中配置）。
 
 use rust_i18n::t;
 
@@ -134,19 +132,10 @@ fn sections_for(cfg: &config::Config) -> Vec<Section> {
     let tools = Section::new(
         "tools",
         "工具管理",
-        vec![
-            Field::note(
-                "toolsNote",
-                "关闭的工具会从左侧菜单隐藏、停止对应服务并注销快捷键；配置会保留。",
-            ),
-            Field::tool_list("tool_list", ""),
-        ],
+        vec![Field::tool_list("tool_list", "")],
     );
 
-    let mut hotkeys = vec![Field::note(
-        "hotkeysNote",
-        "只有已启用工具才会注册快捷键；同一组合只能用于一个功能。",
-    )];
+    let mut hotkeys = Vec::new();
     if cfg.enable_translate {
         hotkeys.push(Field::group("hotkeysTranslate", "翻译"));
         hotkeys.push(Field::hotkey("hotkey", "划词翻译"));
