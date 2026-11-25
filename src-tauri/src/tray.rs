@@ -218,7 +218,7 @@ pub fn apply_locale(app: &AppHandle) {
 /// 重启：起一个延迟 1 秒的 cmd 再退出当前进程。
 ///
 /// 不能直接 `spawn` 自己：单实例插件会在旧进程还没退出时把新进程挡回去。
-fn restart_app(app: &AppHandle) {
+pub(crate) fn restart_app(app: &AppHandle) {
     let exe = std::env::current_exe()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
@@ -233,8 +233,10 @@ fn restart_app(app: &AppHandle) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+        // 必须用 raw_arg 整段传入：`args` 会按 C 运行时规则给引号加转义，
+        // cmd.exe 不认那种转义，带空格的路径会被拆坏（实测「拒绝访问」）。
         match std::process::Command::new("cmd")
-            .args(["/C", cmdline.as_str()])
+            .raw_arg(format!("/C {cmdline}"))
             .creation_flags(0x0800_0000)
             .spawn()
         {

@@ -178,7 +178,19 @@ function commitHotkey(value) {
   props.settings.commit(props.field.key, value);
 }
 
+// 恢复出厂设置必须二次确认；分组恢复只重置热键，直接执行。
+const DANGER_ACTIONS = new Set(["reset_all_config"]);
+const RESET_ACTIONS = new Set([
+  "reset_hotkeys_translate",
+  "reset_hotkeys_screenshot",
+  "reset_hotkeys_download",
+]);
+
 async function runAction(key, btn) {
+  if (DANGER_ACTIONS.has(key)) {
+    const ok = await props.settings.confirmDanger(key);
+    if (!ok) return;
+  }
   if (btn) btn.disabled = true;
   try {
     const res = await window.__TAURI__.core.invoke(key);
@@ -188,7 +200,10 @@ async function runAction(key, btn) {
       (res && res.message) || (bad ? t("settings.toggleFailed") : t("settings.saved")),
       bad ? "bad" : "",
     );
+    // 全量恢复后进程马上重启，不需要再读配置。
+    if (DANGER_ACTIONS.has(key) && !bad) return;
     await props.settings.refreshAfterSave();
+    if (RESET_ACTIONS.has(key) && !bad) await props.settings.refreshAll();
   } catch (e) {
     props.settings.showToast(errText(e), "bad");
   } finally {
@@ -233,6 +248,7 @@ async function runAction(key, btn) {
         v-for="[key, label] in field.actions || []"
         :key="key"
         class="btn"
+        :class="{ danger: DANGER_ACTIONS.has(key), subtle: RESET_ACTIONS.has(key) }"
         type="button"
         @click="runAction(key, $event.currentTarget)"
       >

@@ -79,8 +79,8 @@ Settings → About → Update can check for new versions and install them direct
 
 1. Right-click the tray icon → Settings.
 2. Translation uses “Microsoft Translator” by default; add and select Baidu / Youdao / OpenAI-compatible engines in Service management when needed.
-3. Select-to-translate: press `Ctrl+Alt+T`; screenshot OCR translation: press `Ctrl+Alt+S` and drag a region.
-4. The screenshot tool is disabled by default; enable it in Settings → General → Tools before its hotkeys are registered.
+3. Select-to-translate: press `Ctrl+Alt+T`; region capture: press `Ctrl+Alt+A` and drag a region.
+4. Translate, screenshot, download and transfer are all enabled by default; turn any of them off in Settings → General → Tools and its hotkeys and tray entries stop working.
 
 ## Hotkeys
 

@@ -384,6 +384,19 @@ h1 {
 /* 按钮不要被拉满整列 */
 .field.action .btn { justify-self: end; }
 .field.action .ctrl { align-items: flex-end; }
+/* 分组卡片右下角的「恢复默认」：低调按钮，避免和普通操作抢视线 */
+.btn.subtle { background: transparent; color: var(--text-secondary); }
+.btn.subtle:hover { background: var(--bg-hover); color: var(--text-primary); }
+/* 危险操作（恢复默认配置）：警示色，点击后还有二次确认 */
+.btn.danger {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+.btn.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
 
 #help-tip {
   position: fixed;

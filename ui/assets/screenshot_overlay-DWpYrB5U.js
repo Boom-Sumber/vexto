@@ -1,0 +1,1 @@
+import{n as e,t}from"./app-m3srIoOh.js";import"./theme-gWFKx4jf.js";import"./annot_editor-UlTlIIoe.js";import{t as n}from"./App-C5zJVaB6.js";import"./Icon-Cp6n1Lwi.js";await e({reloadOnChange:!0}),document.body.dataset.purpose=`shot`,t(n).mount(`#app`);

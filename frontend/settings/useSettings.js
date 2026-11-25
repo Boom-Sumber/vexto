@@ -20,6 +20,7 @@ export function useSettings() {
   const banner = ref("");
   const loading = ref(true);
   const dirtyModal = ref(null);
+  const dangerModal = ref(null);
 
   let statusTimer = 0;
   let bannerTimer = 0;
@@ -255,6 +256,27 @@ export function useSettings() {
     dirtyModal.value = intent;
   }
 
+  /// 危险操作确认：返回 Promise<boolean>，由弹框按钮决定是否继续。
+  function confirmDanger(kind) {
+    return new Promise((resolve) => {
+      dangerModal.value = { kind, resolve };
+    });
+  }
+
+  function resolveDanger(ok) {
+    const m = dangerModal.value;
+    dangerModal.value = null;
+    if (m) m.resolve(!!ok);
+  }
+
+  /// 恢复默认后整体重读。默认值已经落盘，未保存的改动一并丢弃。
+  async function refreshAll() {
+    pending.value = {};
+    await reloadTools();
+    await reloadValues();
+    await refreshHotkeyError();
+  }
+
   function hideDirtyModal() {
     dirtyModal.value = null;
   }
@@ -400,6 +422,7 @@ export function useSettings() {
     banner,
     loading,
     dirtyModal,
+    dangerModal,
     tool,
     section,
     fields,
@@ -413,6 +436,9 @@ export function useSettings() {
     saveAll,
     discardAll,
     resolveDirty,
+    confirmDanger,
+    resolveDanger,
+    refreshAll,
     refreshAfterSave,
     showBanner,
     showToast,

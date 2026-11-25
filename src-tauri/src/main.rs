@@ -1867,6 +1867,73 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
     }
 }
 
+/// 取一组热键字段的出厂值。`None` = 有 key 不在 Config 里（写错名字）。
+fn default_hotkey_patch(keys: &[&str]) -> Option<Map<String, Value>> {
+    let defaults = config_to_map(&config::Config::default());
+    let mut patch = Map::new();
+    for key in keys {
+        patch.insert((*key).to_string(), defaults.get(*key)?.clone());
+    }
+    Some(patch)
+}
+
+/// 恢复某一组快捷键的出厂默认值（ADR-092）。
+///
+/// 复用 `save_tool_config`：校验、跨模块查重、落盘、重新注册都在那里，
+/// 默认值也不会绕过「组合已被占用」的提示。
+fn reset_hotkeys(app: &AppHandle, keys: &[&str]) -> SaveOut {
+    let Some(patch) = default_hotkey_patch(keys) else {
+        return SaveOut {
+            ok: false,
+            message: t!("error.hotkey.invalidValue").into_owned(),
+            warnings: vec![],
+        };
+    };
+    save_tool_config("general".to_string(), patch, app.clone())
+}
+
+#[tauri::command]
+fn reset_hotkeys_translate(app: AppHandle) -> SaveOut {
+    reset_hotkeys(&app, &["hotkey", "hotkey_input"])
+}
+
+#[tauri::command]
+fn reset_hotkeys_screenshot(app: AppHandle) -> SaveOut {
+    reset_hotkeys(&app, &["hotkey_screenshot", "hotkey_fullscreen"])
+}
+
+#[tauri::command]
+fn reset_hotkeys_download(app: AppHandle) -> SaveOut {
+    reset_hotkeys(&app, &["hotkey_download"])
+}
+
+/// 恢复全部出厂配置并重启（ADR-092）。
+///
+/// 只重写 config.json：下载历史、截图目录里的文件都不动。重启让下载引擎、
+/// 互传服务、语言、主题、托盘全部按初始配置重新初始化，避免留下半套旧状态。
+#[tauri::command]
+fn reset_all_config(app: AppHandle) -> SaveOut {
+    if let Err(e) = config::save(&config::Config::default()) {
+        return SaveOut {
+            ok: false,
+            message: e,
+            warnings: vec![],
+        };
+    }
+    dlog::dlog("config: 已恢复默认配置，准备重启");
+    // 先让 IPC 回包送到前端，再退出重启；用户已经在弹框里确认过这一步。
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        crate::tray::restart_app(&handle);
+    });
+    SaveOut {
+        ok: true,
+        message: t!("status.configReset").into_owned(),
+        warnings: vec![],
+    }
+}
+
 /// 「测试一下」：用固定文本真跑一次翻译，返回译文与耗时。
 ///
 /// 用固定文本而不是让用户自己输入，是为了让"能用/不能用"这件事有个确定的判据；
@@ -3033,6 +3100,10 @@ fn main() {
             get_tool_config,
             save_tool_config,
             set_tool_enabled,
+            reset_hotkeys_translate,
+            reset_hotkeys_screenshot,
+            reset_hotkeys_download,
+            reset_all_config,
             test_translate,
             test_engine_profile,
             open_config_dir,
@@ -3305,7 +3376,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_values, config_to_map, is_hotkey_key, probe_text, tool_value_keys};
+    use super::{
+        apply_values, config_to_map, default_hotkey_patch, is_hotkey_key, probe_text,
+        tool_value_keys,
+    };
     use crate::config::Config;
     use serde_json::json;
 
@@ -3399,6 +3473,18 @@ mod tests {
         assert!(is_hotkey_key("hotkey_screenshot"));
         assert!(is_hotkey_key("hotkey_download"));
         assert!(!is_hotkey_key("appid"));
+    }
+
+    /// 分组「恢复默认」提交的必须是出厂热键对象，未知 key 直接失败（ADR-092）。
+    #[test]
+    fn default_hotkey_patch_uses_factory_values() {
+        let patch = default_hotkey_patch(&["hotkey", "hotkey_input"]).unwrap();
+        assert_eq!(patch.len(), 2);
+        assert_eq!(patch["hotkey"]["modifiers"], json!(["Ctrl", "Alt"]));
+        assert_eq!(patch["hotkey"]["key"], "T");
+        assert_eq!(patch["hotkey"]["match"], "exact");
+        assert_eq!(patch["hotkey_input"]["key"], "I");
+        assert!(default_hotkey_patch(&["not_a_hotkey"]).is_none());
     }
 
     /// `config_to_map` 必须包含所有工具引用到的 key，否则前端读不到值。

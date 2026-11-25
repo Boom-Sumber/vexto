@@ -20,6 +20,7 @@ const {
   banner,
   loading,
   dirtyModal,
+  dangerModal,
   modalText,
 } = s;
 
@@ -181,6 +182,21 @@ onMounted(async () => {
           </button>
           <button id="mSave" class="btn btn-primary" type="button" @click="s.resolveDirty('save')">
             {{ $t("settings.save") }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="dangerModal" id="danger-modal" class="modal">
+      <div class="modal-card">
+        <h2>{{ $t("settings.resetAllTitle") }}</h2>
+        <p class="modal-text">{{ $t("settings.resetAllConfirm") }}</p>
+        <div class="modal-acts">
+          <button id="dCancel" class="btn" type="button" @click="s.resolveDanger(false)">
+            {{ $t("common.cancel") }}
+          </button>
+          <button id="dConfirm" class="btn danger" type="button" @click="s.resolveDanger(true)">
+            {{ $t("settings.resetAllConfirmBtn") }}
           </button>
         </div>
       </div>

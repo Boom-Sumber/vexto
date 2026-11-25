@@ -128,11 +128,11 @@ mod tests {
         }
     }
 
-    /// 默认关闭（ADR-040）。
+    /// 出厂默认启用（ADR-092，取代 ADR-040 的默认关闭）。
     #[test]
-    fn disabled_by_default() {
+    fn enabled_by_default() {
         let c = crate::config::Config::default();
-        assert!(!c.enable_screenshot);
+        assert!(c.enable_screenshot);
         assert_eq!(c.hotkey_screenshot.compact(), "Ctrl+Alt+A");
     }
 

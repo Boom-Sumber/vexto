@@ -125,6 +125,7 @@ fn sections_for(cfg: &config::Config) -> Vec<Section> {
             Field::buttons(&[
                 ("open_config_file", "打开配置文件"),
                 ("open_config_dir", "打开配置目录"),
+                ("reset_all_config", "恢复默认配置"),
             ]),
         ],
     );
@@ -140,15 +141,18 @@ fn sections_for(cfg: &config::Config) -> Vec<Section> {
         hotkeys.push(Field::group("hotkeysTranslate", "翻译"));
         hotkeys.push(Field::hotkey("hotkey", "划词翻译"));
         hotkeys.push(Field::hotkey("hotkey_input", "输入翻译"));
+        hotkeys.push(Field::buttons(&[("reset_hotkeys_translate", "恢复默认")]));
     }
     if cfg.enable_screenshot {
         hotkeys.push(Field::group("hotkeysScreenshot", "截图"));
         hotkeys.push(Field::hotkey("hotkey_screenshot", "区域截图"));
         hotkeys.push(Field::hotkey("hotkey_fullscreen", "全屏截图"));
+        hotkeys.push(Field::buttons(&[("reset_hotkeys_screenshot", "恢复默认")]));
     }
     if cfg.enable_download {
         hotkeys.push(Field::group("hotkeysDownload", "下载"));
         hotkeys.push(Field::hotkey("hotkey_download", "打开新建下载任务"));
+        hotkeys.push(Field::buttons(&[("reset_hotkeys_download", "恢复默认")]));
     }
 
     vec![general, tools, Section::new("hotkeys", "快捷键", hotkeys)]
@@ -200,11 +204,6 @@ mod tests {
     fn hotkeys_follow_enabled_tools() {
         let mut cfg = config::Config::default();
         let keys = hotkey_keys(&sections_for(&cfg));
-        assert_eq!(keys, vec!["hotkey", "hotkey_input"]);
-
-        cfg.enable_screenshot = true;
-        cfg.enable_download = true;
-        let keys = hotkey_keys(&sections_for(&cfg));
         assert_eq!(
             keys,
             vec![
@@ -213,14 +212,17 @@ mod tests {
                 "hotkey_screenshot",
                 "hotkey_fullscreen",
                 "hotkey_download"
-            ]
+            ],
+            "四个功能工具出厂全部启用（ADR-092）"
         );
 
-        cfg.enable_translate = false;
+        cfg.enable_screenshot = false;
+        cfg.enable_download = false;
         let keys = hotkey_keys(&sections_for(&cfg));
-        assert!(!keys.contains(&"hotkey"));
-        assert!(!keys.contains(&"hotkey_input"));
-        assert_eq!(keys.len(), 3);
+        assert_eq!(keys, vec!["hotkey", "hotkey_input"]);
+
+        cfg.enable_translate = false;
+        assert!(hotkey_keys(&sections_for(&cfg)).is_empty());
     }
 
     #[test]
@@ -238,6 +240,48 @@ mod tests {
             })
             .collect();
         assert!(!groups.contains(&"翻译"));
-        assert!(groups.is_empty(), "没有启用工具时不该有分组：{groups:?}");
+        assert_eq!(groups, vec!["截图", "下载"]);
+    }
+
+    /// 每组热键末尾要有「恢复默认」按钮（ADR-092）。
+    #[test]
+    fn hotkey_groups_end_with_reset_buttons() {
+        let s = sections_for(&config::Config::default());
+        let hot = s.iter().find(|sec| sec.id == "hotkeys").unwrap();
+        let actions: Vec<&str> = hot
+            .fields
+            .iter()
+            .filter_map(|f| match &f.kind {
+                crate::tools::FieldKind::ButtonRow { actions } => Some(actions[0].0),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            actions,
+            vec![
+                "reset_hotkeys_translate",
+                "reset_hotkeys_screenshot",
+                "reset_hotkeys_download"
+            ]
+        );
+    }
+
+    /// 「配置与日志」分类里要有全量恢复按钮（ADR-092）。
+    #[test]
+    fn config_section_has_reset_all_button() {
+        let s = sections_for(&config::Config::default());
+        let general = s.iter().find(|sec| sec.id == "general").unwrap();
+        let actions: Vec<&str> = general
+            .fields
+            .iter()
+            .flat_map(|f| match &f.kind {
+                crate::tools::FieldKind::ButtonRow { actions } => actions.iter().map(|a| a.0).collect(),
+                _ => Vec::new(),
+            })
+            .collect();
+        assert_eq!(
+            actions,
+            vec!["open_config_file", "open_config_dir", "reset_all_config"]
+        );
     }
 }

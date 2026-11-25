@@ -639,11 +639,11 @@ impl Default for Config {
             hotkey_screenshot: d_hotkey_screenshot(),
             hotkey_fullscreen: d_hotkey_fullscreen(),
             enable_translate: true,
-            enable_download: false,
-            enable_transfer: false,
+            enable_download: true,
+            enable_transfer: true,
             enable_ocr: false,
             ocr_engine: d_ocr_engine(),
-            enable_screenshot: false,
+            enable_screenshot: true,
             screenshot_dir: String::new(),
             screenshot_name_rule: d_screenshot_name_rule(),
             screenshot_after_action: d_shot_after(),
@@ -1695,6 +1695,16 @@ mod tests {
         assert!(!Config::default().lite_mode);
         let c2: Config = serde_json::from_str(r#"{"lite_mode":true}"#).unwrap();
         assert!(c2.lite_mode);
+    }
+
+    /// 四个功能工具出厂全部启用（ADR-092）。
+    #[test]
+    fn factory_defaults_enable_all_tools() {
+        let c = Config::default();
+        assert!(c.enable_translate);
+        assert!(c.enable_screenshot);
+        assert!(c.enable_download);
+        assert!(c.enable_transfer);
     }
 
     /// 会话 81：老配置缺省时左键 = 打开设置页；命名规则 = 默认时间格式。
