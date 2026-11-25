@@ -2072,6 +2072,50 @@ fn about_open_link(kind: String) -> Result<(), String> {
     tools::about::open_link(&kind)
 }
 
+/// Vexto Connect 的安装入口（ADR-094）。
+const EXTENSION_EDGE_URL: &str =
+    "https://microsoftedge.microsoft.com/addons/detail/vexto-connect/cigeilefcndlknedmmadpefnhknjicgb";
+const EXTENSION_FIREFOX_URL: &str = "https://addons.mozilla.org/firefox/addon/vexto-connect/";
+const EXTENSION_CHROME_ZIP_URL: &str =
+    "https://github.com/Ruxsmiles/vexto-connect/releases/latest/download/vexto-connect-chrome.zip";
+
+fn open_extension(url: &str, ok_message: String) -> SimpleOut {
+    match crate::update::open_url(url) {
+        Ok(()) => SimpleOut {
+            ok: true,
+            message: ok_message,
+        },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+#[tauri::command]
+fn open_extension_edge() -> SimpleOut {
+    open_extension(
+        EXTENSION_EDGE_URL,
+        t!("status.extensionPageOpened").into_owned(),
+    )
+}
+
+#[tauri::command]
+fn open_extension_firefox() -> SimpleOut {
+    open_extension(
+        EXTENSION_FIREFOX_URL,
+        t!("status.extensionPageOpened").into_owned(),
+    )
+}
+
+#[tauri::command]
+fn download_extension_chrome() -> SimpleOut {
+    open_extension(
+        EXTENSION_CHROME_ZIP_URL,
+        t!("status.extensionZipStarted").into_owned(),
+    )
+}
+
 /// 复制诊断信息：版本 / 系统 / 配置与日志路径 / 更新状态，不含凭据。
 #[tauri::command]
 fn about_diagnostics() -> String {
@@ -3111,6 +3155,9 @@ fn main() {
             take_pending_tool,
             about_info,
             about_open_link,
+            open_extension_edge,
+            open_extension_firefox,
+            download_extension_chrome,
             about_diagnostics,
             config_path,
             get_ui_locale,
@@ -3378,7 +3425,7 @@ fn main() {
 mod tests {
     use super::{
         apply_values, config_to_map, default_hotkey_patch, is_hotkey_key, probe_text,
-        tool_value_keys,
+        tool_value_keys, EXTENSION_CHROME_ZIP_URL, EXTENSION_EDGE_URL, EXTENSION_FIREFOX_URL,
     };
     use crate::config::Config;
     use serde_json::json;
@@ -3473,6 +3520,18 @@ mod tests {
         assert!(is_hotkey_key("hotkey_screenshot"));
         assert!(is_hotkey_key("hotkey_download"));
         assert!(!is_hotkey_key("appid"));
+    }
+
+    /// 扩展安装入口必须指向 HTTPS，且 Firefox 链接不带语言前缀（跟随浏览器语言）。
+    #[test]
+    fn extension_links_point_to_marketplaces() {
+        assert!(EXTENSION_EDGE_URL
+            .starts_with("https://microsoftedge.microsoft.com/addons/detail/vexto-connect/"));
+        assert!(EXTENSION_FIREFOX_URL.starts_with("https://addons.mozilla.org/"));
+        assert!(!EXTENSION_FIREFOX_URL.contains("/zh-CN/"));
+        assert!(EXTENSION_FIREFOX_URL.contains("/firefox/addon/vexto-connect/"));
+        assert!(EXTENSION_CHROME_ZIP_URL
+            .ends_with("/releases/latest/download/vexto-connect-chrome.zip"));
     }
 
     /// 分组「恢复默认」提交的必须是出厂热键对象，未知 key 直接失败（ADR-092）。

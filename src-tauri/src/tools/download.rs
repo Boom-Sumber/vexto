@@ -245,6 +245,15 @@ impl Tool for Download {
                         .help("启动一个只监听 127.0.0.1 的接口，供 Vexto Connect 扩展把网页下载交过来。"),
                     Field::number_unit("extension_bridge_port", "插件端口", 1024, 65535, ""),
                     Field::password("extension_bridge_secret", "插件密钥"),
+                    Field::buttons(&[
+                        ("open_extension_edge", "Edge 扩展"),
+                        ("open_extension_firefox", "Firefox 扩展"),
+                        ("download_extension_chrome", "Chrome 离线包"),
+                    ]),
+                    Field::note(
+                        "extensionInstallNote",
+                        "Chrome 暂无商店版本：先点「Chrome 离线包」下载并解压，在 chrome://extensions 开启开发者模式，再点「加载已解压的扩展程序」。",
+                    ),
                     Field::group("engine", "下载引擎"),
                     Field::number_unit("rpc_port", "RPC 端口", 1024, 65535, "")
                         .help("aria2 的控制接口，只绑 127.0.0.1；被占用时会自动换一个可用端口。"),
@@ -307,5 +316,35 @@ mod tests {
             .find(|f| f.key == "github_token")
             .expect("github_token 字段");
         assert!(matches!(f.kind, FieldKind::Password));
+    }
+
+    /// 浏览器插件接管分组要有三个安装入口，并说明 Chrome 的离线装法（ADR-094）。
+    #[test]
+    fn extension_group_has_install_entries() {
+        let sections = Download.sections();
+        let fields: Vec<&crate::tools::Field> =
+            sections.iter().flat_map(|s| s.fields.iter()).collect();
+        let actions: Vec<&str> = fields
+            .iter()
+            .filter_map(|f| match &f.kind {
+                FieldKind::ButtonRow { actions } => {
+                    Some(actions.iter().map(|a| a.0).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        for want in [
+            "open_extension_edge",
+            "open_extension_firefox",
+            "download_extension_chrome",
+        ] {
+            assert!(actions.contains(&want), "缺少扩展安装入口 {want}");
+        }
+        let note = fields
+            .iter()
+            .find(|f| f.key == "extensionInstallNote")
+            .expect("Chrome 离线安装说明不能少");
+        assert!(matches!(note.kind, FieldKind::Note { .. }));
     }
 }
