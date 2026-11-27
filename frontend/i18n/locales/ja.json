@@ -192,8 +192,8 @@
     "failed": "翻訳に失敗しました"
   },
   "main": {
-    "windowTitle": "Vexto ダウンロード",
-    "titleTasks": "タスク一覧",
+    "windowTitle": "Vexto ツールボックス",
+    "titleTasks": "Vexto ツールボックス",
     "titleTransfer": "LAN 転送",
     "titleTransferProgress": "転送",
     "titleAll": "すべて",

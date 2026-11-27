@@ -484,13 +484,14 @@ fn tool_value_keys(tool_id: &str) -> Vec<&'static str> {
 
 /// 哪些 key 是热键字段，需要格式校验 + 整体重新注册。
 /// `hotkey_ocr` / `hotkey_screenshot` 只在工具启用时注册。
-const HOTKEY_KEYS: [&str; 6] = [
+const HOTKEY_KEYS: [&str; 7] = [
     "hotkey",
     "hotkey_input",
     "hotkey_download",
     "hotkey_ocr",
     "hotkey_screenshot",
     "hotkey_fullscreen",
+    "hotkey_toolbox",
 ];
 
 fn is_hotkey_key(k: &str) -> bool {
@@ -511,6 +512,7 @@ fn hotkey_label(key: &str) -> String {
         "hotkey_input" => t!("schema.field.general.hotkey_input.label").into_owned(),
         "hotkey_screenshot" => t!("schema.field.general.hotkey_screenshot.label").into_owned(),
         "hotkey_fullscreen" => t!("schema.field.general.hotkey_fullscreen.label").into_owned(),
+        "hotkey_toolbox" => t!("schema.field.general.hotkey_toolbox.label").into_owned(),
         "hotkey_download" => t!("schema.field.general.hotkey_download.label").into_owned(),
         other => other.to_string(),
     }
@@ -537,6 +539,8 @@ fn duplicate_hotkey_message(patch: &Map<String, Value>) -> Option<String> {
             .unwrap_or_else(|| fallback.clone());
         bindings.push((key, value));
     };
+    // 工具箱热键不属于任何工具，始终参与查重
+    push("hotkey_toolbox", &cfg.hotkey_toolbox);
     if cfg.enable_translate {
         push("hotkey", &cfg.hotkey);
         push("hotkey_input", &cfg.hotkey_input);
@@ -568,6 +572,12 @@ fn duplicate_hotkey_message(patch: &Map<String, Value>) -> Option<String> {
 /// 下载热键只在工具启用时注册：停用后按了不该有反应（任务书 §S3.8b 验收 9.3.2）。
 fn register_hotkeys(app: &AppHandle, cfg: &config::Config) -> Vec<String> {
     let mut list: Vec<hotkey::Binding> = Vec::new();
+    // 工具箱不挂在任何工具下，始终注册
+    list.push((
+        "工具箱热键",
+        cfg.hotkey_toolbox.clone(),
+        Box::new(|a: &AppHandle| crate::open_download_window(a)),
+    ));
     // 翻译工具停用后，划词 / 输入翻译热键不应继续占用系统组合（工具管理统一控制）。
     if cfg.enable_translate {
         list.push((
@@ -1987,6 +1997,11 @@ fn reset_hotkeys_download(app: AppHandle) -> SaveOut {
     reset_hotkeys(&app, &["hotkey_download"])
 }
 
+#[tauri::command]
+fn reset_hotkeys_toolbox(app: AppHandle) -> SaveOut {
+    reset_hotkeys(&app, &["hotkey_toolbox"])
+}
+
 /// 恢复全部出厂配置并重启（ADR-092）。
 ///
 /// 只重写 config.json：下载历史、截图目录里的文件都不动。重启让下载引擎、
@@ -3231,6 +3246,7 @@ fn main() {
             reset_hotkeys_translate,
             reset_hotkeys_screenshot,
             reset_hotkeys_download,
+            reset_hotkeys_toolbox,
             reset_all_config,
             test_translate,
             test_engine_profile,

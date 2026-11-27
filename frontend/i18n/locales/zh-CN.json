@@ -192,8 +192,8 @@
     "failed": "翻译失败"
   },
   "main": {
-    "windowTitle": "Vexto 下载",
-    "titleTasks": "任务列表",
+    "windowTitle": "Vexto 工具箱",
+    "titleTasks": "Vexto 工具箱",
     "titleTransfer": "局域网互传",
     "titleTransferProgress": "传输",
     "titleAll": "全部",

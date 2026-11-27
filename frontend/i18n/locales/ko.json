@@ -192,8 +192,8 @@
     "failed": "번역 실패"
   },
   "main": {
-    "windowTitle": "Vexto 다운로드",
-    "titleTasks": "작업 목록",
+    "windowTitle": "Vexto 도구함",
+    "titleTasks": "Vexto 도구함",
     "titleTransfer": "LAN 전송",
     "titleTransferProgress": "전송",
     "titleAll": "모두",

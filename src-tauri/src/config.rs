@@ -181,6 +181,9 @@ pub struct Config {
     /// 输入翻译热键。
     #[serde(default = "d_hotkey_input")]
     pub hotkey_input: HotkeyBinding,
+    /// 打开 Vexto 工具箱（主窗口）。
+    #[serde(default = "d_hotkey_toolbox")]
+    pub hotkey_toolbox: HotkeyBinding,
 
     // ---- 模块开关 ----
     #[serde(default = "d_true")]
@@ -504,6 +507,9 @@ fn d_hotkey_screenshot() -> HotkeyBinding {
 fn d_hotkey_fullscreen() -> HotkeyBinding {
     HotkeyBinding::from_legacy("Ctrl+PrintScreen")
 }
+fn d_hotkey_toolbox() -> HotkeyBinding {
+    HotkeyBinding::from_legacy("Ctrl+Alt+V")
+}
 /// 默认截图文件名规则（会话 81）。`$...$` 是格式占位，其余部分是前缀 / 后缀。
 pub const DEFAULT_SCREENSHOT_NAME_RULE: &str = "Vexto_$yyyyMMdd_HHmmss$.png";
 
@@ -642,6 +648,7 @@ impl Default for Config {
             hotkey_input: d_hotkey_input(),
             hotkey_screenshot: d_hotkey_screenshot(),
             hotkey_fullscreen: d_hotkey_fullscreen(),
+            hotkey_toolbox: d_hotkey_toolbox(),
             enable_translate: true,
             enable_download: true,
             enable_transfer: true,

@@ -137,6 +137,9 @@ fn sections_for(cfg: &config::Config) -> Vec<Section> {
     );
 
     let mut hotkeys = Vec::new();
+    hotkeys.push(Field::group("hotkeysToolbox", "工具箱"));
+    hotkeys.push(Field::hotkey("hotkey_toolbox", "打开 Vexto 工具箱"));
+    hotkeys.push(Field::buttons(&[("reset_hotkeys_toolbox", "恢复默认")]));
     if cfg.enable_translate {
         hotkeys.push(Field::group("hotkeysTranslate", "翻译"));
         hotkeys.push(Field::hotkey("hotkey", "划词翻译"));
@@ -207,6 +210,7 @@ mod tests {
         assert_eq!(
             keys,
             vec![
+                "hotkey_toolbox",
                 "hotkey",
                 "hotkey_input",
                 "hotkey_screenshot",
@@ -219,10 +223,10 @@ mod tests {
         cfg.enable_screenshot = false;
         cfg.enable_download = false;
         let keys = hotkey_keys(&sections_for(&cfg));
-        assert_eq!(keys, vec!["hotkey", "hotkey_input"]);
+        assert_eq!(keys, vec!["hotkey_toolbox", "hotkey", "hotkey_input"]);
 
         cfg.enable_translate = false;
-        assert!(hotkey_keys(&sections_for(&cfg)).is_empty());
+        assert_eq!(hotkey_keys(&sections_for(&cfg)), vec!["hotkey_toolbox"]);
     }
 
     #[test]
@@ -240,7 +244,7 @@ mod tests {
             })
             .collect();
         assert!(!groups.contains(&"翻译"));
-        assert_eq!(groups, vec!["截图", "下载"]);
+        assert_eq!(groups, vec!["工具箱", "截图", "下载"]);
     }
 
     /// 每组热键末尾要有「恢复默认」按钮（ADR-092）。
@@ -259,6 +263,7 @@ mod tests {
         assert_eq!(
             actions,
             vec![
+                "reset_hotkeys_toolbox",
                 "reset_hotkeys_translate",
                 "reset_hotkeys_screenshot",
                 "reset_hotkeys_download"

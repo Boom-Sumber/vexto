@@ -192,8 +192,8 @@
     "failed": "Error de traducción"
   },
   "main": {
-    "windowTitle": "Descargas de Vexto",
-    "titleTasks": "Lista de tareas",
+    "windowTitle": "Caja de herramientas de Vexto",
+    "titleTasks": "Caja de herramientas de Vexto",
     "titleTransfer": "Transferencia LAN",
     "titleTransferProgress": "Transferencia",
     "titleAll": "Todo",

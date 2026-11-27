@@ -382,8 +382,8 @@
 .sg-meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px 9px;
+  gap: 3px;
+  padding: 10px 12px 12px;
   border-top: 1px solid var(--border-subtle);
 }
 .sg-name {
@@ -391,13 +391,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: 600;
+  line-height: var(--lh-tight);
 }
 .sg-sub {
   color: var(--text-dim);
   font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
   font-variant-numeric: tabular-nums;
+}
+
+.sg-type {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  pointer-events: none;
 }
 
 /* 侧栏底部：速度脚栏（demo 口径，等宽数字） */

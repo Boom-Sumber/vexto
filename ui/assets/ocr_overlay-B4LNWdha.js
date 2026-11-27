@@ -1,1 +1,0 @@
-import{n as e,t}from"./app-DRTLD6Wc.js";import"./theme-BMZEycxZ.js";import{t as n}from"./App-Kotb4ula.js";import"./Icon-IH9qWE9H.js";await e({reloadOnChange:!0}),document.body.dataset.purpose=`ocr`,t(n).mount(`#app`);

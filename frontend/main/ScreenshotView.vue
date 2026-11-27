@@ -59,6 +59,11 @@ function fmtSize(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function extOf(name) {
+  const i = String(name).lastIndexOf(".");
+  return i >= 0 ? String(name).slice(i + 1).toUpperCase() : "";
+}
+
 async function preview(item) {
   try {
     const r = await invoke("screenshot_gallery_preview", { path: item.path });
@@ -157,6 +162,7 @@ onBeforeUnmount(() => {
             loading="lazy"
           />
           <span v-else class="sg-ph"><Icon name="camera" :size="28" /></span>
+          <span class="sg-type">{{ extOf(item.name) }}</span>
 
           <div class="sg-acts">
             <button class="sg-act" type="button" :title="$t('main.shPin')" @click.stop="pin(item)">
