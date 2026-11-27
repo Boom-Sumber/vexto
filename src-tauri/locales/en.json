@@ -148,6 +148,7 @@
   "error.translate.unsupportedTo": "%{engine} does not support target language \"%{lang}\"; choose another in Settings",
   "error.translate.upstream": "Engine returned %{code}: %{msg}",
   "error.unknownTool": "Unknown tool \"%{id}\"",
+  "error.tool.lastOne": "Keep at least one tool enabled",
   "error.youdao.101": "Missing required parameters: app ID / secret may be incomplete",
   "error.youdao.102": "Unsupported language: Youdao codes differ from Baidu (Japanese is ja, Korean is ko)",
   "error.youdao.103": "Text is too long: 5000 characters per request",

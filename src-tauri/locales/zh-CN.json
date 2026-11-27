@@ -148,6 +148,7 @@
   "error.translate.unsupportedTo": "%{engine} 不支持目标语言「%{lang}」，请在设置里换一个",
   "error.translate.upstream": "引擎返回 %{code}：%{msg}",
   "error.unknownTool": "未知的工具「%{id}」",
+  "error.tool.lastOne": "至少要保留一个启用的工具",
   "error.youdao.101": "缺少必填参数：应用 ID / 密钥可能没填全",
   "error.youdao.102": "不支持的语言类型：语言的**有道代码**和百度的不一样（日语是 ja、韩语是 ko）",
   "error.youdao.103": "翻译文本过长：单次上限 5000 字符",

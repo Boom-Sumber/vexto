@@ -30,21 +30,6 @@
   border-right: 1px solid var(--border-default);
 }
 
-/* 品牌磁贴（与设置页同款）：Vexto.svg 徽标 */
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 2px 8px var(--sp-4);
-}
-.brand .logo { width: 30px; height: 30px; flex: none; }
-.brand .brand-name {
-  font-size: var(--fs-base);
-  font-weight: 700;
-  letter-spacing: .04em;
-  color: var(--text-primary);
-}
-
 .nav {
   display: flex;
   flex-direction: column;

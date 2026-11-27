@@ -345,6 +345,15 @@ export function useSettings() {
     const first =
       wanted && usable.some((x) => x.id === wanted) ? wanted : usable[0]?.id;
     if (first) await selectTool(first);
+    let wantedSection = null;
+    try {
+      wantedSection = await invoke("take_pending_section");
+    } catch {
+      /* 没有就算了 */
+    }
+    if (wantedSection && sections.value.some((s) => s.id === wantedSection)) {
+      tabId.value = wantedSection;
+    }
     loading.value = false;
 
     window.__beforeClose = async () => {
@@ -355,9 +364,14 @@ export function useSettings() {
 
     try {
       unlistenGoto = await listen("settings-goto", async (ev) => {
-        const id = ev && ev.payload;
+        const p = ev && ev.payload;
+        const id = typeof p === "string" ? p : p && p.tool;
+        const section = p && typeof p === "object" ? p.section : null;
         if (id && tools.value.some((x) => x.id === id)) {
           await selectTool(id, { keepBanner: true });
+          if (section && sections.value.some((s) => s.id === section)) {
+            tabId.value = section;
+          }
         }
       });
     } catch {

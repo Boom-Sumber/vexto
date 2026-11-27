@@ -737,11 +737,16 @@ fn clamp_keep_topleft(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> (i32, 
 /// 为什么用「取走」而不是「读取」：跳转只该发生一次，用户之后自己切到别的工具
 /// 不该被拉回去。
 static PENDING_TOOL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// 与 `PENDING_TOOL` 配套：要落在哪个分区（如 `general` 的 `tools`）。
+static PENDING_SECTION: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// 打开设置窗口并跳到指定工具。**必须在主线程调用。**
 pub fn open_settings_at(app: &AppHandle, tool_id: &str) {
     if let Ok(mut g) = PENDING_TOOL.lock() {
         *g = Some(tool_id.to_string());
+    }
+    if let Ok(mut g) = PENDING_SECTION.lock() {
+        *g = None;
     }
     let existed = app.get_webview_window(SETTINGS_LABEL).is_some();
     open_settings(app);
@@ -750,12 +755,51 @@ pub fn open_settings_at(app: &AppHandle, tool_id: &str) {
         if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
             let _ = w.emit("settings-goto", tool_id);
         }
+        // 事件已送达，清掉待跳转值，避免下次新建窗口时误跳。
+        if let Ok(mut g) = PENDING_TOOL.lock() {
+            *g = None;
+        }
+        if let Ok(mut g) = PENDING_SECTION.lock() {
+            *g = None;
+        }
+    }
+}
+
+/// 打开设置并同时落到工具下的某个分区（例如「工具管理」）。
+/// **必须在主线程调用。**
+pub fn open_settings_at_section(app: &AppHandle, tool_id: &str, section_id: &str) {
+    if let Ok(mut g) = PENDING_TOOL.lock() {
+        *g = Some(tool_id.to_string());
+    }
+    if let Ok(mut g) = PENDING_SECTION.lock() {
+        *g = Some(section_id.to_string());
+    }
+    let existed = app.get_webview_window(SETTINGS_LABEL).is_some();
+    open_settings(app);
+    if existed {
+        if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
+            let _ = w.emit(
+                "settings-goto",
+                serde_json::json!({ "tool": tool_id, "section": section_id }),
+            );
+        }
+        if let Ok(mut g) = PENDING_TOOL.lock() {
+            *g = None;
+        }
+        if let Ok(mut g) = PENDING_SECTION.lock() {
+            *g = None;
+        }
     }
 }
 
 /// 前端取走待跳转的工具（可能为 `None`）。
 pub fn take_pending_tool() -> Option<String> {
     PENDING_TOOL.lock().ok().and_then(|mut g| g.take())
+}
+
+/// 前端取走待跳转的分区（可能为 `None`）。
+pub fn take_pending_section() -> Option<String> {
+    PENDING_SECTION.lock().ok().and_then(|mut g| g.take())
 }
 
 /// 打开设置窗口。已存在则聚焦，不重复创建。**必须在主线程调用。**

@@ -62,6 +62,7 @@ const speedText = computed(() =>
 
 const title = computed(() => {
   if (transfer.tpOpen.value) return t("main.titleTransferProgress");
+  if (!tools.visible.value.length) return t("main.noToolsTitle");
   if (view.value === "transfer") return t("main.titleTransfer");
   if (view.value === "translate") return t("main.navTranslate");
   if (view.value === "screenshot") return t("main.navScreenshot");
@@ -89,6 +90,12 @@ function switchTo(next) {
 function openSettings() {
   window.__TAURI__.core
     .invoke("open_settings_cmd")
+    .catch((e) => toast.show(String(e && e.message ? e.message : e), { kind: "error" }));
+}
+
+function openToolSettings() {
+  window.__TAURI__.core
+    .invoke("open_tool_settings")
     .catch((e) => toast.show(String(e && e.message ? e.message : e), { kind: "error" }));
 }
 
@@ -136,11 +143,6 @@ onBeforeUnmount(() => {
 
     <div class="app">
       <aside class="side">
-        <div class="brand">
-          <span class="logo logo-badge" aria-hidden="true"></span>
-          <span class="brand-name">Vexto</span>
-        </div>
-
         <nav class="nav">
           <button
             v-for="tool in tools.visible.value"
@@ -168,10 +170,27 @@ onBeforeUnmount(() => {
         </div>
       </aside>
 
-      <DownloadList v-show="view === 'download'" />
-      <TransferView v-show="view === 'transfer'" :sub="sub" @update:sub="setSub" />
-      <TranslateView v-show="view === 'translate'" />
-      <ScreenshotView v-show="view === 'screenshot'" />
+      <div v-if="!tools.visible.value.length" id="noTools" class="main">
+        <header class="head">
+          <h1>{{ $t("main.noToolsTitle") }}</h1>
+        </header>
+        <div class="page-body">
+          <div class="empty no-tools">
+            <span class="empty-ico"><Icon name="gear" :size="30" /></span>
+            <span>{{ $t("main.noToolsBody") }}</span>
+            <button class="btn btn-primary" type="button" @click="openToolSettings">
+              {{ $t("main.noToolsAction") }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <template v-else>
+        <DownloadList v-show="view === 'download'" />
+        <TransferView v-show="view === 'transfer'" :sub="sub" @update:sub="setSub" />
+        <TranslateView v-show="view === 'translate'" />
+        <ScreenshotView v-show="view === 'screenshot'" />
+      </template>
     </div>
 
     <TransferProgress />
@@ -179,3 +198,9 @@ onBeforeUnmount(() => {
     <ToastHost />
   </div>
 </template>
+
+<style scoped>
+.no-tools {
+  flex: 1 1 auto;
+}
+</style>

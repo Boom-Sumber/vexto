@@ -1914,6 +1914,21 @@ fn set_tool_enabled(tool_id: String, enabled: bool, app: AppHandle) -> SaveOut {
             }
         }
     };
+    if !enabled {
+        // 四个功能工具至少留一个：全停用后工具箱没有任何可用入口。
+        // 必须在 set_enabled 之前判断——它会直接落盘。
+        let remaining = tools::registry::all()
+            .iter()
+            .filter(|t| t.switchable() && t.id() != tool_id.as_str() && t.enabled())
+            .count();
+        if remaining == 0 {
+            return SaveOut {
+                ok: false,
+                message: t!("error.tool.lastOne").into_owned(),
+                warnings: vec![],
+            };
+        }
+    }
     if let Err(e) = tool.set_enabled(enabled) {
         return SaveOut {
             ok: false,
@@ -2223,6 +2238,11 @@ fn take_pending_tool() -> Option<String> {
     popup::take_pending_tool()
 }
 
+#[tauri::command]
+fn take_pending_section() -> Option<String> {
+    popup::take_pending_section()
+}
+
 /// 打开 `config.json` 本身（用系统默认程序，通常是记事本 / VS Code）。
 ///
 /// 用户 m02639 要求把侧栏那行配置路径移进「常规」，并加一个按钮直接打开文件。
@@ -2410,6 +2430,18 @@ fn open_toolbox(app: AppHandle) {
         std::thread::sleep(std::time::Duration::from_millis(300));
         let a = app.clone();
         let _ = app.run_on_main_thread(move || crate::open_download_window(&a));
+    });
+}
+
+/// 工具箱空态里的「去开启」：打开设置并落在常规 → 工具管理。
+#[tauri::command]
+fn open_tool_settings(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            popup::open_settings_at_section(&a, "general", "tools")
+        });
     });
 }
 
@@ -3263,6 +3295,7 @@ fn main() {
             open_config_dir,
             open_config_file,
             take_pending_tool,
+            take_pending_section,
             about_info,
             about_open_link,
             open_extension_edge,
@@ -3290,6 +3323,7 @@ fn main() {
             open_settings_from_popup,
             open_settings_cmd,
             open_toolbox,
+            open_tool_settings,
             ocr_submit_region,
             ocr_cancel,
             // 截图（S7）

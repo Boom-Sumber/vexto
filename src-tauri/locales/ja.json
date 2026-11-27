@@ -148,6 +148,7 @@
   "error.translate.unsupportedTo": "%{engine} はターゲット言語「%{lang}」に対応していません。設定で変更してください",
   "error.translate.upstream": "エンジンが %{code} を返しました：%{msg}",
   "error.unknownTool": "不明なツール「%{id}」",
+  "error.tool.lastOne": "少なくとも 1 つのツールを有効にしてください",
   "error.youdao.101": "必須パラメータが不足しています。アプリ ID / シークレットが未入力の可能性があります",
   "error.youdao.102": "未対応の言語です。有道の言語コードは百度と異なります（日本語は ja、韓国語は ko）",
   "error.youdao.103": "翻訳テキストが長すぎます。1 回の上限は 5000 文字です",

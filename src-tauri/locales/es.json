@@ -148,6 +148,7 @@
   "error.translate.unsupportedTo": "%{engine} no admite el idioma de destino \"%{lang}\"; elige otro en Ajustes",
   "error.translate.upstream": "El motor devolvió %{code}: %{msg}",
   "error.unknownTool": "Herramienta desconocida \"%{id}\"",
+  "error.tool.lastOne": "Debe quedar al menos una herramienta activada",
   "error.youdao.101": "Faltan parámetros obligatorios: el ID de aplicación / el secreto pueden estar incompletos",
   "error.youdao.102": "Idioma no admitido: los códigos de Youdao difieren de Baidu (japonés es ja, coreano es ko)",
   "error.youdao.103": "El texto es demasiado largo: 5000 caracteres por solicitud",

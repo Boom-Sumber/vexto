@@ -98,10 +98,6 @@ onMounted(async () => {
 
     <div class="app">
       <aside class="sidebar">
-        <div class="brand">
-          <span class="logo logo-badge" aria-hidden="true"></span>
-          <span class="brand-name">Vexto</span>
-        </div>
         <nav id="tools" class="tools">
           <button
             v-for="t in visibleTools"
