@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import Icon from "../components/Icon.vue";
 import Tabs from "../components/Tabs.vue";
 import DropdownSelect from "../components/DropdownSelect.vue";
@@ -10,6 +10,12 @@ const toast = useToast();
 const invoke = window.__TAURI__.core.invoke;
 
 const sub = ref("history");
+
+const source = ref("");
+const result = ref("");
+const direction = ref("");
+const busy = ref(false);
+const sourceEl = ref(null);
 
 const entries = ref([]);
 const engineFilter = ref("");
@@ -147,6 +153,44 @@ function onClear() {
     .catch((err) => toast.show(String(err && err.message ? err.message : err), { kind: "error" }));
 }
 
+async function runTranslate() {
+  const text = source.value.trim();
+  if (!text || busy.value) return;
+  busy.value = true;
+  try {
+    const r = await invoke("translate_text_only", { text });
+    result.value = r.dst || "";
+    direction.value = `${(r.from || "").toUpperCase()} → ${(r.to || "").toUpperCase()}`;
+    // 翻译已写入历史；刷新列表，切过去就能看到
+    await load();
+  } catch (e) {
+    toast.show(String(e && e.message ? e.message : e), { kind: "error" });
+  } finally {
+    busy.value = false;
+  }
+}
+
+function clearInput() {
+  source.value = "";
+  result.value = "";
+  direction.value = "";
+  sourceEl.value?.focus();
+}
+
+async function copyResult() {
+  if (!result.value) return;
+  try {
+    await navigator.clipboard.writeText(result.value);
+    toast.show(t("main.trCopied"), { kind: "success" });
+  } catch (e) {
+    toast.show(String(e && e.message ? e.message : e), { kind: "error" });
+  }
+}
+
+watch(sub, (next) => {
+  if (next === "translate") nextTick(() => sourceEl.value?.focus());
+});
+
 onMounted(load);
 
 onBeforeUnmount(() => {
@@ -240,11 +284,46 @@ onBeforeUnmount(() => {
       <header class="head">
         <h1>{{ $t("main.navTranslate") }}</h1>
       </header>
-      <div class="page-body">
-        <div id="trPaneTranslate" class="empty">
-          <span class="empty-ico"><Icon name="translate" :size="30" /></span>
-          <span>{{ $t("main.trEmptyTranslate") }}</span>
-        </div>
+      <div class="page-body trf-body">
+        <section class="trf-card">
+          <textarea
+            id="trSource"
+            ref="sourceEl"
+            v-model="source"
+            class="trf-input"
+            :placeholder="$t('main.trPlaceholder')"
+            spellcheck="false"
+            @keydown.ctrl.enter.prevent="runTranslate"
+          ></textarea>
+          <div class="trf-bar">
+            <span class="trf-count">{{ $t("main.trCharCount", { n: source.length }) }}</span>
+            <div class="tools">
+              <button class="btn" type="button" :disabled="!source" @click="clearInput">
+                {{ $t("main.trClearInput") }}
+              </button>
+              <button
+                id="trRun"
+                class="btn btn-primary"
+                type="button"
+                :disabled="busy || !source.trim()"
+                @click="runTranslate"
+              >
+                {{ busy ? $t("main.trTranslating") : $t("main.trAction") }}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="trf-card trf-result">
+          <div class="trf-result-head">
+            <span class="trf-dir">{{ direction }}</span>
+            <button class="btn" type="button" :disabled="!result" @click="copyResult">
+              {{ $t("main.trCopy") }}
+            </button>
+          </div>
+          <div v-if="result" id="trResult" class="trf-output">{{ result }}</div>
+          <div v-else class="trf-empty">{{ $t("main.trResultEmpty") }}</div>
+        </section>
       </div>
     </template>
   </div>

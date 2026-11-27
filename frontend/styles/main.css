@@ -223,6 +223,85 @@
   font-size: var(--fs-xs);
 }
 
+/* ── 翻译输入 ─────────────────────────────────────────────────────────── */
+
+.trf-body { gap: var(--sp-4); }
+
+.trf-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+
+.trf-input {
+  width: 100%;
+  min-height: 150px;
+  max-height: 320px;
+  resize: vertical;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  outline: none;
+}
+.trf-input::placeholder { color: var(--text-disabled); }
+
+.trf-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.trf-count {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.trf-result {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+.trf-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.trf-dir {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.trf-output {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-top: var(--sp-3);
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+  line-height: var(--lh-loose);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.trf-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  color: var(--text-disabled);
+  font-size: var(--fs-sm);
+}
+
 /* ── 截图图库 ─────────────────────────────────────────────────────────── */
 
 .sg-total {
