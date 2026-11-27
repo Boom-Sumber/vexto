@@ -2,7 +2,7 @@
 #
 # 用法：
 #   powershell -File scripts\measure-mem.ps1              # 进程已在跑，直接读
-#   powershell -File scripts\measure-mem.ps1 -ExeName lightbox
+#   powershell -File scripts\measure-mem.ps1 -ExeName Vexto
 #
 # 判据见 docs/06-TESTING.md §6.6.2：
 #   冷启动空闲     WS <= 15 MB，WebView2 = 0
@@ -12,9 +12,9 @@
 #   主窗口口径在会话 15 按用户决定「调阈值」校正（原 300/350 是 S1b 拍的、无主窗口实测），
 #   依据见 docs/06-TESTING.md §6.6.2 与 docs/11-DEV-PROGRESS.md 会话 11 / 14 的实测。
 
-param([string]$ExeName = "lightbox")
+param([string]$ExeName = "Vexto")
 
-function Get-LightboxMem {
+function Get-VextoMem {
     $p = Get-Process -Name $ExeName -ErrorAction SilentlyContinue
     if (-not $p) { return "未运行（进程 $ExeName 不存在）" }
     $ws   = [Math]::Round(($p | Measure-Object WorkingSet64 -Sum).Sum / 1MB, 1)
@@ -39,4 +39,4 @@ function Get-LightboxMem {
     }
 }
 
-Get-LightboxMem | Format-List
+Get-VextoMem | Format-List
