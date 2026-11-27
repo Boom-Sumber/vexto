@@ -1118,10 +1118,9 @@ fn schedule_pin_window(app: &AppHandle, label: String) {
 }
 
 /// 钉屏：单窗多图时加入并切换；关掉「单窗口多图」时每张图开一个新窗口。
-#[tauri::command]
-fn pin_add(path: String, app: AppHandle) -> SimpleOut {
+fn pin_path(app: &AppHandle, path: &std::path::Path) -> SimpleOut {
     let single = config::load().pinscreen_single_window;
-    match crate::screenshot::pin::add(std::path::Path::new(&path), single) {
+    match crate::screenshot::pin::add(path, single) {
         Ok((label, _, _)) => {
             if let Some(win) = app.get_webview_window(&label) {
                 let _ = win.show();
@@ -1129,7 +1128,7 @@ fn pin_add(path: String, app: AppHandle) -> SimpleOut {
                 crate::screenshot::pin::fit_window(&win);
                 crate::screenshot::pin::emit_state(&win);
             } else {
-                schedule_pin_window(&app, label);
+                schedule_pin_window(app, label);
             }
             SimpleOut {
                 ok: true,
@@ -1141,6 +1140,11 @@ fn pin_add(path: String, app: AppHandle) -> SimpleOut {
             message: e,
         },
     }
+}
+
+#[tauri::command]
+fn pin_add(path: String, app: AppHandle) -> SimpleOut {
+    pin_path(&app, std::path::Path::new(&path))
 }
 
 /// 钉屏窗口内切换上一张 / 下一张（多窗口模式每窗只有一张，等于无操作）。
@@ -1251,9 +1255,8 @@ fn pin_close(window: tauri::WebviewWindow) {
 }
 
 /// 打开截图预览（暂存 + asset protocol 放行，不发图片字节）。
-#[tauri::command]
-fn preview_open(path: String, app: AppHandle) -> SimpleOut {
-    match crate::screenshot::preview::stage_file(std::path::Path::new(&path)) {
+fn preview_path(app: &AppHandle, path: &std::path::Path) -> SimpleOut {
+    match crate::screenshot::preview::stage_file(path) {
         Ok(staged) => {
             crate::screenshot::preview::set_source(staged);
             if let Some(win) = app.get_webview_window(crate::popup::PREVIEW_LABEL) {
@@ -1261,7 +1264,7 @@ fn preview_open(path: String, app: AppHandle) -> SimpleOut {
                 let _ = win.set_focus();
                 crate::screenshot::preview::emit_state(&win);
             } else {
-                schedule_window(&app, crate::popup::open_preview_window);
+                schedule_window(app, crate::popup::open_preview_window);
             }
             SimpleOut {
                 ok: true,
@@ -1276,6 +1279,11 @@ fn preview_open(path: String, app: AppHandle) -> SimpleOut {
 }
 
 #[tauri::command]
+fn preview_open(path: String, app: AppHandle) -> SimpleOut {
+    preview_path(&app, std::path::Path::new(&path))
+}
+
+#[tauri::command]
 fn preview_state() -> Value {
     crate::screenshot::preview::state_value()
 }
@@ -1285,6 +1293,62 @@ fn preview_state() -> Value {
 fn preview_save_dir() -> Value {
     let dir = crate::screenshot::output::resolve_dir(&config::load());
     json!(dir.to_string_lossy().to_string())
+}
+
+/// 截图图库：列出截图目录里的图片。缩略图由 `vextogallery` 协议按需生成。
+#[tauri::command]
+fn screenshot_gallery_list() -> Vec<crate::screenshot::gallery::GalleryItem> {
+    crate::screenshot::gallery::list()
+}
+
+#[tauri::command]
+fn screenshot_gallery_remove(path: String) -> SimpleOut {
+    match crate::screenshot::gallery::remove(&path) {
+        Ok(()) => SimpleOut {
+            ok: true,
+            message: String::new(),
+        },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+#[tauri::command]
+fn screenshot_gallery_copy(path: String) -> SimpleOut {
+    match crate::screenshot::gallery::copy(&path) {
+        Ok(()) => SimpleOut {
+            ok: true,
+            message: t!("status.imageCopied").into_owned(),
+        },
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+#[tauri::command]
+fn screenshot_gallery_preview(path: String, app: AppHandle) -> SimpleOut {
+    match crate::screenshot::gallery::png_target(&path) {
+        Ok(png) => preview_path(&app, &png),
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+#[tauri::command]
+fn screenshot_gallery_pin(path: String, app: AppHandle) -> SimpleOut {
+    match crate::screenshot::gallery::png_target(&path) {
+        Ok(png) => pin_path(&app, &png),
+        Err(e) => SimpleOut {
+            ok: false,
+            message: e,
+        },
+    }
 }
 
 /// 打开预览页显示的截图保存目录。
@@ -3152,6 +3216,10 @@ fn main() {
         .register_uri_scheme_protocol("vextoimg", |_ctx, request| {
             crate::screenshot::preview::serve_staged(request.uri().path())
         })
+        // 截图图库的缩略图：只服务缓存目录里的 <32 hex>.png，不接受任意路径。
+        .register_uri_scheme_protocol("vextogallery", |_ctx, request| {
+            crate::screenshot::gallery::serve_thumb(request.uri().path())
+        })
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
@@ -3227,6 +3295,11 @@ fn main() {
             pin_close,
             preview_open,
             preview_state,
+            screenshot_gallery_list,
+            screenshot_gallery_remove,
+            screenshot_gallery_copy,
+            screenshot_gallery_preview,
+            screenshot_gallery_pin,
             preview_save_dir,
             preview_open_save_dir,
             preview_commit_edited,

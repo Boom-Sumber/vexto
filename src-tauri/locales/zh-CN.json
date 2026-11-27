@@ -541,6 +541,7 @@
   "status.line.updateNow": " · 立即更新到 %{version}",
   "status.openedPath": "已打开 %{path}",
   "status.pinned": "已钉屏",
+  "status.imageCopied": "已复制图片",
   "status.previewOpened": "已打开预览",
   "status.receiveDirOpened": "已打开接收目录",
   "status.saved": "已保存",

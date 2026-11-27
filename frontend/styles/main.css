@@ -223,6 +223,104 @@
   font-size: var(--fs-xs);
 }
 
+/* ── 截图图库 ─────────────────────────────────────────────────────────── */
+
+.sg-total {
+  align-self: center;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--sp-4);
+}
+
+.sg-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+.sg-tile:hover,
+.sg-tile:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.sg-img,
+.sg-ph {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+.sg-img { object-fit: cover; }
+.sg-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-active);
+  color: var(--text-disabled);
+}
+
+.sg-acts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.sg-tile:hover .sg-acts,
+.sg-tile:focus-within .sg-acts { opacity: 1; }
+
+.sg-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.sg-act:hover { background: var(--bg-active); }
+.sg-act.danger:hover { color: var(--danger); }
+.sg-act.armed { background: var(--danger-bg); color: var(--danger); }
+
+.sg-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--border-subtle);
+}
+.sg-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.sg-sub {
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 侧栏底部：速度脚栏（demo 口径，等宽数字） */
 .side-foot {
   margin-top: auto;

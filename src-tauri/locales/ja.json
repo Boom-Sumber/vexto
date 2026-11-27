@@ -541,6 +541,7 @@
   "status.line.updateNow": " · %{version} に今すぐ更新",
   "status.openedPath": "%{path} を開きました",
   "status.pinned": "ピン留めしました",
+  "status.imageCopied": "画像をコピーしました",
   "status.previewOpened": "プレビューを開きました",
   "status.receiveDirOpened": "受信フォルダーを開きました",
   "status.saved": "保存しました",

@@ -541,6 +541,7 @@
   "status.line.updateNow": " · 지금 %{version}(으)로 업데이트",
   "status.openedPath": "%{path} 열림",
   "status.pinned": "고정됨",
+  "status.imageCopied": "이미지를 복사했습니다",
   "status.previewOpened": "미리보기를 열었습니다",
   "status.receiveDirOpened": "받기 폴더를 열었습니다",
   "status.saved": "저장됨",

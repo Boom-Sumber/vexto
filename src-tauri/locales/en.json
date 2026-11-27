@@ -541,6 +541,7 @@
   "status.line.updateNow": " · Update to %{version} now",
   "status.openedPath": "Opened %{path}",
   "status.pinned": "Pinned",
+  "status.imageCopied": "Image copied",
   "status.previewOpened": "Preview opened",
   "status.receiveDirOpened": "Receive folder opened",
   "status.saved": "Saved",

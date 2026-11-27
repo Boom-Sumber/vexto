@@ -541,6 +541,7 @@
   "status.line.updateNow": " · Actualizar a %{version} ahora",
   "status.openedPath": "Se abrió %{path}",
   "status.pinned": "Fijado",
+  "status.imageCopied": "Imagen copiada",
   "status.previewOpened": "Vista previa abierta",
   "status.receiveDirOpened": "Carpeta de recepción abierta",
   "status.saved": "Guardado",

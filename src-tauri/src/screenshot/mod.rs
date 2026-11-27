@@ -10,6 +10,7 @@
 
 pub mod capture;
 pub mod feedback;
+pub mod gallery;
 pub mod input;
 pub mod output;
 pub mod overlay;
