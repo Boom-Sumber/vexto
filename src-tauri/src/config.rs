@@ -250,6 +250,10 @@ pub struct Config {
     /// 翻译缓存开关。默认开——同一段文字反复划是最高频场景，省一次就是省一次配额
     #[serde(default = "d_true")]
     pub cache_enabled: bool,
+    /// 记录翻译历史到 `%APPDATA%\vexto\translate-history.json`（ADR-096）。
+    /// 关闭后不再新增，已有记录保留，可在工具箱的翻译页清空。
+    #[serde(default = "d_true")]
+    pub translate_history_enabled: bool,
     /// 日志总开关。**默认开**（会话 90 用户要求，ADR-067）：出问题时用户不必
     /// 先去设置里打开开关才能留下现场。
     #[serde(default = "d_true")]
@@ -658,6 +662,7 @@ impl Default for Config {
             popup_timeout_ms: d_popup_timeout(),
             auto_copy: false,
             cache_enabled: true,
+            translate_history_enabled: true,
             log_enabled: true,
             log_level: d_log_level(),
             download_dir: String::new(),

@@ -124,6 +124,105 @@
   padding: var(--sp-4) var(--sp-6) 0;
 }
 
+/* ── 翻译历史 ─────────────────────────────────────────────────────────── */
+
+.tr-total {
+  align-self: center;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.tr-filters {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-6) var(--sp-3);
+}
+.tr-filters .select { flex: none; width: 132px; }
+.tr-search {
+  flex: 1 1 auto;
+  min-width: 100px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+.tr-search::placeholder { color: var(--text-disabled); }
+.tr-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.tr-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.tr-row {
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+.tr-row:hover { border-color: var(--border-strong); }
+
+.tr-src,
+.tr-dst {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tr-src {
+  -webkit-line-clamp: 2;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.tr-dst {
+  -webkit-line-clamp: 3;
+  margin-top: 6px;
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+}
+
+.tr-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+.tr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+.tr-engine { color: var(--text-muted); font-weight: 600; }
+.tr-acts { display: flex; flex: none; gap: 6px; }
+.tr-acts .btn { height: 26px; padding: 0 10px; font-size: var(--fs-xs); }
+
+.tr-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-4);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+}
+
 /* 侧栏底部：速度脚栏（demo 口径，等宽数字） */
 .side-foot {
   margin-top: auto;

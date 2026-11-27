@@ -20,6 +20,7 @@
 //! 组合出五个实现：`baidu` / `baidu-llm` / `youdao` / `youdao-llm` / `openai`。
 
 pub mod baidu;
+pub mod history;
 pub mod microsoft;
 pub mod openai;
 pub mod youdao;
@@ -470,6 +471,14 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
         to: to_lang,
         dst,
     })
+}
+
+/// 翻译并记入历史。**所有用户入口都走这个**；
+/// 设置页的引擎测试探针继续用 `translate()`，不污染历史。
+pub fn translate_recorded(cfg: &Config, text: &str) -> Result<Translated, String> {
+    let r = translate(cfg, text)?;
+    history::record(cfg, text, &r);
+    Ok(r)
 }
 
 #[cfg(test)]

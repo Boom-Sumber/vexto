@@ -363,6 +363,8 @@
   "schema.field.translate.active_engine.help": "「サービス管理」から設定済みのインスタンスを選択してください。",
   "schema.field.translate.active_engine.label": "翻訳エンジン",
   "schema.field.translate.auto_copy.label": "翻訳後に自動でコピー",
+  "schema.field.translate.translate_history_enabled.label": "翻訳履歴を保存",
+  "schema.field.translate.translate_history_enabled.help": "翻訳が成功するたびに原文と訳文をこの端末に保存します。オフにすると新規保存は停止し、既存の履歴はツールボックスの翻訳ページから消去できます。",
   "schema.field.translate.from.label": "ソース言語",
   "schema.field.translate.from.option.ara": "アラビア語",
   "schema.field.translate.from.option.auto": "自動検出",

@@ -237,7 +237,7 @@ fn run_translate(app: AppHandle) {
         show_popup(&app, p);
 
         // 4) 翻译
-        match translate::translate(&cfg, &src) {
+        match translate::translate_recorded(&cfg, &src) {
             Ok(r) => {
                 dlog::dlog(&format!(
                     "translate_selection: ok {} -> {} chars",
@@ -350,7 +350,7 @@ async fn translate_text(
 
     let cfg1 = cfg.clone();
     let t1 = t.clone();
-    let r = tauri::async_runtime::spawn_blocking(move || translate::translate(&cfg1, &t1))
+    let r = tauri::async_runtime::spawn_blocking(move || translate::translate_recorded(&cfg1, &t1))
         .await
         .map_err(|e| format!("翻译任务未能启动：{e}"))?;
 
@@ -399,10 +399,26 @@ async fn translate_text_only(text: String) -> Result<Value, String> {
         return Err(t!("error.translate.emptySelection").into_owned());
     }
     let cfg = config::load();
-    let r = tauri::async_runtime::spawn_blocking(move || translate::translate(&cfg, &t))
+    let r = tauri::async_runtime::spawn_blocking(move || translate::translate_recorded(&cfg, &t))
         .await
         .map_err(|e| format!("翻译任务未能启动：{e}"))??;
     Ok(json!({ "dst": r.dst, "from": r.from, "to": r.to }))
+}
+
+/// 翻译历史：全部记录（最新在前）。筛选与分页在前端做（最多 500 条）。
+#[tauri::command]
+fn translate_history_list() -> Vec<translate::history::HistoryEntry> {
+    translate::history::list()
+}
+
+#[tauri::command]
+fn translate_history_remove(id: String) -> bool {
+    translate::history::remove(&id)
+}
+
+#[tauri::command]
+fn translate_history_clear() {
+    translate::history::clear();
 }
 
 // 就绪判断统一放在 `translate::engine_ready()`：它先按 `active_engine` 找到实例，
@@ -3170,6 +3186,9 @@ fn main() {
             copy_text,
             translate_text,
             translate_text_only,
+            translate_history_list,
+            translate_history_remove,
+            translate_history_clear,
             switch_engine,
             set_pinned,
             start_dragging,

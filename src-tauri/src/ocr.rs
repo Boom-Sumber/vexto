@@ -236,7 +236,7 @@ pub fn ocr_translate_region(
     if !cfg.enable_translate {
         return Err(t!("error.ocr.translateDisabled").into_owned());
     }
-    let r = crate::translate::translate(&cfg, &text)?;
+    let r = crate::translate::translate_recorded(&cfg, &text)?;
     Ok((text, r.dst, r.from))
 }
 

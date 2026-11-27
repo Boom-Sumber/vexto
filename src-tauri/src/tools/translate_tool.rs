@@ -145,6 +145,8 @@ impl Tool for Translate {
                         .help("检测出的语言等于「目标语言」时译到「第二目标语言」"),
                     Field::group("interaction", "交互"),
                     Field::switch("auto_copy", "译完自动复制译文"),
+                    Field::switch("translate_history_enabled", "记录翻译历史")
+                        .help("记下每次成功翻译的原文与译文，保存在本机；关闭后不再新增，已有记录可在工具箱的翻译页清空。"),
                 ],
             ),
             Section::new(

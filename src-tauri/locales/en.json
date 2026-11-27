@@ -363,6 +363,8 @@
   "schema.field.translate.active_engine.help": "Choose a configured instance from Services.",
   "schema.field.translate.active_engine.label": "Translation engine",
   "schema.field.translate.auto_copy.label": "Copy translation automatically",
+  "schema.field.translate.translate_history_enabled.label": "Keep translation history",
+  "schema.field.translate.translate_history_enabled.help": "Save the source and translation of each successful translation on this device. Turning it off stops new entries; existing entries can be cleared from the Translate page in the toolbox.",
   "schema.field.translate.from.label": "Source language",
   "schema.field.translate.from.option.ara": "Arabic",
   "schema.field.translate.from.option.auto": "Auto-detect",

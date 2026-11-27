@@ -363,6 +363,8 @@
   "schema.field.translate.active_engine.help": "Elige una instancia configurada en Servicios.",
   "schema.field.translate.active_engine.label": "Motor de traducción",
   "schema.field.translate.auto_copy.label": "Copiar la traducción automáticamente",
+  "schema.field.translate.translate_history_enabled.label": "Guardar historial de traducción",
+  "schema.field.translate.translate_history_enabled.help": "Guarda el texto original y la traducción de cada operación correcta en este dispositivo. Si lo desactivas, no se añadirán nuevas entradas; las existentes se pueden borrar desde la página Traducción de la caja de herramientas.",
   "schema.field.translate.from.label": "Idioma de origen",
   "schema.field.translate.from.option.ara": "árabe",
   "schema.field.translate.from.option.auto": "Detección automática",

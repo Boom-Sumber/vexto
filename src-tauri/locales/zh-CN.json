@@ -363,6 +363,8 @@
   "schema.field.translate.active_engine.help": "从「服务管理」里选一个已配置的实例。",
   "schema.field.translate.active_engine.label": "翻译引擎",
   "schema.field.translate.auto_copy.label": "译完自动复制译文",
+  "schema.field.translate.translate_history_enabled.label": "记录翻译历史",
+  "schema.field.translate.translate_history_enabled.help": "记下每次成功翻译的原文与译文，保存在本机；关闭后不再新增，已有记录可在工具箱的翻译页清空。",
   "schema.field.translate.from.label": "源语言",
   "schema.field.translate.from.option.ara": "阿拉伯语",
   "schema.field.translate.from.option.auto": "自动检测",
