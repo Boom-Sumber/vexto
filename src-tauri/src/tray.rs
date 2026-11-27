@@ -1,8 +1,9 @@
 //! 托盘图标与右键菜单。
 //!
-//! 菜单是固定的使用入口（会话 73 用户定稿），不再按工具注册表逐项列出：
-//! 输入翻译 / 截图（全屏、区域、活动窗口）/ 工具箱（下载、互传）/
-//! 设置 / 重启应用 / 退出程序。
+//! 菜单是固定的使用入口（会话 73 用户定稿）：输入翻译 / 截图（全屏、区域、
+//! 活动窗口）/ Vexto 工具箱 / 设置 / 检查更新 / 重启应用 / 退出程序。
+//! 「Vexto 工具箱」是直接项，点了就打开工具箱，不再挂下载 / 互传二级菜单
+//! （2026-11-28 用户要求）。
 //!
 //! 工具在设置 → 常规 → 工具管理里停用后，对应菜单项置灰不可点（ADR-090）。
 //!
@@ -72,10 +73,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[&shot_full, &shot_region, &shot_window],
     )?;
 
-    let downloads = item(app, "downloads", &t!("tray.downloads"), cfg.enable_download)?;
-    let transfer = item(app, "transfer", &t!("tray.transfer"), cfg.enable_transfer)?;
-    let task_menu =
-        Submenu::with_items(app, &t!("tray.taskWindows"), true, &[&downloads, &transfer])?;
+    let tasks = item(app, "tasks", &t!("tray.taskWindows"), true)?;
 
     let settings = item(app, "settings", &t!("tray.settings"), true)?;
     let check_update = item(app, "check-update", &t!("tray.checkUpdate"), true)?;
@@ -88,15 +86,13 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ("shot-full", shot_full.clone()),
         ("shot-region", shot_region.clone()),
         ("shot-window", shot_window.clone()),
-        ("downloads", downloads.clone()),
-        ("transfer", transfer.clone()),
     ];
 
     let separator = PredefinedMenuItem::separator(app)?;
     let items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &input,
         &shot_menu,
-        &task_menu,
+        &tasks,
         &separator,
         &settings,
         &check_update,
@@ -131,7 +127,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
                     app,
                     crate::screenshot::Mode::ActiveWindow,
                 ),
-                "downloads" => crate::open_download_window(app),
+                "downloads" | "tasks" => crate::open_download_window(app),
                 "transfer" => crate::open_transfer_window(app),
                 "settings" => crate::open_settings(app),
                 "check-update" => {
@@ -261,8 +257,7 @@ fn tool_item_enabled(id: &str, cfg: &crate::config::Config) -> bool {
     match id {
         "input_translate" => cfg.enable_translate,
         "shot-full" | "shot-region" | "shot-window" => cfg.enable_screenshot,
-        "downloads" => cfg.enable_download,
-        "transfer" => cfg.enable_transfer,
+        // 工具箱是外壳入口，不随任何工具停用
         _ => true,
     }
 }
@@ -330,30 +325,24 @@ mod tests {
         assert!(img.rgba().iter().all(|b| *b == 0), "占位图必须全透明");
     }
 
-    /// 工具停用后对应入口必须置灰，其余入口不受影响。
+    /// 工具停用后对应入口必须置灰；工具箱 / 设置等外壳入口始终可用。
     #[test]
     fn tool_items_follow_enable_flags() {
         let mut cfg = crate::config::Config::default();
         cfg.enable_translate = true;
         cfg.enable_screenshot = true;
-        cfg.enable_download = true;
-        cfg.enable_transfer = true;
         assert!(tool_item_enabled("input_translate", &cfg));
+        assert!(tool_item_enabled("tasks", &cfg));
 
         cfg.enable_translate = false;
         assert!(!tool_item_enabled("input_translate", &cfg));
         assert!(tool_item_enabled("settings", &cfg));
+        assert!(tool_item_enabled("tasks", &cfg), "工具箱入口不随工具停用");
 
         cfg.enable_screenshot = false;
         for id in ["shot-full", "shot-region", "shot-window"] {
             assert!(!tool_item_enabled(id, &cfg), "{id} 应随截图停用");
         }
-
-        cfg.enable_download = false;
-        assert!(!tool_item_enabled("downloads", &cfg));
-        assert!(tool_item_enabled("transfer", &cfg));
-
-        cfg.enable_transfer = false;
-        assert!(!tool_item_enabled("transfer", &cfg));
+        assert!(tool_item_enabled("tasks", &cfg));
     }
 }
