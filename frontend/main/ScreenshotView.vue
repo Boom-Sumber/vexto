@@ -49,7 +49,12 @@ function pad(n) {
 function fmtWhen(ms) {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return "—";
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const now = new Date();
+  const date =
+    d.getFullYear() === now.getFullYear()
+      ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function fmtSize(n) {
