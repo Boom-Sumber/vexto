@@ -2,10 +2,20 @@
 import { computed, inject } from "vue";
 import Icon from "../components/Icon.vue";
 import SegmentedControl from "../components/SegmentedControl.vue";
+import Tabs from "../components/Tabs.vue";
 import { useToast } from "../composables/useToast.js";
 import { t } from "../i18n/index.js";
 
 defineProps({ sub: { type: String, default: "send" } });
+defineEmits(["update:sub"]);
+
+const SUBS = [
+  ["send", "main.subSend"],
+  ["receive", "main.subReceive"],
+  ["history", "main.subHistory"],
+];
+
+const subItems = computed(() => SUBS.map(([id, key]) => ({ id, label: t(key) })));
 
 const transfer = inject("transfer");
 const toast = useToast();
@@ -108,6 +118,10 @@ function subText(item) {
 
 <template>
   <div id="transferView" class="main">
+    <div class="view-tabs" id="subTransfer">
+      <Tabs :model-value="sub" :items="subItems" @update:model-value="$emit('update:sub', $event)" />
+    </div>
+
     <!-- 发送 -->
     <div v-show="sub === 'send'" id="paneSend" class="pane">
       <header class="head">

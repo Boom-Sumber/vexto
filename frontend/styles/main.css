@@ -49,6 +49,9 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* 主菜单项：字号加粗加大（与设置侧栏同口径），选中 = 主题色淡底 +
@@ -115,84 +118,11 @@
 }
 .nav-badge.hidden { display: none; }
 
-/* ── 上下文二级导航（下载分类 / 互传子页共用一套视觉）───────────────── */
-.subnav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--sp-3) 0 0 var(--sp-2);
-  min-height: 0;
-  overflow-y: auto;
+/* 工具页的页内子导航容器（翻译 / 下载 / 互传的顶部 tabs） */
+.view-tabs {
+  flex: 0 0 auto;
+  padding: var(--sp-4) var(--sp-6) 0;
 }
-.subnav.hidden { display: none; }
-
-.sub-title {
-  padding: 0 var(--sp-2) var(--sp-1);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-disabled);
-  letter-spacing: .06em;
-  text-transform: uppercase;
-}
-
-.sub-item,
-.cat {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  width: 100%;
-  padding: 7px 10px 7px 14px;
-  border: 0;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: var(--fs-sm);
-  text-align: left;
-  cursor: pointer;
-  user-select: none;
-  transition: background var(--dur-fast) var(--ease-out),
-              color var(--dur-fast) var(--ease-out);
-}
-.sub-item:hover,
-.cat:hover { background: var(--bg-hover); color: var(--text-primary); }
-
-/* 选中：主题色文字 + 左侧短指示条 */
-.sub-item.active,
-.cat.active {
-  background: var(--bg-hover);
-  color: var(--accent);
-  font-weight: 600;
-}
-.sub-item.active::before,
-.cat.active::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--accent), var(--accent-2));
-}
-
-.cats { display: flex; flex-direction: column; gap: 2px; }
-
-/* 分类计数徽标 */
-.cat span {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: var(--r-pill);
-  background: var(--bg-input);
-  color: var(--text-dim);
-  font-size: var(--fs-xs);
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-.cat.active span { background: var(--accent-soft-2); color: var(--accent); }
 
 /* 侧栏底部：速度脚栏（demo 口径，等宽数字） */
 .side-foot {

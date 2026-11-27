@@ -1,10 +1,12 @@
 <script setup>
-import { computed, nextTick, onMounted, provide, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
 import TitleBar from "../components/TitleBar.vue";
 import Icon from "../components/Icon.vue";
 import ToastHost from "../components/ToastHost.vue";
 import DownloadList from "./DownloadList.vue";
 import TransferView from "./TransferView.vue";
+import TranslateView from "./TranslateView.vue";
+import ScreenshotView from "./ScreenshotView.vue";
 import TransferProgress from "./TransferProgress.vue";
 import IncomingConfirm from "./IncomingConfirm.vue";
 import { useToast } from "../composables/useToast.js";
@@ -12,15 +14,29 @@ import { t } from "../i18n/index.js";
 import { useDownloads } from "./useDownloads.js";
 import { fmtSpeed } from "./format.js";
 import { useTransfer } from "./useTransfer.js";
+import { MAIN_TOOLS, useTools } from "./useTools.js";
 
 const toast = useToast();
 const downloads = useDownloads();
+const tools = useTools();
 
 const view = ref("download");
 const sub = ref("send");
 const tb = ref(null);
 
+/* 当前工具被停用（或深链指向未启用工具）时落到第一个可见工具；
+ * 全部停用时保留当前页，让用户仍能看到已打开的内容。 */
+function ensureVisible() {
+  if (!tools.visible.value.length) return;
+  if (!tools.isVisible(view.value)) view.value = tools.visible.value[0].id;
+}
+
 function setView(next) {
+  if (!MAIN_TOOLS.some((tool) => tool.id === next)) return;
+  if (!tools.isVisible(next)) {
+    ensureVisible();
+    return;
+  }
   view.value = next;
   if (next === "transfer") {
     transfer.onSub(sub.value);
@@ -37,20 +53,6 @@ const transfer = useTransfer({ toast, setView, setSub });
 provide("downloads", downloads);
 provide("transfer", transfer);
 
-const CATS = [
-  ["all", "main.catAll"],
-  ["running", "main.catRunning"],
-  ["failed", "main.catFailed"],
-  ["complete", "main.catComplete"],
-  ["deleted", "main.catDeleted"],
-];
-
-const SUBS = [
-  ["send", "main.subSend"],
-  ["receive", "main.subReceive"],
-  ["history", "main.subHistory"],
-];
-
 const speedText = computed(() =>
   t("main.sideSpeed", {
     down: fmtSpeed(downloads.global.value.download_speed || 0),
@@ -61,21 +63,11 @@ const speedText = computed(() =>
 const title = computed(() => {
   if (transfer.tpOpen.value) return t("main.titleTransferProgress");
   if (view.value === "transfer") return t("main.titleTransfer");
+  if (view.value === "translate") return t("main.navTranslate");
+  if (view.value === "screenshot") return t("main.navScreenshot");
   if (downloads.filter.value === "github") return t("main.titleGithub");
   return t("main.titleTasks");
 });
-
-function selectCat(cat) {
-  downloads.setFilter(cat);
-}
-
-function selectView(next) {
-  setView(next);
-}
-
-function selectSub(next) {
-  setSub(next);
-}
 
 watch(
   () => downloads.filter.value,
@@ -84,13 +76,39 @@ watch(
   },
 );
 
+let unlistenSwitch = null;
+
+function switchTo(next) {
+  if (typeof next !== "string") return;
+  if (!MAIN_TOOLS.some((tool) => tool.id === next)) return;
+  if (!tools.isVisible(next)) return;
+  setView(next);
+  if (next === "transfer") setSub("send");
+}
+
+async function onFocus() {
+  await tools.refresh();
+  ensureVisible();
+}
+
 onMounted(async () => {
   document.addEventListener("click", transfer.closeHistoryMenu);
+  window.addEventListener("focus", onFocus);
+  await tools.refresh();
+  ensureVisible();
   await downloads.init();
   // 传输模块的首次拉取可能较慢，不让它拖住首帧显示（legacy 也是异步初始化）。
   transfer.init();
+  unlistenSwitch = await window.__TAURI__.event.listen("main:switch-view", (ev) => {
+    switchTo(ev.payload);
+  });
   await nextTick();
   tb.value?.reveal();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("focus", onFocus);
+  if (unlistenSwitch) unlistenSwitch();
 });
 </script>
 
@@ -107,14 +125,17 @@ onMounted(async () => {
 
         <nav class="nav">
           <button
+            v-for="tool in tools.visible.value"
+            :key="tool.id"
             class="nav-item"
-            :class="{ active: view === 'download' }"
+            :class="{ active: view === tool.id }"
             type="button"
-            @click="selectView('download')"
+            @click="setView(tool.id)"
           >
-            <span class="nav-ico"><Icon name="download" :size="16" /></span>
-            <span class="nav-label">{{ $t("main.navDownload") }}</span>
+            <span class="nav-ico"><Icon :name="tool.icon" :size="16" /></span>
+            <span class="nav-label">{{ $t(tool.labelKey) }}</span>
             <span
+              v-if="tool.id === 'download'"
               class="nav-badge"
               :class="{ hidden: !downloads.counts.value.running }"
               :title="$t('main.runningCount')"
@@ -122,56 +143,7 @@ onMounted(async () => {
               {{ downloads.counts.value.running }}
             </span>
           </button>
-          <button
-            v-if="transfer.enabled.value"
-            class="nav-item"
-            :class="{ active: view === 'transfer' }"
-            type="button"
-            @click="selectView('transfer')"
-          >
-            <span class="nav-ico"><Icon name="transfer" :size="16" /></span>
-            <span class="nav-label">{{ $t("main.navTransfer") }}</span>
-          </button>
         </nav>
-
-        <div class="subnav" id="catsWrap" v-show="view === 'download'">
-          <div class="sub-title">{{ $t("main.subTitleCategory") }}</div>
-          <nav class="cats">
-            <button
-              v-for="[key, label] in CATS"
-              :key="key"
-              class="cat"
-              :class="{ active: downloads.filter.value === key }"
-              type="button"
-              @click="selectCat(key)"
-            >
-              {{ $t(label) }} <span>{{ downloads.counts.value[key] }}</span>
-            </button>
-            <div class="cat-sep" role="separator"></div>
-            <button
-              class="cat cat-github"
-              :class="{ active: downloads.filter.value === 'github' }"
-              type="button"
-              @click="selectCat('github')"
-            >
-              {{ $t("main.catGithub") }}
-            </button>
-          </nav>
-        </div>
-
-        <div class="subnav" id="subTransfer" v-show="view === 'transfer'">
-          <div class="sub-title">{{ $t("main.subTitleTransfer") }}</div>
-          <button
-            v-for="[key, label] in SUBS"
-            :key="key"
-            class="sub-item"
-            :class="{ active: sub === key }"
-            type="button"
-            @click="selectSub(key)"
-          >
-            {{ $t(label) }}
-          </button>
-        </div>
 
         <div class="side-foot">
           <span id="global" class="num">{{ speedText }}</span>
@@ -179,7 +151,9 @@ onMounted(async () => {
       </aside>
 
       <DownloadList v-show="view === 'download'" />
-      <TransferView v-show="view === 'transfer'" :sub="sub" />
+      <TransferView v-show="view === 'transfer'" :sub="sub" @update:sub="setSub" />
+      <TranslateView v-show="view === 'translate'" />
+      <ScreenshotView v-show="view === 'screenshot'" />
     </div>
 
     <TransferProgress />

@@ -32,7 +32,6 @@ export function useTransfer({ toast, setView, setSub }) {
   const invoke = window.__TAURI__.core.invoke;
   const listen = window.__TAURI__.event.listen;
 
-  const enabled = ref(true);
   const peers = shallowRef([]);
   const receiveDir = ref("");
   const alias = ref("—");
@@ -640,15 +639,6 @@ export function useTransfer({ toast, setView, setSub }) {
   }
 
   async function init() {
-    // 模块停用时隐藏「互传」入口（S4.8）
-    try {
-      const tools = await invoke("list_tools");
-      const item = (tools || []).find((x) => x.id === "transfer");
-      if (item && !item.enabled) enabled.value = false;
-    } catch {
-      /* 拿不到就照常显示 */
-    }
-
     try {
       const v = await invoke("transfer_take_view");
       if (v === "transfer") {
@@ -686,14 +676,6 @@ export function useTransfer({ toast, setView, setSub }) {
           await addDropped(paths);
         }),
       );
-      unlisten.push(
-        await listen("main:switch-view", (ev) => {
-          if (ev.payload === "transfer") {
-            setView("transfer");
-            setSub("send");
-          }
-        }),
-      );
     } catch (e) {
       notice(t("main.subscribeTransferFailed", { message: errText(e) }), true);
     }
@@ -729,7 +711,6 @@ export function useTransfer({ toast, setView, setSub }) {
   onBeforeUnmount(dispose);
 
   return {
-    enabled,
     peers,
     receiveDir,
     alias,

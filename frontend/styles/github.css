@@ -396,11 +396,4 @@
 .gh-more-wrap .btn { min-width: 120px; }
 .gh-more-wrap .btn.hidden { display: none; }
 
-/* ── 侧栏分隔与入口 ───────────────────────────────────────────────────── */
-
-.cat-sep {
-  height: 1px;
-  margin: 7px 10px;
-  background: var(--border-subtle);
-}
-.cat-github { font-weight: 600; }
+/* ── 侧栏入口 ─────────────────────────────────────────────────────────── */

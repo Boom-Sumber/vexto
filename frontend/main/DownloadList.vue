@@ -1,6 +1,7 @@
 <script setup>
-import { inject, onBeforeUnmount, reactive } from "vue";
+import { computed, inject, onBeforeUnmount, reactive } from "vue";
 import Icon from "../components/Icon.vue";
+import Tabs from "../components/Tabs.vue";
 import GithubView from "./GithubView.vue";
 import { t } from "../i18n/index.js";
 import { fmtBytes, fmtEta, fmtSpeed } from "./format.js";
@@ -18,6 +19,19 @@ const {
   emptyIcon,
   emptyText,
 } = downloads;
+
+const CATS = [
+  ["all", "main.catAll"],
+  ["running", "main.catRunning"],
+  ["failed", "main.catFailed"],
+  ["complete", "main.catComplete"],
+  ["deleted", "main.catDeleted"],
+];
+
+const catItems = computed(() => [
+  ...CATS.map(([id, key]) => ({ id, label: t(key), badge: counts.value[id] || 0 })),
+  { id: "github", label: t("main.catGithub") },
+]);
 
 const armed = reactive({});
 const armTimers = new Map();
@@ -106,6 +120,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div id="downloadView" class="main">
+    <div class="view-tabs" id="catsWrap">
+      <Tabs :model-value="filter" :items="catItems" @update:model-value="downloads.setFilter" />
+    </div>
+
     <header v-show="filter !== 'github'" class="head">
       <h1 id="title">{{ titles[filter] || titles.all }}</h1>
       <div class="tools">

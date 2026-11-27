@@ -1,6 +1,7 @@
 <script setup>
 defineProps({
   modelValue: { type: [String, Number], default: "" },
+  /* item: { id, label, badge? } */
   items: { type: Array, default: () => [] },
 });
 
@@ -18,37 +19,67 @@ const emit = defineEmits(["update:modelValue"]);
       :class="{ on: modelValue === item.id }"
       @click="emit('update:modelValue', item.id)"
     >
-      {{ item.label }}
+      <span class="vx-tabs-label">{{ item.label }}</span>
+      <span v-if="item.badge !== undefined && item.badge !== null" class="vx-tabs-badge">{{ item.badge }}</span>
     </button>
   </div>
 </template>
 
 <style scoped>
+/* 与设置页 .tabs 同口径（styles/settings.css:255-278），这里是任务窗口的页内子导航。 */
 .vx-tabs {
   display: flex;
-  gap: var(--sp-4);
-  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--sp-5);
+  padding: 2px 0 0;
+  border-bottom: 1px solid var(--border-default);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.vx-tabs::-webkit-scrollbar { display: none; }
+
 .vx-tabs button {
-  padding: var(--sp-2) 0;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: -1px;
+  padding: 10px 2px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
-  color: var(--text-secondary);
+  color: var(--text-muted);
+  font-family: inherit;
   font-size: var(--fs-md);
-  letter-spacing: var(--ls-normal);
+  letter-spacing: .02em;
   cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
 }
-.vx-tabs button:hover {
-  color: var(--text-primary);
-}
+.vx-tabs button:hover { color: var(--text-primary); }
 .vx-tabs button.on {
   color: var(--text-primary);
   border-bottom-color: var(--accent);
   font-weight: 600;
 }
 .vx-tabs button:focus-visible {
-  box-shadow: var(--ring);
   outline: none;
+  box-shadow: var(--ring);
+}
+
+.vx-tabs-badge {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.vx-tabs button.on .vx-tabs-badge {
+  background: var(--accent-soft-2);
+  color: var(--accent);
 }
 </style>

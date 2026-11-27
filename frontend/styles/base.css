@@ -338,8 +338,7 @@ input[type="search"]::-webkit-search-decoration {
 .tb-btn:focus-visible,
 .icon-btn:focus-visible,
 .tool:focus-visible,
-.tab:focus-visible,
-.cat:focus-visible {
+.tab:focus-visible {
   outline: none;
   box-shadow: var(--ring);
 }
