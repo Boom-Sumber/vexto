@@ -86,6 +86,12 @@ function switchTo(next) {
   if (next === "transfer") setSub("send");
 }
 
+function openSettings() {
+  window.__TAURI__.core
+    .invoke("open_settings_cmd")
+    .catch((e) => toast.show(String(e && e.message ? e.message : e), { kind: "error" }));
+}
+
 async function onFocus() {
   await tools.refresh();
   ensureVisible();
@@ -114,7 +120,19 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="win">
-    <TitleBar ref="tb" :title="title" />
+    <TitleBar ref="tb" :title="title">
+      <template #actions>
+        <button
+          type="button"
+          class="tb-btn"
+          :title="$t('common.openSettings')"
+          :aria-label="$t('common.openSettings')"
+          @click="openSettings"
+        >
+          <Icon name="gear" :size="14" />
+        </button>
+      </template>
+    </TitleBar>
 
     <div class="app">
       <aside class="side">

@@ -97,6 +97,7 @@ onBeforeUnmount(() => {
       <span class="tb-title" data-tauri-drag-region>{{ title }}</span>
     </div>
     <div class="tb-actions">
+      <slot name="actions" />
       <button
         type="button"
         class="tb-btn tb-theme"

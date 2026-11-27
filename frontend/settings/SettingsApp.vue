@@ -5,9 +5,11 @@ import Icon from "../components/Icon.vue";
 import ToastHost from "../components/ToastHost.vue";
 import FieldRenderer from "./FieldRenderer.vue";
 import { useSettings } from "./useSettings.js";
+import { useToast } from "../composables/useToast.js";
 import { Icons } from "../shared/icons.js";
 
 const s = useSettings();
+const toast = useToast();
 const {
   visibleTools,
   tool,
@@ -26,6 +28,12 @@ const {
 
 const tb = ref(null);
 const badge = s.update.badge;
+
+function openToolbox() {
+  window.__TAURI__.core
+    .invoke("open_toolbox")
+    .catch((e) => toast.show(String(e && e.message ? e.message : e), { kind: "error" }));
+}
 
 const blocks = computed(() => {
   const out = [];
@@ -74,7 +82,19 @@ onMounted(async () => {
 
 <template>
   <div class="win">
-    <TitleBar ref="tb" :title="$t('settings.title')" />
+    <TitleBar ref="tb" :title="$t('settings.title')">
+      <template #actions>
+        <button
+          type="button"
+          class="tb-btn"
+          :title="$t('common.openToolbox')"
+          :aria-label="$t('common.openToolbox')"
+          @click="openToolbox"
+        >
+          <Icon name="grid" :size="14" />
+        </button>
+      </template>
+    </TitleBar>
 
     <div class="app">
       <aside class="sidebar">

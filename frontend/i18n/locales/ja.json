@@ -10,6 +10,8 @@
     "minimize": "最小化",
     "maximize": "最大化 / 元に戻す",
     "toggleTheme": "ライト/ダークテーマを切り替え",
+    "openSettings": "設定を開く",
+    "openToolbox": "Vexto ツールボックスを開く",
     "openFolder": "保存先フォルダーを開く",
     "settings": "設定",
     "unknownError": "不明なエラー",

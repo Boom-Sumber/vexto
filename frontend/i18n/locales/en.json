@@ -10,6 +10,8 @@
     "minimize": "Minimize",
     "maximize": "Maximize / Restore",
     "toggleTheme": "Toggle light/dark theme",
+    "openSettings": "Open settings",
+    "openToolbox": "Open Vexto toolbox",
     "openFolder": "Open containing folder",
     "settings": "Settings",
     "unknownError": "Unknown error",

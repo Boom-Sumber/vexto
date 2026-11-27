@@ -2403,6 +2403,16 @@ fn open_settings_cmd(app: AppHandle) {
     });
 }
 
+/// 从设置窗口打开 Vexto 工具箱。建窗同样要跨过当前 IPC tick。
+#[tauri::command]
+fn open_toolbox(app: AppHandle) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || crate::open_download_window(&a));
+    });
+}
+
 // ---------- 命令：下载主窗口（S3b 后端） ----------
 
 /// 前端初始化时主动拉一次快照；之后靠 pump 的 `tasks:snapshot` 事件增量更新。
@@ -3279,6 +3289,7 @@ fn main() {
             focus_for_typing,
             open_settings_from_popup,
             open_settings_cmd,
+            open_toolbox,
             ocr_submit_region,
             ocr_cancel,
             // 截图（S7）

@@ -10,6 +10,8 @@
     "minimize": "最小化",
     "maximize": "最大化 / 还原",
     "toggleTheme": "切换明暗主题",
+    "openSettings": "打开设置",
+    "openToolbox": "打开 Vexto 工具箱",
     "openFolder": "打开所在文件夹",
     "settings": "设置",
     "unknownError": "未知错误",

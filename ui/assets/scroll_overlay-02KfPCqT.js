@@ -1,1 +1,0 @@
-import{n as e,t}from"./app-DbtFYNmV.js";import"./theme-BMZEycxZ.js";import{t as n}from"./App-YMIkEpUf.js";import"./Icon-Mu_rfpMD.js";await e({reloadOnChange:!0}),document.body.dataset.purpose=`scroll`,t(n).mount(`#app`);
