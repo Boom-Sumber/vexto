@@ -216,39 +216,74 @@ body {
   min-width: 8px;
 }
 
-/* 保存下拉：主按钮直接保存，右侧箭头展开保存 / 另存为。 */
+/* 保存下拉：主按钮直接保存，右侧箭头展开保存 / 另存为。
+ * 两个按钮拼成一颗主题色胶囊；按下用半透明遮罩，不再落到 .btn:active 的灰底。 */
 .pv-save-group {
-  position: relative;
-  display: flex;
+  display: inline-flex;
   flex: none;
+  height: 30px;
   margin-left: var(--sp-2);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18),
+              0 6px 16px oklch(from var(--theme) l c h / .3);
+  overflow: hidden;
 }
 
-.pv-save-group .btn {
-  height: 30px;
+.pv-save-main,
+.pv-save-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
 }
 
 .pv-save-main {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
+  padding: 0 12px;
 }
 
 .pv-save-caret {
-  width: 24px;
+  width: 26px;
   padding: 0;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  border-left: 1px solid var(--accent-border);
+  border-left: 1px solid rgba(255, 255, 255, .22);
 }
 
+.pv-save-main:hover,
+.pv-save-caret:hover,
+.pv-save-caret.on {
+  background: rgba(255, 255, 255, .14);
+}
+
+.pv-save-main:active,
+.pv-save-caret:active {
+  background: rgba(0, 0, 0, .14);
+}
+
+.pv-save-group button:disabled {
+  opacity: .45;
+  cursor: default;
+  background: transparent;
+}
+
+.pv-save-group button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .75);
+}
+
+/* 下拉菜单挂在工具条外面（fixed），否则会被工具条的横向滚动裁掉。 */
 .pv-save-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 50;
+  position: fixed;
+  z-index: 80;
   display: flex;
   flex-direction: column;
-  min-width: 120px;
+  min-width: 128px;
   padding: 4px;
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
@@ -274,6 +309,12 @@ body {
 
 .pv-save-menu button:hover {
   background: var(--bg-hover);
+}
+
+.pv-save-menu button:disabled {
+  opacity: .45;
+  cursor: default;
+  background: transparent;
 }
 
 .pv-ocr-btn {
@@ -302,30 +343,40 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 裁剪气泡：从工具条裁剪按钮向下弹出。 */
-.pv-crop-pop {
-  position: fixed;
-  z-index: 60;
-  width: 260px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  background: var(--bg-panel);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-float);
+/* 裁剪框：直接盖在图片上，边线虚线 + 8 个控制点。
+ * 框内拖动整体移动，控制点拖动改单边；指针样式随可拖方向变化。 */
+.pv-crop-box {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  border: 1.5px dashed rgba(240, 86, 109, 1);
+  cursor: move;
+  touch-action: none;
 }
 
-.pv-crop-pop[hidden] {
-  display: none;
+.pv-crop-box.busy {
+  pointer-events: none;
 }
 
-.pv-crop-pop .pv-hint {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--text-dim);
+.pv-crop-h {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 1.5px solid rgba(240, 86, 109, 1);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .25);
 }
+
+.pv-crop-h[data-crop="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.pv-crop-h[data-crop="n"]  { left: 50%; top: 0; cursor: ns-resize; }
+.pv-crop-h[data-crop="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+.pv-crop-h[data-crop="e"]  { left: 100%; top: 50%; cursor: ew-resize; }
+.pv-crop-h[data-crop="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.pv-crop-h[data-crop="s"]  { left: 50%; top: 100%; cursor: ns-resize; }
+.pv-crop-h[data-crop="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.pv-crop-h[data-crop="w"]  { left: 0; top: 50%; cursor: ew-resize; }
 
 
 .pv-main {
@@ -438,19 +489,17 @@ body {
   height: 28px;
 }
 
+/* 裁掉的区域压一层红；边界线由 .pv-crop-box 负责，避免两条虚线重叠。 */
 .pv-band {
   position: absolute;
   left: 0;
   right: 0;
   height: 0;
   background: rgba(240, 86, 109, .28);
-  border-color: rgba(240, 86, 109, .75);
-  border-style: dashed;
-  border-width: 0;
   pointer-events: none;
 }
-.pv-band.top { top: 0; border-bottom-width: 1px; }
-.pv-band.bottom { bottom: 0; border-top-width: 1px; }
+.pv-band.top { top: 0; }
+.pv-band.bottom { bottom: 0; }
 .pv-band.left {
   left: 0;
   right: auto;
@@ -458,8 +507,6 @@ body {
   bottom: 0;
   width: 0;
   height: auto;
-  border-right-width: 1px;
-  border-bottom-width: 0;
 }
 .pv-band.right {
   right: 0;
@@ -468,8 +515,6 @@ body {
   bottom: 0;
   width: 0;
   height: auto;
-  border-left-width: 1px;
-  border-bottom-width: 0;
 }
 
 .pv-side {

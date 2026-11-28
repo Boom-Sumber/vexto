@@ -191,9 +191,19 @@ watch(sub, (next) => {
   if (next === "translate") nextTick(() => sourceEl.value?.focus());
 });
 
-onMounted(load);
+let unlistenHistory = null;
+
+onMounted(async () => {
+  await load();
+  try {
+    unlistenHistory = await window.__TAURI__.event.listen("translate:recorded", () => load());
+  } catch {
+    // 事件通道不可用时仍可手动切页刷新
+  }
+});
 
 onBeforeUnmount(() => {
+  if (typeof unlistenHistory === "function") unlistenHistory();
   for (const timer of armTimers.values()) clearTimeout(timer);
   if (clearTimer) clearTimeout(clearTimer);
 });

@@ -31,6 +31,7 @@ use rust_i18n::t;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tauri::Emitter;
 
 /// 一次翻译的结果。`from`/`to` 是引擎**实际**用的语向（`auto` 会被解析成具体语言）。
 #[derive(Debug, Clone)]
@@ -478,6 +479,11 @@ pub fn translate(cfg: &Config, text: &str) -> Result<Translated, String> {
 pub fn translate_recorded(cfg: &Config, text: &str) -> Result<Translated, String> {
     let r = translate(cfg, text)?;
     history::record(cfg, text, &r);
+    if cfg.translate_history_enabled {
+        if let Some(app) = crate::app_handle() {
+            let _ = app.emit("translate:recorded", ());
+        }
+    }
     Ok(r)
 }
 

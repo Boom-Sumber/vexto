@@ -8,17 +8,11 @@ export function startPreview(root, { onReady } = {}) {
   const invoke = window.__TAURI__.core.invoke;
   const el = (id) => root.querySelector("#" + id);
   const img = el("pv-img");
-  const headEl = el("pv-head");
-  const tailEl = el("pv-tail");
-  const leftEl = el("pv-left");
-  const rightEl = el("pv-right");
-  const cropPop = el("pv-crop-pop");
   const saveMenu = el("pv-save-menu");
   const annot = el("pv-annot");
   const editBar = el("pv-edit-bar");
   const hintEl = el("pv-edit-hint");
-
-  if (typeof Theme !== "undefined") Theme.apply();
+  const cropBox = el("pv-crop-box");
 
   let state = { url: "", width: 0, height: 0 };
   let head = 0;
@@ -29,7 +23,10 @@ export function startPreview(root, { onReady } = {}) {
   let zoom = 1;
   let dpr = window.devicePixelRatio || 1;
   let imgReady = false;
+  let cropOn = false;
+  let cropDrag = null;
   const MAX_EDIT_PIXELS = 16000000;
+  const CROP_MIN = 8;
   const POP_TOOLS = new Set(["rect", "ellipse", "arrow", "pen", "mosaic", "text"]);
 
   const editor = window.AnnotEditor.create({
@@ -37,13 +34,6 @@ export function startPreview(root, { onReady } = {}) {
     getScale: () => (annot.width ? (annot.clientWidth || 0) / annot.width : 1),
     onChange: () => {},
   });
-
-  function labels() {
-    el("pv-head-v").textContent = head + " px";
-    el("pv-tail-v").textContent = tail + " px";
-    el("pv-left-v").textContent = left + " px";
-    el("pv-right-v").textContent = right + " px";
-  }
 
   function imageEditable() {
     const px = (state.width || 0) * (state.height || 0);
@@ -59,6 +49,7 @@ export function startPreview(root, { onReady } = {}) {
       el("pv-info").textContent = t("preview.noImage");
       state = { url: "", width: 0, height: 0 };
       imgReady = false;
+      setCropOn(false);
       editor.setEnabled(false);
       updateEditAvailability();
       return;
@@ -69,22 +60,13 @@ export function startPreview(root, { onReady } = {}) {
     left = 0;
     right = 0;
     zoom = 1;
-    headEl.max = Math.max(0, state.height - 1);
-    tailEl.max = Math.max(0, state.height - 1);
-    leftEl.max = Math.max(0, state.width - 1);
-    rightEl.max = Math.max(0, state.width - 1);
-    headEl.value = 0;
-    tailEl.value = 0;
-    leftEl.value = 0;
-    rightEl.value = 0;
-    labels();
     zoomLabel();
     el("pv-info").textContent = state.width + " × " + state.height + " px";
     msg("");
     el("pv-ocr-text").textContent = "";
     el("pv-trans-text").textContent = "";
-    el("pv-save-menu").hidden = true;
-    el("pv-crop-pop").hidden = true;
+    setCropOn(false);
+    saveMenu.hidden = true;
     editor.setEnabled(false);
     img.crossOrigin = "anonymous";
     imgReady = false;
@@ -92,6 +74,7 @@ export function startPreview(root, { onReady } = {}) {
       imgReady = true;
       applyZoom();
       updateBands();
+      paintCropBox();
       syncAnnotCss();
       editor.setDpr(dpr);
       editor.setSource(img, state.width, state.height);
@@ -109,19 +92,50 @@ export function startPreview(root, { onReady } = {}) {
     updateEditAvailability();
   }
 
-  function clamp() {
-    const h = state.height || 1;
-    const w = state.width || 1;
-    head = Math.max(0, Math.min(Number(headEl.value) || 0, h - 1));
-    tail = Math.max(0, Math.min(Number(tailEl.value) || 0, h - 1 - head));
-    left = Math.max(0, Math.min(Number(leftEl.value) || 0, w - 1));
-    right = Math.max(0, Math.min(Number(rightEl.value) || 0, w - 1 - left));
-    headEl.value = head;
-    tailEl.value = tail;
-    leftEl.value = left;
-    rightEl.value = right;
-    labels();
+  function cropScale() {
+    return {
+      sx: state.width ? (img.clientWidth || 0) / state.width : 0,
+      sy: state.height ? (img.clientHeight || 0) / state.height : 0,
+    };
+  }
+
+  /** 裁剪框直接画在图上：显示坐标 = 源像素 × 显示缩放。 */
+  function paintCropBox() {
+    if (!cropBox) return;
+    const { sx, sy } = cropScale();
+    if (!cropOn || !imgReady || !sx || !sy) {
+      cropBox.hidden = true;
+      return;
+    }
+    cropBox.hidden = false;
+    cropBox.style.left = Math.round(left * sx) + "px";
+    cropBox.style.top = Math.round(head * sy) + "px";
+    cropBox.style.width = Math.max(1, Math.round((state.width - left - right) * sx)) + "px";
+    cropBox.style.height = Math.max(1, Math.round((state.height - head - tail) * sy)) + "px";
+  }
+
+  /** 统一写入裁剪值，保证最小保留一块可见区域且不越出图片。 */
+  function applyCrop(l, tp, rt, bt) {
+    const w = state.width || 0;
+    const h = state.height || 0;
+    l = Math.max(0, Math.min(l, w - CROP_MIN));
+    rt = Math.max(0, Math.min(rt, w - CROP_MIN - l));
+    tp = Math.max(0, Math.min(tp, h - CROP_MIN));
+    bt = Math.max(0, Math.min(bt, h - CROP_MIN - tp));
+    left = Math.round(l);
+    right = Math.round(rt);
+    head = Math.round(tp);
+    tail = Math.round(bt);
     updateBands();
+    paintCropBox();
+  }
+
+  function setCropOn(next) {
+    cropOn = !!next && editable();
+    const btn = el("pv-crop");
+    if (btn) btn.classList.toggle("on", cropOn);
+    paintCropBox();
+    updateEditAvailability();
   }
 
   function updateBands() {
@@ -139,7 +153,10 @@ export function startPreview(root, { onReady } = {}) {
     img.style.width = Math.round((state.width / dpr) * zoom) + "px";
     img.style.height = Math.round((state.height / dpr) * zoom) + "px";
     syncAnnotCss();
-    setTimeout(updateBands, 0);
+    setTimeout(() => {
+      updateBands();
+      paintCropBox();
+    }, 0);
   }
 
   function setZoom(next) {
@@ -182,6 +199,7 @@ export function startPreview(root, { onReady } = {}) {
     if (editBar) {
       for (const node of editBar.querySelectorAll("button")) node.disabled = b;
     }
+    if (cropBox) cropBox.classList.toggle("busy", b);
     if (b) {
       editor.setEnabled(false);
     } else {
@@ -196,7 +214,7 @@ export function startPreview(root, { onReady } = {}) {
     }
     const crop = el("pv-crop");
     if (crop) crop.disabled = !ok;
-    if (ok) {
+    if (ok && !cropOn) {
       editor.setEnabled(true);
       editor.render();
     } else {
@@ -206,6 +224,8 @@ export function startPreview(root, { onReady } = {}) {
       if (state.url && state.width && state.height && !imageEditable()) {
         hintEl.textContent =
           t("preview.tooLargeNote", { w: state.width, h: state.height });
+      } else if (cropOn) {
+        hintEl.textContent = t("preview.cropHint");
       } else if (editor.tool) {
         hintEl.textContent = t("preview.editDraw");
       } else {
@@ -215,16 +235,17 @@ export function startPreview(root, { onReady } = {}) {
   }
 
   function setTool(next) {
-    const t = editable() ? next || "" : "";
+    const tool = editable() ? next || "" : "";
+    if (cropOn) setCropOn(false);
     if (editBar) {
       for (const btn of editBar.querySelectorAll(".pv-tool")) {
-        btn.classList.toggle("on", (btn.dataset.tool || "") === t);
+        btn.classList.toggle("on", (btn.dataset.tool || "") === tool);
       }
     }
-    editor.setTool(t);
-    if (!t) editor.closePopup();
+    editor.setTool(tool);
+    if (!tool) editor.closePopup();
     if (hintEl) {
-      hintEl.textContent = t
+      hintEl.textContent = tool
         ? t("preview.editDraw")
         : t("preview.editSelect");
     }
@@ -279,15 +300,6 @@ export function startPreview(root, { onReady } = {}) {
           return;
         }
         applyState(r.state);
-        head = 0;
-        tail = 0;
-        left = 0;
-        right = 0;
-        headEl.value = 0;
-        tailEl.value = 0;
-        leftEl.value = 0;
-        rightEl.value = 0;
-        labels();
       }
 
       msg(kind === "ocr" ? t("preview.recognizing") : t("preview.processing"), "progress");
@@ -339,17 +351,15 @@ export function startPreview(root, { onReady } = {}) {
     .finally(() => onReady && onReady());
   window.__TAURI__.event.listen("preview:state", (e) => applyState(e.payload || {}));
 
-  headEl.addEventListener("input", clamp);
-  tailEl.addEventListener("input", clamp);
-  leftEl.addEventListener("input", clamp);
-  rightEl.addEventListener("input", clamp);
   window.addEventListener("resize", () => {
     dpr = window.devicePixelRatio || 1;
     editor.setDpr(dpr);
     applyZoom();
     updateBands();
+    paintCropBox();
     syncAnnotCss();
     editor.render();
+    positionSaveMenu();
   });
 
   el("pv-save").addEventListener("click", () => act("save"));
@@ -363,39 +373,97 @@ export function startPreview(root, { onReady } = {}) {
   const cropBtn = el("pv-crop");
   const saveCaret = el("pv-save-caret");
 
-  function positionCropPop() {
-    if (cropPop.hidden) return;
-    const r = cropBtn.getBoundingClientRect();
-    const pw = cropPop.offsetWidth || 260;
-    const ph = cropPop.offsetHeight || 240;
-    let left = r.left + r.width / 2 - pw / 2;
-    left = Math.max(8, Math.min(window.innerWidth - pw - 8, left));
-    let top = r.bottom + 8;
-    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
-    cropPop.style.left = Math.round(left) + "px";
-    cropPop.style.top = Math.round(top) + "px";
-  }
+  // 裁剪：按钮切换「裁剪框」模式，框直接盖在图上，8 个控制点可拖动。
+  cropBtn.addEventListener("click", () => {
+    const next = !cropOn;
+    if (next) setTool("");
+    setCropOn(next);
+  });
 
-  function toggleCropPop(force) {
-    const open = typeof force === "boolean" ? force : cropPop.hidden;
-    cropPop.hidden = !open;
-    if (open) {
-      editor.closePopup();
-      positionCropPop();
+  cropBox.addEventListener("pointerdown", (ev) => {
+    if (!cropOn || ev.button !== 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    cropBox.setPointerCapture(ev.pointerId);
+    cropDrag = {
+      id: ev.pointerId,
+      handle: ev.target.dataset.crop || "",
+      x: ev.clientX,
+      y: ev.clientY,
+      left,
+      right,
+      head,
+      tail,
+    };
+  });
+
+  cropBox.addEventListener("pointermove", (ev) => {
+    if (!cropDrag || cropDrag.id !== ev.pointerId) return;
+    const { sx, sy } = cropScale();
+    if (!sx || !sy) return;
+    const dx = (ev.clientX - cropDrag.x) / sx;
+    const dy = (ev.clientY - cropDrag.y) / sy;
+    const w = state.width;
+    const h = state.height;
+    let l = cropDrag.left;
+    let r = cropDrag.right;
+    let tp = cropDrag.head;
+    let bt = cropDrag.tail;
+    const key = cropDrag.handle;
+    if (!key) {
+      // 整体移动：尺寸不变，四边一起平移
+      const boxW = w - l - r;
+      const boxH = h - tp - bt;
+      const nl = Math.max(0, Math.min(l + dx, w - boxW));
+      const nt = Math.max(0, Math.min(tp + dy, h - boxH));
+      l = nl;
+      tp = nt;
+      r = w - nl - boxW;
+      bt = h - nt - boxH;
+    } else {
+      if (key.includes("w")) l = Math.min(Math.max(0, l + dx), w - r - CROP_MIN);
+      if (key.includes("e")) r = Math.min(Math.max(0, r - dx), w - l - CROP_MIN);
+      if (key.includes("n")) tp = Math.min(Math.max(0, tp + dy), h - bt - CROP_MIN);
+      if (key.includes("s")) bt = Math.min(Math.max(0, bt - dy), h - tp - CROP_MIN);
     }
+    applyCrop(l, tp, r, bt);
+  });
+
+  function endCropDrag(ev) {
+    if (!cropDrag || cropDrag.id !== ev.pointerId) return;
+    if (cropBox.hasPointerCapture?.(ev.pointerId)) {
+      cropBox.releasePointerCapture(ev.pointerId);
+    }
+    cropDrag = null;
+  }
+  cropBox.addEventListener("pointerup", endCropDrag);
+  cropBox.addEventListener("pointercancel", endCropDrag);
+
+  function positionSaveMenu() {
+    if (saveMenu.hidden) return;
+    const r = saveCaret.getBoundingClientRect();
+    const mw = saveMenu.offsetWidth || 128;
+    const mh = saveMenu.offsetHeight || 72;
+    let left = r.right - mw;
+    left = Math.max(8, Math.min(window.innerWidth - mw - 8, left));
+    let top = r.bottom + 6;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+    saveMenu.style.left = Math.round(left) + "px";
+    saveMenu.style.top = Math.round(top) + "px";
   }
 
-  cropBtn.addEventListener("click", () => toggleCropPop());
-
-  saveCaret.addEventListener("click", () => {
-    const open = saveMenu.hidden;
+  function toggleSaveMenu(force) {
+    const open = typeof force === "boolean" ? force : saveMenu.hidden;
     saveMenu.hidden = !open;
     saveCaret.setAttribute("aria-expanded", open ? "true" : "false");
-  });
+    saveCaret.classList.toggle("on", open);
+    if (open) positionSaveMenu();
+  }
+
+  saveCaret.addEventListener("click", () => toggleSaveMenu());
   for (const item of saveMenu.querySelectorAll("button[data-save]")) {
     item.addEventListener("click", () => {
-      saveMenu.hidden = true;
-      saveCaret.setAttribute("aria-expanded", "false");
+      toggleSaveMenu(false);
       act(item.dataset.save);
     });
   }
@@ -403,25 +471,17 @@ export function startPreview(root, { onReady } = {}) {
   document.addEventListener(
     "pointerdown",
     (ev) => {
-      if (!cropPop.hidden && !cropPop.contains(ev.target) && !cropBtn.contains(ev.target)) {
-        cropPop.hidden = true;
-      }
       if (!saveMenu.hidden && !saveMenu.contains(ev.target) && !saveCaret.contains(ev.target)) {
-        saveMenu.hidden = true;
-        saveCaret.setAttribute("aria-expanded", "false");
+        toggleSaveMenu(false);
       }
     },
     true,
   );
-  window.addEventListener("resize", () => {
-    if (!cropPop.hidden) positionCropPop();
-  });
 
   if (editBar) {
     for (const btn of editBar.querySelectorAll(".pv-tool")) {
       btn.addEventListener("click", () => {
         const next = btn.dataset.tool || "";
-        toggleCropPop(false);
         setTool(next);
         if (next && POP_TOOLS.has(next)) editor.openPopup(btn);
         else editor.closePopup();
@@ -474,6 +534,10 @@ export function startPreview(root, { onReady } = {}) {
       return;
     }
     if (e.key === "Escape") {
+      if (cropOn) {
+        setCropOn(false);
+        return;
+      }
       if (editor.tool) {
         setTool("");
         return;

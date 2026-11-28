@@ -1,11 +1,12 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import TitleBar from "../components/TitleBar.vue";
 import Icon from "../components/Icon.vue";
 import ToastHost from "../components/ToastHost.vue";
 import FieldRenderer from "./FieldRenderer.vue";
 import { useSettings } from "./useSettings.js";
 import { useToast } from "../composables/useToast.js";
+import { useTabIndicator } from "../composables/useTabIndicator.js";
 import { Icons } from "../shared/icons.js";
 
 const s = useSettings();
@@ -27,7 +28,14 @@ const {
 } = s;
 
 const tb = ref(null);
+const tabsEl = ref(null);
+const { style: tabIndStyle, ready: tabIndReady, update: updateTabInd } = useTabIndicator(tabsEl);
 const badge = s.update.badge;
+
+watch(
+  [tabId, () => sections.value.map((sec) => `${sec.id}:${sec.name}`).join("|")],
+  () => nextTick(updateTabInd),
+);
 
 function openToolbox() {
   window.__TAURI__.core
@@ -141,17 +149,20 @@ onMounted(async () => {
 
         <div id="tool-status" class="tool-status" v-show="banner">{{ banner }}</div>
 
-        <div id="tabs" class="tabs" v-show="sections.length > 1">
+        <div id="tabs" ref="tabsEl" class="tabs" v-show="sections.length > 1">
           <button
             v-for="sec in sections"
             :key="sec.id"
             type="button"
             class="tab"
+            role="tab"
+            :aria-selected="sec.id === tabId"
             :class="{ on: sec.id === tabId }"
             @click="tabId = sec.id"
           >
             {{ sec.name }}
           </button>
+          <span class="tabs-ind" :class="{ animated: tabIndReady }" :style="tabIndStyle" aria-hidden="true"></span>
         </div>
 
         <div class="pane-body">

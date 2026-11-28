@@ -38,6 +38,7 @@ mod translate;
 mod update;
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use serde::Serialize;
@@ -47,6 +48,14 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// 托盘「退出」置位。没有它，`ExitRequested` 里的 `prevent_exit()` 会让进程永远关不掉。
 pub static QUITTING: AtomicBool = AtomicBool::new(false);
+
+/// 全局 AppHandle：翻译记录发生在没有窗口参数的调用链里（OCR / 后台线程），
+/// 也要能广播 `translate:recorded` 通知工具箱刷新历史。
+static APP: OnceLock<AppHandle> = OnceLock::new();
+
+pub fn app_handle() -> Option<&'static AppHandle> {
+    APP.get()
+}
 
 // ---------- 输出结构 ----------
 
@@ -3424,6 +3433,7 @@ fn main() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+            let _ = APP.set(handle.clone());
             let cfg = config::load();
             crate::i18n::init(&cfg);
             dlog::configure(cfg.log_enabled, &cfg.log_level);

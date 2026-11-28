@@ -19,7 +19,7 @@ onMounted(async () => {
 
     <div class="pv-head">
       <span id="pv-info" class="pv-info">{{ $t("preview.reading") }}</span>
-      <span class="pv-hint">{{ $t("preview.cropHint") }}</span>
+      <span id="pv-edit-hint" class="pv-hint">{{ $t("preview.cropHint") }}</span>
     </div>
 
     <div id="pv-edit-bar" class="pv-edit-bar">
@@ -39,21 +39,17 @@ onMounted(async () => {
       <span class="pv-toolbar-fill"></span>
 
       <div class="pv-save-group">
-        <button id="pv-save" class="btn btn-primary pv-save-main" type="button">
+        <button id="pv-save" class="pv-save-main" type="button">
           {{ $t("preview.save") }}
         </button>
         <button
           id="pv-save-caret"
-          class="btn btn-primary pv-save-caret"
+          class="pv-save-caret"
           type="button"
           :title="$t('preview.saveAs')"
           aria-haspopup="menu"
           aria-expanded="false"
         ></button>
-        <div id="pv-save-menu" class="pv-save-menu" role="menu" hidden>
-          <button type="button" role="menuitem" data-save="save">{{ $t("preview.save") }}</button>
-          <button type="button" role="menuitem" data-save="save_as">{{ $t("preview.saveAs") }}</button>
-        </div>
       </div>
 
       <button id="pv-ocr" class="btn pv-ocr-btn" type="button">
@@ -64,24 +60,9 @@ onMounted(async () => {
 
     <div id="pv-msg" class="pv-msg"></div>
 
-    <div id="pv-crop-pop" class="pv-crop-pop" hidden>
-      <div class="pv-field">
-        <div class="pv-label"><span>{{ $t("preview.cropTop") }}</span><span id="pv-head-v">0 px</span></div>
-        <input id="pv-head" type="range" min="0" max="0" value="0" step="1" />
-      </div>
-      <div class="pv-field">
-        <div class="pv-label"><span>{{ $t("preview.cropBottom") }}</span><span id="pv-tail-v">0 px</span></div>
-        <input id="pv-tail" type="range" min="0" max="0" value="0" step="1" />
-      </div>
-      <div class="pv-field">
-        <div class="pv-label"><span>{{ $t("preview.cropLeft") }}</span><span id="pv-left-v">0 px</span></div>
-        <input id="pv-left" type="range" min="0" max="0" value="0" step="1" />
-      </div>
-      <div class="pv-field">
-        <div class="pv-label"><span>{{ $t("preview.cropRight") }}</span><span id="pv-right-v">0 px</span></div>
-        <input id="pv-right" type="range" min="0" max="0" value="0" step="1" />
-      </div>
-      <p class="pv-hint">{{ $t("preview.cropHint2") }}</p>
+    <div id="pv-save-menu" class="pv-save-menu" role="menu" hidden>
+      <button type="button" role="menuitem" data-save="save">{{ $t("preview.save") }}</button>
+      <button type="button" role="menuitem" data-save="save_as">{{ $t("preview.saveAs") }}</button>
     </div>
 
     <main class="pv-main">
@@ -94,6 +75,16 @@ onMounted(async () => {
             <div id="pv-band-bottom" class="pv-band bottom"></div>
             <div id="pv-band-left" class="pv-band left"></div>
             <div id="pv-band-right" class="pv-band right"></div>
+            <div id="pv-crop-box" class="pv-crop-box" hidden>
+              <span class="pv-crop-h" data-crop="nw"></span>
+              <span class="pv-crop-h" data-crop="n"></span>
+              <span class="pv-crop-h" data-crop="ne"></span>
+              <span class="pv-crop-h" data-crop="e"></span>
+              <span class="pv-crop-h" data-crop="se"></span>
+              <span class="pv-crop-h" data-crop="s"></span>
+              <span class="pv-crop-h" data-crop="sw"></span>
+              <span class="pv-crop-h" data-crop="w"></span>
+            </div>
           </div>
         </div>
         <div class="pv-zoom">
