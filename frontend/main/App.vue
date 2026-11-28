@@ -20,15 +20,20 @@ const toast = useToast();
 const downloads = useDownloads();
 const tools = useTools();
 
-const view = ref("download");
+const view = ref("");
 const sub = ref("send");
 const tb = ref(null);
 
-/* 当前工具被停用（或深链指向未启用工具）时落到第一个可见工具；
- * 全部停用时保留当前页，让用户仍能看到已打开的内容。 */
+/* 打开时落在第一个可见工具；当前工具被停用（或深链指向未启用工具）时也落到第一个；
+ * 全部停用时清空视图，交给空态兜底。 */
 function ensureVisible() {
-  if (!tools.visible.value.length) return;
-  if (!tools.isVisible(view.value)) view.value = tools.visible.value[0].id;
+  if (!tools.visible.value.length) {
+    view.value = "";
+    return;
+  }
+  if (!view.value || !tools.isVisible(view.value)) {
+    view.value = tools.visible.value[0].id;
+  }
 }
 
 function setView(next) {
@@ -60,15 +65,7 @@ const speedText = computed(() =>
   }),
 );
 
-const title = computed(() => {
-  if (transfer.tpOpen.value) return t("main.titleTransferProgress");
-  if (!tools.visible.value.length) return t("main.noToolsTitle");
-  if (view.value === "transfer") return t("main.titleTransfer");
-  if (view.value === "translate") return t("main.navTranslate");
-  if (view.value === "screenshot") return t("main.navScreenshot");
-  if (downloads.filter.value === "github") return t("main.titleGithub");
-  return t("main.titleTasks");
-});
+const title = computed(() => t("main.windowTitle"));
 
 watch(
   () => downloads.filter.value,

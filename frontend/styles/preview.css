@@ -211,6 +211,123 @@ body {
   .pv-edit-hint { display: none; }
 }
 
+.pv-toolbar-fill {
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+/* 保存下拉：主按钮直接保存，右侧箭头展开保存 / 另存为。 */
+.pv-save-group {
+  position: relative;
+  display: flex;
+  flex: none;
+  margin-left: var(--sp-2);
+}
+
+.pv-save-group .btn {
+  height: 30px;
+}
+
+.pv-save-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.pv-save-caret {
+  width: 24px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid var(--accent-border);
+}
+
+.pv-save-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+}
+
+.pv-save-menu[hidden] {
+  display: none;
+}
+
+.pv-save-menu button {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pv-save-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.pv-ocr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  flex: none;
+  margin-left: var(--sp-2);
+  padding: 0 10px;
+  font-size: var(--fs-sm);
+}
+
+.pv-btn-ico {
+  display: inline-flex;
+}
+
+.pv-zoom-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  padding: 0 2px;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 裁剪气泡：从工具条裁剪按钮向下弹出。 */
+.pv-crop-pop {
+  position: fixed;
+  z-index: 60;
+  width: 260px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-float);
+}
+
+.pv-crop-pop[hidden] {
+  display: none;
+}
+
+.pv-crop-pop .pv-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+
 .pv-main {
   flex: 1;
   min-height: 0;
@@ -358,13 +475,13 @@ body {
 .pv-side {
   width: 320px;
   flex: none;
-  border-left: 1px solid var(--border-subtle);
-  background: var(--bg-panel);
-  padding: var(--sp-4);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
-  overflow-y: auto;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-left: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  overflow: hidden;
 }
 
 .pv-field {
@@ -386,25 +503,6 @@ body {
   accent-color: var(--accent);
 }
 
-.pv-path-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.pv-path-row input {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-xs);
-}
-
-.pv-path-row .icon-btn {
-  flex: none;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-}
-
 .pv-hint {
   margin: 0;
   font-size: var(--fs-xs);
@@ -412,43 +510,44 @@ body {
   color: var(--text-muted);
 }
 
-.pv-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-
 .pv-msg {
-  min-height: 1.2em;
+  flex: 0 0 auto;
+  padding: 0 var(--sp-4);
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
   color: var(--text-secondary);
   word-break: break-all;
 }
 
+.pv-msg:empty {
+  display: none;
+}
+
 .pv-msg.bad {
   color: var(--danger);
 }
 
-.pv-ocr {
+/* 右侧两张卡片平分高度：识别结果 / 翻译结果。 */
+.pv-card {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border-subtle);
   border-radius: var(--r-md);
   background: var(--bg-input);
-  display: flex;
-  flex-direction: column;
-  min-height: 120px;
   overflow: hidden;
 }
 
-.pv-ocr-head {
+.pv-card-head {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .pv-ocr-acts {
@@ -462,13 +561,12 @@ body {
   padding: 0;
 }
 
-.pv-ocr pre {
+.pv-card pre {
   margin: 0;
   padding: var(--sp-3);
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
-  min-height: 2.6em;
-  max-height: 220px;
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -477,4 +575,9 @@ body {
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
   color: var(--text-primary);
+}
+
+.pv-card pre:empty::before {
+  content: attr(data-empty);
+  color: var(--text-disabled);
 }

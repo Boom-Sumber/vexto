@@ -12,7 +12,8 @@ export function startPreview(root, { onReady } = {}) {
   const tailEl = el("pv-tail");
   const leftEl = el("pv-left");
   const rightEl = el("pv-right");
-  const dirEl = el("pv-dir");
+  const cropPop = el("pv-crop-pop");
+  const saveMenu = el("pv-save-menu");
   const annot = el("pv-annot");
   const editBar = el("pv-edit-bar");
   const hintEl = el("pv-edit-hint");
@@ -77,9 +78,13 @@ export function startPreview(root, { onReady } = {}) {
     leftEl.value = 0;
     rightEl.value = 0;
     labels();
+    zoomLabel();
     el("pv-info").textContent = state.width + " × " + state.height + " px";
     msg("");
-    el("pv-ocr-box").hidden = true;
+    el("pv-ocr-text").textContent = "";
+    el("pv-trans-text").textContent = "";
+    el("pv-save-menu").hidden = true;
+    el("pv-crop-pop").hidden = true;
     editor.setEnabled(false);
     img.crossOrigin = "anonymous";
     imgReady = false;
@@ -140,7 +145,13 @@ export function startPreview(root, { onReady } = {}) {
   function setZoom(next) {
     zoom = Math.max(0.1, Math.min(4, next));
     applyZoom();
+    zoomLabel();
     editor.render();
+  }
+
+  function zoomLabel() {
+    const label = el("pv-zoom-label");
+    if (label) label.textContent = Math.round(zoom * 100) + "%";
   }
 
   function syncAnnotCss() {
@@ -151,8 +162,22 @@ export function startPreview(root, { onReady } = {}) {
 
   function setBusy(b) {
     busy = b;
-    for (const id of ["pv-save", "pv-copy", "pv-pin", "pv-ocr", "pv-translate", "pv-copy-text"]) {
-      el(id).disabled = b;
+    for (const id of [
+      "pv-save",
+      "pv-save-caret",
+      "pv-copy",
+      "pv-pin",
+      "pv-ocr",
+      "pv-translate",
+      "pv-copy-text",
+      "pv-crop",
+    ]) {
+      const node = el(id);
+      if (node) node.disabled = b;
+    }
+    if (saveMenu) {
+      for (const node of saveMenu.querySelectorAll("button")) node.disabled = b;
+      if (b) saveMenu.hidden = true;
     }
     if (editBar) {
       for (const node of editBar.querySelectorAll("button")) node.disabled = b;
@@ -169,6 +194,8 @@ export function startPreview(root, { onReady } = {}) {
     if (editBar) {
       for (const node of editBar.querySelectorAll("[data-tool]")) node.disabled = !ok;
     }
+    const crop = el("pv-crop");
+    if (crop) crop.disabled = !ok;
     if (ok) {
       editor.setEnabled(true);
       editor.render();
@@ -277,8 +304,8 @@ export function startPreview(root, { onReady } = {}) {
       }
       msg(r.message || t("preview.done"));
       if (kind === "ocr") {
-        el("pv-ocr-box").hidden = false;
         el("pv-ocr-text").textContent = r.text || "";
+        el("pv-trans-text").textContent = "";
       }
     } catch (e) {
       msg(String(e));
@@ -294,12 +321,15 @@ export function startPreview(root, { onReady } = {}) {
       return;
     }
     try {
-      const r = await invoke("translate_text", { text, mode: "select" });
-      if (!r || !r.ok) {
-        msg((r && r.message) || t("preview.translateFailed"), "error");
+      const r = await invoke("translate_text_only", { text });
+      if (r && r.dst) {
+        el("pv-trans-text").textContent = r.dst;
+        msg("");
+      } else {
+        msg(t("preview.translateFailed"), "error");
       }
     } catch (e) {
-      msg(String(e));
+      msg(String(e && e.message ? e.message : e), "error");
     }
   }
 
@@ -330,10 +360,68 @@ export function startPreview(root, { onReady } = {}) {
   el("pv-zoom-out").addEventListener("click", () => setZoom(zoom / 1.25));
   el("pv-zoom-in").addEventListener("click", () => setZoom(zoom * 1.25));
 
+  const cropBtn = el("pv-crop");
+  const saveCaret = el("pv-save-caret");
+
+  function positionCropPop() {
+    if (cropPop.hidden) return;
+    const r = cropBtn.getBoundingClientRect();
+    const pw = cropPop.offsetWidth || 260;
+    const ph = cropPop.offsetHeight || 240;
+    let left = r.left + r.width / 2 - pw / 2;
+    left = Math.max(8, Math.min(window.innerWidth - pw - 8, left));
+    let top = r.bottom + 8;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
+    cropPop.style.left = Math.round(left) + "px";
+    cropPop.style.top = Math.round(top) + "px";
+  }
+
+  function toggleCropPop(force) {
+    const open = typeof force === "boolean" ? force : cropPop.hidden;
+    cropPop.hidden = !open;
+    if (open) {
+      editor.closePopup();
+      positionCropPop();
+    }
+  }
+
+  cropBtn.addEventListener("click", () => toggleCropPop());
+
+  saveCaret.addEventListener("click", () => {
+    const open = saveMenu.hidden;
+    saveMenu.hidden = !open;
+    saveCaret.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  for (const item of saveMenu.querySelectorAll("button[data-save]")) {
+    item.addEventListener("click", () => {
+      saveMenu.hidden = true;
+      saveCaret.setAttribute("aria-expanded", "false");
+      act(item.dataset.save);
+    });
+  }
+
+  document.addEventListener(
+    "pointerdown",
+    (ev) => {
+      if (!cropPop.hidden && !cropPop.contains(ev.target) && !cropBtn.contains(ev.target)) {
+        cropPop.hidden = true;
+      }
+      if (!saveMenu.hidden && !saveMenu.contains(ev.target) && !saveCaret.contains(ev.target)) {
+        saveMenu.hidden = true;
+        saveCaret.setAttribute("aria-expanded", "false");
+      }
+    },
+    true,
+  );
+  window.addEventListener("resize", () => {
+    if (!cropPop.hidden) positionCropPop();
+  });
+
   if (editBar) {
     for (const btn of editBar.querySelectorAll(".pv-tool")) {
       btn.addEventListener("click", () => {
         const next = btn.dataset.tool || "";
+        toggleCropPop(false);
         setTool(next);
         if (next && POP_TOOLS.has(next)) editor.openPopup(btn);
         else editor.closePopup();
@@ -357,23 +445,14 @@ export function startPreview(root, { onReady } = {}) {
     }
     el("pv-zoom-out").innerHTML = Icons.svg("minus", 16);
     el("pv-zoom-in").innerHTML = Icons.svg("plus", 16);
+    el("pv-crop").innerHTML = Icons.svg("crop", 16);
+    el("pv-pin").innerHTML = Icons.svg("pin", 16);
+    el("pv-copy").innerHTML = Icons.svg("copy", 16);
+    el("pv-save-caret").innerHTML = Icons.svg("chevron-down", 14);
+    el("pv-ocr-ico").innerHTML = Icons.svg("scan-text", 16);
     el("pv-translate").innerHTML = Icons.raw("translate", 20);
     el("pv-copy-text").innerHTML = Icons.svg("copy", 20);
-    el("pv-open-dir").innerHTML = Icons.svg("folder", 18);
   }
-
-  invoke("preview_save_dir")
-    .then((dir) => {
-      if (dirEl && dir) dirEl.value = dir;
-    })
-    .catch(() => {});
-  el("pv-open-dir").addEventListener("click", () => {
-    invoke("preview_open_save_dir")
-      .then((r) => {
-        if (!r || !r.ok) msg((r && r.message) || t("preview.openDirFailed"), "error");
-      })
-      .catch((e) => msg(String(e)));
-  });
 
   el("pv-copy-text").addEventListener("click", () => {
     const text = el("pv-ocr-text").textContent;

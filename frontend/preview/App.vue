@@ -32,7 +32,56 @@ onMounted(async () => {
       <button class="tb-btn pv-tool" type="button" data-tool="text" :title="$t('region.text')"></button>
       <button class="tb-btn pv-tool" type="button" data-tool="mosaic" :title="$t('region.mosaic')"></button>
       <span class="pv-edit-sep"></span>
-      <span id="pv-edit-hint" class="pv-edit-hint">{{ $t("preview.editHint") }}</span>
+      <button id="pv-crop" class="tb-btn" type="button" :title="$t('preview.crop')"></button>
+      <span class="pv-edit-sep"></span>
+      <button id="pv-pin" class="tb-btn" type="button" :title="$t('region.pin')"></button>
+      <button id="pv-copy" class="tb-btn" type="button" :title="$t('preview.copy')"></button>
+      <span class="pv-toolbar-fill"></span>
+
+      <div class="pv-save-group">
+        <button id="pv-save" class="btn btn-primary pv-save-main" type="button">
+          {{ $t("preview.save") }}
+        </button>
+        <button
+          id="pv-save-caret"
+          class="btn btn-primary pv-save-caret"
+          type="button"
+          :title="$t('preview.saveAs')"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        ></button>
+        <div id="pv-save-menu" class="pv-save-menu" role="menu" hidden>
+          <button type="button" role="menuitem" data-save="save">{{ $t("preview.save") }}</button>
+          <button type="button" role="menuitem" data-save="save_as">{{ $t("preview.saveAs") }}</button>
+        </div>
+      </div>
+
+      <button id="pv-ocr" class="btn pv-ocr-btn" type="button">
+        <span id="pv-ocr-ico" class="pv-btn-ico"></span>
+        <span>{{ $t("preview.recognize") }}</span>
+      </button>
+    </div>
+
+    <div id="pv-msg" class="pv-msg"></div>
+
+    <div id="pv-crop-pop" class="pv-crop-pop" hidden>
+      <div class="pv-field">
+        <div class="pv-label"><span>{{ $t("preview.cropTop") }}</span><span id="pv-head-v">0 px</span></div>
+        <input id="pv-head" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <div class="pv-field">
+        <div class="pv-label"><span>{{ $t("preview.cropBottom") }}</span><span id="pv-tail-v">0 px</span></div>
+        <input id="pv-tail" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <div class="pv-field">
+        <div class="pv-label"><span>{{ $t("preview.cropLeft") }}</span><span id="pv-left-v">0 px</span></div>
+        <input id="pv-left" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <div class="pv-field">
+        <div class="pv-label"><span>{{ $t("preview.cropRight") }}</span><span id="pv-right-v">0 px</span></div>
+        <input id="pv-right" type="range" min="0" max="0" value="0" step="1" />
+      </div>
+      <p class="pv-hint">{{ $t("preview.cropHint2") }}</p>
     </div>
 
     <main class="pv-main">
@@ -49,56 +98,29 @@ onMounted(async () => {
         </div>
         <div class="pv-zoom">
           <button id="pv-zoom-out" class="tb-btn" type="button" :title="$t('preview.zoomOut')"></button>
+          <span id="pv-zoom-label" class="pv-zoom-label">100%</span>
           <button id="pv-zoom-in" class="tb-btn" type="button" :title="$t('preview.zoomIn')"></button>
         </div>
       </div>
 
       <aside class="pv-side">
-        <div class="pv-field">
-          <div class="pv-label"><span>{{ $t("preview.cropTop") }}</span><span id="pv-head-v">0 px</span></div>
-          <input id="pv-head" type="range" min="0" max="0" value="0" step="1" />
-        </div>
-        <div class="pv-field">
-          <div class="pv-label"><span>{{ $t("preview.cropBottom") }}</span><span id="pv-tail-v">0 px</span></div>
-          <input id="pv-tail" type="range" min="0" max="0" value="0" step="1" />
-        </div>
-        <div class="pv-field">
-          <div class="pv-label"><span>{{ $t("preview.cropLeft") }}</span><span id="pv-left-v">0 px</span></div>
-          <input id="pv-left" type="range" min="0" max="0" value="0" step="1" />
-        </div>
-        <div class="pv-field">
-          <div class="pv-label"><span>{{ $t("preview.cropRight") }}</span><span id="pv-right-v">0 px</span></div>
-          <input id="pv-right" type="range" min="0" max="0" value="0" step="1" />
-        </div>
-        <p class="pv-hint">{{ $t("preview.cropHint2") }}</p>
-
-        <div class="pv-field">
-          <div class="pv-label"><span>{{ $t("preview.saveDir") }}</span></div>
-          <div class="pv-path-row">
-            <input id="pv-dir" type="text" readonly />
-            <button id="pv-open-dir" class="btn icon-btn" type="button" :title="$t('preview.openDir')"></button>
-          </div>
-        </div>
-
-        <div class="pv-actions">
-          <button id="pv-save" class="btn btn-primary" type="button">{{ $t("preview.save") }}</button>
-          <button id="pv-copy" class="btn" type="button">{{ $t("preview.copy") }}</button>
-          <button id="pv-pin" class="btn" type="button">{{ $t("region.pin") }}</button>
-          <button id="pv-ocr" class="btn" type="button">{{ $t("preview.recognize") }}</button>
-        </div>
-
-        <div id="pv-msg" class="pv-msg"></div>
-
-        <div id="pv-ocr-box" class="pv-ocr" hidden>
-          <div class="pv-ocr-head">
+        <section id="pv-ocr-box" class="pv-card">
+          <div class="pv-card-head">
             <span>{{ $t("preview.ocrResult") }}</span>
             <div class="pv-ocr-acts">
               <button id="pv-translate" class="btn btn-ghost ico-btn" type="button" :title="$t('preview.translateResult')"></button>
               <button id="pv-copy-text" class="btn btn-ghost ico-btn" type="button" :title="$t('preview.copyText')"></button>
             </div>
           </div>
-          <pre id="pv-ocr-text"></pre>
-        </div>
+          <pre id="pv-ocr-text" :data-empty="$t('preview.ocrEmpty')"></pre>
+        </section>
+
+        <section id="pv-trans-box" class="pv-card">
+          <div class="pv-card-head">
+            <span>{{ $t("preview.transResult") }}</span>
+          </div>
+          <pre id="pv-trans-text" :data-empty="$t('preview.transEmpty')"></pre>
+        </section>
       </aside>
     </main>
   </div>

@@ -21,6 +21,19 @@ const Icons = (function () {
     check: '<path d="M5 13l4 4L19 7"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     minus: '<path d="M5 12h14"/>',
+    crop:
+      '<path d="M6 2v14a2 2 0 0 0 2 2h14"/>' +
+      '<path d="M2 6h14a2 2 0 0 1 2 2v14"/>',
+    save:
+      '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/>' +
+      '<path d="M5 21h14"/>',
+    "scan-text":
+      '<path d="M4 7V5a1 1 0 0 1 1-1h2"/>' +
+      '<path d="M17 4h2a1 1 0 0 1 1 1v2"/>' +
+      '<path d="M20 17v2a1 1 0 0 1-1 1h-2"/>' +
+      '<path d="M7 20H5a1 1 0 0 1-1-1v-2"/>' +
+      '<path d="M8 9h8"/><path d="M8 12h8"/><path d="M8 15h5"/>',
+    "chevron-down": '<path d="m6 9 6 6 6-6"/>',
     trash:
       '<path d="M4 7h16M9 7V5h6v2"/>' +
       '<path d="M6.5 7l1 12.5h9l1-12.5"/>',
