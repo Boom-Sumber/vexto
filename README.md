@@ -10,7 +10,7 @@
 
 [简体中文](README.md) · [English](README.en.md) · [下载 Releases](https://github.com/Ruxsmiles/vexto/releases) · [反馈 Issues](https://github.com/Ruxsmiles/vexto/issues)
 
-![version](https://img.shields.io/badge/version-0.5.4-blue?style=flat-square)
+![version](https://img.shields.io/badge/version-0.5.5-blue?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square)
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square)
@@ -44,9 +44,9 @@
 
 ## 安装
 
-运行 [Vexto_0.5.4_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.4/Vexto_0.5.4_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
+运行 [Vexto_0.5.5_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.5/Vexto_0.5.5_x64-setup.exe)。安装器按当前用户安装（`%LOCALAPPDATA%`），**可以选择自定义安装路径**，不需要管理员权限。
 
-当前安装包 **21.30 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
+当前安装包 **21.43 MiB**（含 PaddleOCR 模型，LZMA 压缩后）；安装后程序目录约 42 MB。
 
 > 0.5.0 起安装包/程序的发布者改为 **Ruxsmiles**。从 0.4.0 或更早版本覆盖安装时，请在安装器中确认安装目录为原路径；旧版自定义安装路径不会自动带回。
 
@@ -107,7 +107,7 @@ Vexto 本身不直接注入浏览器。要让网页下载进入 Vexto，需要�
 | 打开设置页 | 约 6–7 MB | 约 87 MB | 约 93 MB |
 | 关闭窗口（轻量模式开） | 约 1–2 MB | 0 | 约 1–2 MB |
 | 关闭窗口（轻量模式关） | 约 6–7 MB | 约 87 MB（挂起） | 约 93 MB |
-| 安装包 | — | — | **21.30 MiB** |
+| 安装包 | — | — | **21.43 MiB** |
 
 任务管理器会把 WebView2 子进程归入「WebView2 管理器」组，主程序与它分开显示。开启「轻量模式」后，关闭窗口会释放 WebView2，内存更低，下次打开稍慢；不开启时窗口会挂起复用，再次打开更快。
 

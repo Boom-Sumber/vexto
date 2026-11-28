@@ -10,7 +10,7 @@ A lightweight Windows tray toolbox that combines select-to-translate, screenshot
 
 [简体中文](README.md) · [English](README.en.md) · [Download Releases](https://github.com/Ruxsmiles/vexto/releases) · [Feedback Issues](https://github.com/Ruxsmiles/vexto/issues)
 
-![version](https://img.shields.io/badge/version-0.5.4-blue?style=flat-square)
+![version](https://img.shields.io/badge/version-0.5.5-blue?style=flat-square)
 ![platform](https://img.shields.io/badge/platform-Windows-0078D4?style=flat-square)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square)
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?style=flat-square)
@@ -44,9 +44,9 @@ A lightweight Windows tray toolbox that combines select-to-translate, screenshot
 
 ## Installation
 
-Run [Vexto_0.5.4_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.4/Vexto_0.5.4_x64-setup.exe). The installer installs per-user (`%LOCALAPPDATA%`) and **lets you choose a custom install path**; administrator rights are not required.
+Run [Vexto_0.5.5_x64-setup.exe](https://github.com/Ruxsmiles/vexto/releases/download/v0.5.5/Vexto_0.5.5_x64-setup.exe). The installer installs per-user (`%LOCALAPPDATA%`) and **lets you choose a custom install path**; administrator rights are not required.
 
-The current installer is **21.30 MiB** (includes the PaddleOCR model, LZMA-compressed); the installed program directory is about 42 MB.
+The current installer is **21.43 MiB** (includes the PaddleOCR model, LZMA-compressed); the installed program directory is about 42 MB.
 
 > Starting with 0.5.0, the installer/program publisher is **Ruxsmiles**. When upgrading from 0.4.0 or earlier, confirm the install directory in the installer; a custom path from the old version is not carried over automatically.
 
@@ -107,7 +107,7 @@ Reference values from the Windows Task Manager “Memory” column; actual numbe
 | Settings window open | about 6–7 MB | about 87 MB | about 93 MB |
 | Window closed (lite mode on) | about 1–2 MB | 0 | about 1–2 MB |
 | Window closed (lite mode off) | about 6–7 MB | about 87 MB (suspended) | about 93 MB |
-| Installer | — | — | **21.30 MiB** |
+| Installer | — | — | **21.43 MiB** |
 
 Task Manager groups WebView2 child processes under “WebView2 manager”, separate from the main process. With “Lite mode” enabled, closing a window releases WebView2 (lower memory, slightly slower next open); with it disabled, windows are kept suspended for faster reopening.
 
